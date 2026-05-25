@@ -1,0 +1,755 @@
+package com.example.ui.screens
+
+import androidx.compose.animation.*
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material3.*
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.data.model.InventoryItem
+import com.example.ui.components.BarcodeScannerMockDialog
+import com.example.ui.viewmodel.StockViewModel
+import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.*
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun InventoryScreen(viewModel: StockViewModel) {
+    val rawItems by viewModel.inventoryItems.collectAsState()
+    val searchWord by viewModel.inventorySearchTerm.collectAsState()
+    val activeSubTab by viewModel.inventorySubTab.collectAsState() // 0 = Inventory, 1 = Repair
+    val sortOption by viewModel.inventorySortOption.collectAsState()
+    val sortAscending by viewModel.inventorySortAscending.collectAsState()
+    val revealedSet by viewModel.revealedPrices.collectAsState()
+
+    val canManageInventory by viewModel.canManageInventory.collectAsState()
+    val canRepair by viewModel.canRepair.collectAsState()
+    val canDelete by viewModel.canDelete.collectAsState()
+
+    var showScannerDialog by remember { mutableStateOf(false) }
+    var showSortMenu by remember { mutableStateOf(false) }
+
+    // Dialog state for "Dispatch to Repair"
+    var repairDispatchItem by remember { mutableStateOf<InventoryItem?>(null) }
+    var technicianName by remember { mutableStateOf("") }
+    var repairReason by remember { mutableStateOf("") }
+
+    // Dialog state for "Edit Item"
+    var editingItem by remember { mutableStateOf<InventoryItem?>(null) }
+    var editModel by remember { mutableStateOf("") }
+    var editName by remember { mutableStateOf("") }
+    var editAmount by remember { mutableStateOf("") }
+    var editDesc by remember { mutableStateOf("") }
+    var editQty by remember { mutableStateOf("1") }
+
+    // Filtering & Sorting math
+    val filteredItems = remember(rawItems, searchWord, activeSubTab, sortOption, sortAscending) {
+        var resultList = rawItems.filter { item ->
+            // Filter by Sub Tab first:
+            // Sub tab 0 is standard active stock (isUnderRepair = false)
+            // Sub tab 1 is repair pool (isUnderRepair = true)
+            item.isUnderRepair == (activeSubTab == 1)
+        }
+
+        // Apply Search Term (IMEI check or Model check or description check)
+        if (searchWord.isNotBlank()) {
+            val key = searchWord.trim().lowercase()
+            resultList = resultList.filter { item ->
+                item.serialNumber.lowercase().contains(key) ||
+                item.model.lowercase().contains(key) ||
+                item.name.lowercase().contains(key)
+            }
+        }
+
+        // Apply Sorting List
+        resultList = when (sortOption) {
+            "Name" -> if (sortAscending) resultList.sortedBy { it.name } else resultList.sortedByDescending { it.name }
+            "Quantity" -> if (sortAscending) resultList.sortedBy { it.quantity } else resultList.sortedByDescending { it.quantity }
+            "Price" -> if (sortAscending) resultList.sortedBy { it.amount } else resultList.sortedByDescending { it.amount }
+            else -> if (sortAscending) resultList.sortedBy { it.dateInMillis } else resultList.sortedByDescending { it.dateInMillis } // default date
+        }
+
+        resultList
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Safe Search bar and Barcode integrated scanner
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedTextField(
+                value = searchWord,
+                onValueChange = { viewModel.setInventorySearchTerm(it) },
+                placeholder = { Text("Search IMEI or Model...", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = "Search icon",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                },
+                trailingIcon = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (searchWord.isNotEmpty()) {
+                            IconButton(onClick = { viewModel.setInventorySearchTerm("") }) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Clear search term"
+                                )
+                            }
+                        }
+                        IconButton(
+                            onClick = { showScannerDialog = true },
+                            modifier = Modifier.testTag("inventory_scanner_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.QrCodeScanner,
+                                contentDescription = "IMEI scanner shortcut",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(16.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    focusedContainerColor = MaterialTheme.colorScheme.surface,
+                    unfocusedBorderColor = Color.Transparent,
+                    focusedBorderColor = MaterialTheme.colorScheme.primary
+                ),
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("inventory_search_bar")
+            )
+
+            // Filters & Sort options dropdown
+            Box {
+                IconButton(
+                    onClick = { showSortMenu = true },
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .border(1.dp, MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.surface)
+                        .testTag("inventory_sort_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.FilterList,
+                        contentDescription = "Filter and Sort categories",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                DropdownMenu(
+                    expanded = showSortMenu,
+                    onDismissRequest = { showSortMenu = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Sort by Date Created") },
+                        onClick = {
+                            viewModel.setInventorySortOption("Date")
+                            showSortMenu = false
+                        },
+                        leadingIcon = {
+                            if (sortOption == "Date") Icon(Icons.Default.Check, "Active")
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Sort by Name") },
+                        onClick = {
+                            viewModel.setInventorySortOption("Name")
+                            showSortMenu = false
+                        },
+                        leadingIcon = {
+                            if (sortOption == "Name") Icon(Icons.Default.Check, "Active")
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Sort by Stock Quantity") },
+                        onClick = {
+                            viewModel.setInventorySortOption("Quantity")
+                            showSortMenu = false
+                        },
+                        leadingIcon = {
+                            if (sortOption == "Quantity") Icon(Icons.Default.Check, "Active")
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Sort by Purchase Price") },
+                        onClick = {
+                            viewModel.setInventorySortOption("Price")
+                            showSortMenu = false
+                        },
+                        leadingIcon = {
+                            if (sortOption == "Price") Icon(Icons.Default.Check, "Active")
+                        }
+                    )
+                    HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { Text(if (sortAscending) "Ordering: Ascending" else "Ordering: Descending") },
+                        onClick = {
+                            viewModel.toggleInventorySortOrder()
+                            showSortMenu = false
+                        },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = if (sortAscending) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
+                                contentDescription = "Order Toggle"
+                            )
+                        }
+                    )
+                }
+            }
+        }
+
+        // Sub-tabs segmenting list to standard Inventory vs active Repair pool
+        val inventoryCount = remember(rawItems) { rawItems.count { !it.isUnderRepair } }
+        val repairCount = remember(rawItems) { rawItems.count { it.isUnderRepair } }
+
+        TabRow(
+            selectedTabIndex = activeSubTab,
+            containerColor = Color.Transparent,
+            contentColor = MaterialTheme.colorScheme.primary,
+            indicator = { tabPositions ->
+                TabRowDefaults.SecondaryIndicator(
+                    modifier = Modifier.tabIndicatorOffset(tabPositions[activeSubTab]),
+                    color = MaterialTheme.colorScheme.primary
+                )
+            },
+            divider = { HorizontalDivider(color = Color.Transparent) }
+        ) {
+            Tab(
+                selected = activeSubTab == 0,
+                onClick = { viewModel.setInventorySubTab(0) },
+                modifier = Modifier.height(48.dp),
+                selectedContentColor = MaterialTheme.colorScheme.primary,
+                unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+            ) {
+                Text("Inventory ($inventoryCount)", fontWeight = if (activeSubTab == 0) FontWeight.SemiBold else FontWeight.Medium, fontSize = 14.sp)
+            }
+            Tab(
+                selected = activeSubTab == 1,
+                onClick = { viewModel.setInventorySubTab(1) },
+                modifier = Modifier.height(48.dp),
+                selectedContentColor = MaterialTheme.colorScheme.primary,
+                unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+            ) {
+                Text("Repair ($repairCount)", fontWeight = if (activeSubTab == 1) FontWeight.SemiBold else FontWeight.Medium, fontSize = 14.sp)
+            }
+        }
+
+        // Items listing column
+        if (filteredItems.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = if (activeSubTab == 0) Icons.Default.Inventory else Icons.Default.BuildCircle,
+                        contentDescription = "Empty folder descriptor",
+                        modifier = Modifier.size(64.dp),
+                        tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f)
+                    )
+                    Text(
+                        text = if (activeSubTab == 0) "No active stock found in inventory." else "No items currently registered out for repair.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
+                    )
+                }
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .testTag("inventory_items_list"),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(filteredItems, key = { it.id }) { item ->
+                    val isRevealed = revealedSet.contains(item.id)
+                    var isCardExpanded by remember { mutableStateOf(false) }
+
+                    InventoryCardItem(
+                        item = item,
+                        isPriceRevealed = isRevealed,
+                        isCardExpanded = isCardExpanded,
+                        canManageInventory = canManageInventory,
+                        canRepair = canRepair,
+                        canDelete = canDelete,
+                        onCardTapped = { isCardExpanded = !isCardExpanded },
+                        onEyeToggled = { viewModel.togglePriceReveal(item.id) },
+                        onEditClicked = {
+                            editingItem = item
+                            editModel = item.model
+                            editName = item.name
+                            editAmount = item.amount.toString()
+                            editDesc = item.description
+                            editQty = item.quantity.toString()
+                        },
+                        onRepairClicked = {
+                            // If standard stock, triggers send-to-repair popup
+                            // If already repair tab, triggers return-from-repair operation
+                            if (!item.isUnderRepair) {
+                                repairDispatchItem = item
+                                technicianName = ""
+                                repairReason = ""
+                            } else {
+                                viewModel.resolveRepairItem(item.id)
+                            }
+                        },
+                        onDeleteClicked = {
+                            viewModel.deleteInventoryItem(item.id)
+                        }
+                    )
+                }
+            }
+        }
+
+        // Dialogue Modal for adding repair context properties (Technician & Reason)
+        repairDispatchItem?.let { item ->
+            AlertDialog(
+                onDismissRequest = { repairDispatchItem = null },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (technicianName.isNotBlank() && repairReason.isNotBlank()) {
+                                viewModel.markItemForRepair(item.id, technicianName, repairReason)
+                                repairDispatchItem = null
+                            }
+                        },
+                        enabled = technicianName.isNotBlank() && repairReason.isNotBlank()
+                    ) {
+                        Text("Send Out")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { repairDispatchItem = null }) {
+                        Text("Cancel")
+                    }
+                },
+                title = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Default.Build, "Assemble", tint = MaterialTheme.colorScheme.primary)
+                        Text("Dispatch to Repair")
+                    }
+                },
+                text = {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "Item: ${item.name} (${item.model})\nIMEI: ${item.serialNumber}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                        )
+                        OutlinedTextField(
+                            value = technicianName,
+                            onValueChange = { technicianName = it },
+                            label = { Text("Technician Name *") },
+                            placeholder = { Text("E.g., John Miller") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = repairReason,
+                            onValueChange = { repairReason = it },
+                            label = { Text("Reason for Repair *") },
+                            placeholder = { Text("E.g., Screen replacement, system lock") },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            )
+        }
+
+        // Dialogue Modal for Editing item properties
+        editingItem?.let { item ->
+            AlertDialog(
+                onDismissRequest = { editingItem = null },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val amountVal = editAmount.toDoubleOrNull() ?: item.amount
+                            val qtyVal = editQty.toIntOrNull() ?: item.quantity
+                            viewModel.editInventoryItem(
+                                item.id,
+                                item.copy(
+                                    model = editModel,
+                                    name = editName,
+                                    amount = amountVal,
+                                    description = editDesc,
+                                    quantity = qtyVal
+                                )
+                            )
+                            editingItem = null
+                        }
+                    ) {
+                        Text("Save Changes")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { editingItem = null }) {
+                        Text("Cancel")
+                    }
+                },
+                title = { Text("Edit Product Attributes") },
+                text = {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        OutlinedTextField(
+                            value = editName,
+                            onValueChange = { editName = it },
+                            label = { Text("Name") },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = editModel,
+                            onValueChange = { editModel = it },
+                            label = { Text("Model") },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = editAmount,
+                            onValueChange = { editAmount = it },
+                            label = { Text("Purchase Price") },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = editQty,
+                            onValueChange = { editQty = it },
+                            label = { Text("Quantity") },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = editDesc,
+                            onValueChange = { editDesc = it },
+                            label = { Text("Description") },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            )
+        }
+
+        // Barcode scanning Simulator
+        if (showScannerDialog) {
+            BarcodeScannerMockDialog(
+                onDismissRequest = { showScannerDialog = false },
+                onBarcodeScanned = { scannedImei ->
+                    viewModel.setInventorySearchTerm(scannedImei)
+                }
+            )
+        }
+    }
+}
+
+@Composable
+fun InventoryCardItem(
+    item: InventoryItem,
+    isPriceRevealed: Boolean,
+    isCardExpanded: Boolean,
+    canManageInventory: Boolean,
+    canRepair: Boolean,
+    canDelete: Boolean,
+    onCardTapped: () -> Unit,
+    onEyeToggled: () -> Unit,
+    onEditClicked: () -> Unit,
+    onRepairClicked: () -> Unit,
+    onDeleteClicked: () -> Unit
+) {
+    var expandedActionsMenu by remember { mutableStateOf(false) }
+    val formattedDate = remember(item.dateInMillis) {
+        val sdf = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
+        sdf.format(Date(item.dateInMillis))
+    }
+
+    val isRepair = item.isUnderRepair
+    val containerBg = if (isRepair) Color(0xFFFFFBEB) else MaterialTheme.colorScheme.surface // amber-50
+    val borderColor = if (isRepair) Color(0xFFFEF3C7) else MaterialTheme.colorScheme.surfaceVariant // amber-100 or slate-100
+
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = containerBg),
+        border = BorderStroke(1.dp, borderColor),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onCardTapped() }
+            .testTag("inventory_item_${item.serialNumber}")
+    ) {
+        Column {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Photo Placeholder
+                Box(
+                    modifier = Modifier
+                        .size(80.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(if (isRepair) Color.White else MaterialTheme.colorScheme.surfaceVariant)
+                        .border(1.dp, if (isRepair) Color(0xFFFEF3C7) else Color.Transparent, RoundedCornerShape(16.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (isRepair) Icons.Default.BuildCircle else Icons.Default.Smartphone,
+                        contentDescription = "Simulated product photo",
+                        tint = if (isRepair) Color(0xFFFCD34D) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f), // amber-300 or slate-300
+                        modifier = Modifier.size(36.dp)
+                    )
+                }
+
+                // Info Column
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Text(
+                            text = "${item.name} ${item.model}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            modifier = Modifier.weight(1f).padding(end = 8.dp)
+                        )
+                        if (canManageInventory || canRepair || canDelete) {
+                            Box {
+                                IconButton(
+                                    onClick = { expandedActionsMenu = true },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.MoreVert,
+                                        contentDescription = "Show item action drawer",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = expandedActionsMenu,
+                                    onDismissRequest = { expandedActionsMenu = false }
+                                ) {
+                                    if (canManageInventory) {
+                                        DropdownMenuItem(
+                                            text = { Text("Edit details") },
+                                            onClick = {
+                                                expandedActionsMenu = false
+                                                onEditClicked()
+                                            },
+                                            leadingIcon = { Icon(Icons.Default.Edit, "Modify") }
+                                        )
+                                    }
+                                    if (canRepair) {
+                                        DropdownMenuItem(
+                                            text = { Text(if (!isRepair) "Mark for Repair" else "Bring Back to Inventory") },
+                                            onClick = {
+                                                expandedActionsMenu = false
+                                                onRepairClicked()
+                                            },
+                                            leadingIcon = { Icon(if (!isRepair) Icons.Default.Build else Icons.Default.Inventory, "Repair toggle") }
+                                        )
+                                    }
+                                    if (canDelete) {
+                                        DropdownMenuItem(
+                                            text = { Text("Delete product") },
+                                            onClick = {
+                                                expandedActionsMenu = false
+                                                onDeleteClicked()
+                                            },
+                                            leadingIcon = { Icon(Icons.Default.Delete, "Remove", tint = Color.Red) }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Text(
+                        text = "IMEI: ${item.serialNumber}",
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = if (isPriceRevealed) "₹${String.format("%,.0f", item.amount)}" else "₹ •••••",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onBackground
+                            )
+                            Icon(
+                                imageVector = Icons.Outlined.Visibility,
+                                contentDescription = "Toggle pricing lock mask",
+                                modifier = Modifier.size(16.dp).clickable { onEyeToggled() },
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        // Status Badge
+                        if (isRepair) {
+                            Text(
+                                text = "IN REPAIR",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF92400E), // amber-800
+                                modifier = Modifier
+                                    .background(Color(0xFFFEF3C7), RoundedCornerShape(12.dp))
+                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                            )
+                        } else {
+                            Text(
+                                text = if (item.quantity > 0) "IN STOCK (${item.quantity})" else "OUT OF STOCK",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF15803D), // green-700
+                                modifier = Modifier
+                                    .background(Color(0xFFF0FDF4), RoundedCornerShape(12.dp))
+                                    .border(1.dp, Color(0xFFDCFCE7), RoundedCornerShape(12.dp))
+                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Expanded details animation block (displays detailed parameters)
+            AnimatedVisibility(
+                visible = isCardExpanded,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp)
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Full Product Details",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+
+                    HorizontalDivider()
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Purchased On:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(formattedDate, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                    }
+
+                    if (!item.phoneNumber.isNullOrBlank()) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Contact Phone:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(item.phoneNumber, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    if (!item.aadhaarNumber.isNullOrBlank()) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Aadhaar Number:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(item.aadhaarNumber, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    if (item.isUnderRepair) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Repair Log Attributes",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFF59E0B)
+                        )
+                        HorizontalDivider(color = Color(0xFFFFD54F))
+
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Technician Assigned:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(item.technicianName ?: "N/A", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = Color(0xFFF59E0B))
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Reason for Issue:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(item.repairReason ?: "N/A", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    if (item.description.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("Description Log:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        Text(
+                            text = item.description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+    }
+}

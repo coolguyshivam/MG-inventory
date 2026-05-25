@@ -1,0 +1,6 @@
+{
+  "name": "Stock Inventory",
+  "description": "Premium Material 3 Inventory Management App with local Room DB, biometric login, transaction forms, custom analytics charts, sync flow, and a continuous history stream.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
