@@ -1,0 +1,48 @@
+name: Android Cloud Build
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Java
+      uses: actions/setup-java@v3
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+
+    - name: Make gradlew executable
+      run: chmod +x ./gradlew
+
+#    - name: clear dependeny APK
+#      run:  ./gradlew app:dependencies
+
+#    - name: get dependency
+#      run: ./gradlew dependencies | grep material3 || true
+
+#    - name: Clean APK
+#      run:  ./gradlew clean build
+
+#    - name: check dependency
+#      run:  ./gradlew app:dependencies --configuration implementation
+      
+    - name: Clean APK
+      run:  ./gradlew clean build --refresh-dependencies
+
+    - name: Build APK
+      run: ./gradlew assembleDebug
+
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: debug-apk
+        path: app/build/outputs/apk/debug/app-debug.apk
