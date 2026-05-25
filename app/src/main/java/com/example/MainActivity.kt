@@ -44,21 +44,22 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            MyApplicationTheme {
-                // Initialize database & repository singletons locally
-                val context = LocalContext.current
-                val database = remember { AppDatabase.getDatabase(context) }
-                val repository = remember {
-                    InventoryRepository(database.inventoryDao(), database.historyDao(), database.userDao())
-                }
+            // Initialize database & repository singletons locally
+            val context = LocalContext.current
+            val database = remember { AppDatabase.getDatabase(context) }
+            val repository = remember {
+                InventoryRepository(database.inventoryDao(), database.historyDao(), database.userDao())
+            }
 
-                // Instantiate StockViewModel
-                val stockViewModel: StockViewModel = viewModel(
-                    factory = ViewModelFactory(repository)
-                )
+            // Instantiate StockViewModel
+            val stockViewModel: StockViewModel = viewModel(
+                factory = ViewModelFactory(repository)
+            )
 
-                val isLoggedIn by stockViewModel.isLoggedIn.collectAsState()
+            val isDarkTheme by stockViewModel.isDarkTheme.collectAsState()
+            val isLoggedIn by stockViewModel.isLoggedIn.collectAsState()
 
+            MyApplicationTheme(darkTheme = isDarkTheme) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -152,7 +153,24 @@ fun MainAppContent(viewModel: StockViewModel) {
                         }
 
                         // Right side icons
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val isDarkTheme by viewModel.isDarkTheme.collectAsState()
+                            IconButton(
+                                onClick = { viewModel.toggleTheme() },
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                            ) {
+                                Icon(
+                                    imageVector = if (isDarkTheme) Icons.Default.LightMode else Icons.Default.DarkMode,
+                                    contentDescription = "Toggle Theme",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                             IconButton(
                                 onClick = { viewModel.triggerCloudSync() },
                                 modifier = Modifier

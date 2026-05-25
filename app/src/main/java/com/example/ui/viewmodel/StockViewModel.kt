@@ -13,6 +13,14 @@ import kotlinx.coroutines.launch
 
 class StockViewModel(private val repository: InventoryRepository) : ViewModel() {
 
+    // --- Theme State (Default to Light Theme) ---
+    private val _isDarkTheme = MutableStateFlow(false)
+    val isDarkTheme: StateFlow<Boolean> = _isDarkTheme.asStateFlow()
+
+    fun toggleTheme() {
+        _isDarkTheme.value = !_isDarkTheme.value
+    }
+
     // --- Authentication & Biometric State ---
     private val _isLoggedIn = MutableStateFlow(false)
     val isLoggedIn: StateFlow<Boolean> = _isLoggedIn.asStateFlow()
