@@ -140,7 +140,8 @@ fun TransactionsScreen(viewModel: StockViewModel) {
 
     var showPhotoChooserDialog by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
-    var showScanner by remember { mutableStateOf(false) }
+    var scannerIndex by remember { mutableStateOf<Int?>(null) }
+    val transactionSubItems by viewModel.transactionSubItems.collectAsState()
 
     // Date formatting helper
     val formattedDate = remember(dateInMillis) {
@@ -261,46 +262,118 @@ fun TransactionsScreen(viewModel: StockViewModel) {
             verticalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
-            // 1. Serial Number with Barcode Scanner overlay (IMEI)
+            // TOP ROW: Date & Quantity
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                OutlinedTextField(
-                    value = serialNumber,
-                    onValueChange = {
-                        viewModel.serialNumberInput.value = it
-                        viewModel.clearFormErrorAndSuccess()
-                    },
-                    label = { Text("Serial Number *") },
-                    placeholder = { Text("IMEI-xxxxx-xxxxx...") },
-                    singleLine = true,
-                    shape = RoundedCornerShape(14.dp),
+                // Date Selector
+                Card(
+                    modifier = Modifier.weight(1f).clickable { showDatePicker = true },
+                    shape = RoundedCornerShape(8.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Default.CalendarToday, "Date", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                        Text(formattedDate, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+
+                // Quantity Selector
+                Card(
                     modifier = Modifier
                         .weight(1f)
-                        .testTag("form_serial_input"),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    leadingIcon = { Icon(Icons.Default.Dialpad, "Keypad") }
-                )
-
-                IconButton(
-                    onClick = { showScanner = true },
-                    colors = IconButtonDefaults.iconButtonColors(
-                        containerColor = themeColorAndLabel.first,
-                        contentColor = Color.White
-                    ),
-                    modifier = Modifier
-                        .size(56.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .testTag("form_serial_scan_button")
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                 ) {
-                    Icon(Icons.Default.QrCodeScanner, "Form Scanner")
+                    Row(
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        IconButton(
+                            onClick = { viewModel.removeSubItem() },
+                            modifier = Modifier.size(32.dp)
+                        ) { Icon(Icons.Default.Remove, "Minus Quantity", modifier = Modifier.size(16.dp)) }
+
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Qty", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("$quantity", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                        }
+
+                        IconButton(
+                            onClick = { viewModel.addSubItem() },
+                            modifier = Modifier.size(32.dp)
+                        ) { Icon(Icons.Default.Add, "Add Quantity", modifier = Modifier.size(16.dp)) }
+                    }
+                }
+            }
+
+            // DYNAMIC ITEMS COLLECTION
+            transactionSubItems.forEachIndexed { index, subItem ->
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.3f)),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("Item ${index + 1}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = subItem.serialNumber,
+                                onValueChange = { 
+                                    viewModel.updateSubItem(index, it, subItem.amount)
+                                    viewModel.clearFormErrorAndSuccess()
+                                },
+                                label = { Text("Serial Number *") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.weight(1.5f),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                            )
+
+                            IconButton(
+                                onClick = { scannerIndex = index },
+                                colors = IconButtonDefaults.iconButtonColors(
+                                    containerColor = themeColorAndLabel.first,
+                                    contentColor = Color.White
+                                ),
+                                modifier = Modifier
+                                    .size(56.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                            ) {
+                                Icon(Icons.Default.QrCodeScanner, "Scanner")
+                            }
+
+                            OutlinedTextField(
+                                value = subItem.amount,
+                                onValueChange = { 
+                                    viewModel.updateSubItem(index, subItem.serialNumber, it)
+                                    viewModel.clearFormErrorAndSuccess()
+                                },
+                                label = { Text("Price *") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.weight(1f),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                            )
+                        }
+                    }
                 }
             }
 
             // Quick AutoFill Indicator for Sales/Returns
-            if ((activeSelection == 1 || activeSelection == 2) && serialNumber.isNotBlank()) {
+            if ((activeSelection == 1 || activeSelection == 2) && transactionSubItems.any { it.serialNumber.isNotBlank() }) {
                 Card(
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
@@ -318,148 +391,79 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                 }
             }
 
-            // 2. Model field
-            OutlinedTextField(
-                value = model,
-                onValueChange = {
-                    viewModel.modelInput.value = it
-                    viewModel.clearFormErrorAndSuccess()
-                },
-                label = { Text("Model *") },
-                placeholder = { Text("E.g., Pixel 9 Pro, Galaxy S25") },
-                singleLine = true,
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("form_model_input"),
-                leadingIcon = { Icon(Icons.Default.Devices, "Model Device") }
-            )
-
-            // 3. Name field
-            OutlinedTextField(
-                value = name,
-                onValueChange = {
-                    viewModel.nameInput.value = it
-                    viewModel.clearFormErrorAndSuccess()
-                },
-                label = { Text("Name *") },
-                placeholder = { Text("E.g., Google Pixel Slate") },
-                singleLine = true,
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("form_name_input"),
-                leadingIcon = { Icon(Icons.Default.Info, "Item Name Description") }
-            )
-
-            // 4. Phone Number (Optional)
-            OutlinedTextField(
-                value = phone,
-                onValueChange = { viewModel.phoneInput.value = it },
-                label = { Text("Phone (optional)") },
-                placeholder = { Text("10 digit") },
-                singleLine = true,
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("form_phone_input"),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                leadingIcon = { Icon(Icons.Default.Phone, "Tel phone") }
-            )
-
-            // 5. Aadhaar Number (Optional)
-            OutlinedTextField(
-                value = aadhaar,
-                onValueChange = { viewModel.aadhaarInput.value = it },
-                label = { Text("Aadhaar (optional)") },
-                placeholder = { Text("12 digit number") },
-                singleLine = true,
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("form_aadhaar_input"),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                leadingIcon = { Icon(Icons.Default.Fingerprint, "Aadhaar Card") }
-            )
-
-            // 6. Transaction Amount and Date selection
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                // Pricing value field
+            // General Item Info Row 1: Model & Name
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
-                    value = amount,
+                    value = model,
                     onValueChange = {
-                        viewModel.amountInput.value = it
+                        viewModel.modelInput.value = it
                         viewModel.clearFormErrorAndSuccess()
                     },
-                    label = { Text("Amount *") },
-                    placeholder = { Text("₹ 0.00") },
+                    label = { Text("Model *") },
                     singleLine = true,
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("form_amount_input"),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    leadingIcon = { Icon(Icons.Default.CurrencyRupee, "Currency") }
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.weight(1f)
                 )
 
-                // Date Selector
                 OutlinedTextField(
-                    value = formattedDate,
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("Date *") },
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable { showDatePicker = true },
-                    leadingIcon = { Icon(Icons.Default.CalendarToday, "DatePicker") },
-                    trailingIcon = {
-                        IconButton(onClick = { showDatePicker = true }) {
-                            Icon(Icons.Default.DateRange, "Pick calendar Date")
-                        }
-                    }
+                    value = name,
+                    onValueChange = {
+                        viewModel.nameInput.value = it
+                        viewModel.clearFormErrorAndSuccess()
+                    },
+                    label = { Text("Name *") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.weight(1f)
                 )
             }
 
-            // 7. Quantity and Photo Attacher Box
+            // General Info Row 2: Phone & Aadhaar (Optional)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = phone,
+                    onValueChange = { viewModel.phoneInput.value = it },
+                    label = { Text("Phone (opt)") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.weight(1f),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+
+                OutlinedTextField(
+                    value = aadhaar,
+                    onValueChange = { viewModel.aadhaarInput.value = it },
+                    label = { Text("Aadhaar (opt)") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.weight(1f),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+            }
+
+            // Total Summary & Photo Attacher Box
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Quantity Counter (Value editable, defaults to 1)
+                // Aggregated Total Read-Only Box
                 Card(
-                    modifier = Modifier
-                        .weight(1f)
-                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.Center
                     ) {
-                        IconButton(
-                            onClick = { if (quantity > 1) viewModel.quantityInput.value = quantity - 1 },
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Icon(Icons.Default.Remove, "Minus Quantity")
-                        }
-
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Quantity", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("$quantity", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
-                        }
-
-                        IconButton(
-                            onClick = { viewModel.quantityInput.value = quantity + 1 },
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Icon(Icons.Default.Add, "Add Quantity")
-                        }
+                        Text("Total Amount", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        Text(
+                            text = "₹ $amount",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Black,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     }
                 }
 
@@ -472,7 +476,7 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                         .border(
                             width = 1.dp,
                             color = if (photoCount > 0) themeColorAndLabel.first else MaterialTheme.colorScheme.outlineVariant,
-                            shape = RoundedCornerShape(8.dp)
+                            shape = RoundedCornerShape(12.dp)
                         ),
                     colors = CardDefaults.cardColors(
                         containerColor = if (photoCount > 0) themeColorAndLabel.first.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface
@@ -646,15 +650,19 @@ fun TransactionsScreen(viewModel: StockViewModel) {
 
 
         // Photo picker Mock Selector trigger (Rule 9)
-        if (showScanner) {
-        BarcodeScannerMockDialog(
-            onDismissRequest = { showScanner = false },
-            onBarcodeScanned = { viewModel.serialNumberInput.value = it },
-            suggestedImeis = suggestedImeis
-        )
-    }
+        scannerIndex?.let { index ->
+            BarcodeScannerMockDialog(
+                onDismissRequest = { scannerIndex = null },
+                onBarcodeScanned = { scannedImei -> 
+                    val currentAmount = transactionSubItems.getOrNull(index)?.amount ?: ""
+                    viewModel.updateSubItem(index, scannedImei, currentAmount)
+                    scannerIndex = null
+                },
+                suggestedImeis = suggestedImeis
+            )
+        }
 
-    if (showPhotoChooserDialog) {
+        if (showPhotoChooserDialog) {
             val context = androidx.compose.ui.platform.LocalContext.current
             AlertDialog(
                 onDismissRequest = { showPhotoChooserDialog = false },

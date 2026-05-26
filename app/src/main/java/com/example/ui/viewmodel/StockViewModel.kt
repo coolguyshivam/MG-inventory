@@ -125,7 +125,7 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
     val transactionSelection: StateFlow<Int> = _transactionSelection.asStateFlow()
 
     // Form Fields
-    var serialNumberInput = MutableStateFlow("")
+    var serialNumberInput = MutableStateFlow("") // Maintained for single or global operations, but can be synced to subItems[0]
     var modelInput = MutableStateFlow("")
     var nameInput = MutableStateFlow("")
     var phoneInput = MutableStateFlow("")
@@ -133,6 +133,13 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
     var amountInput = MutableStateFlow("")
     var descriptionInput = MutableStateFlow("")
     var dateInMillisInput = MutableStateFlow(System.currentTimeMillis())
+    
+    data class TransactionSubItem(
+        val serialNumber: String = "",
+        val amount: String = ""
+    )
+    val transactionSubItems = MutableStateFlow(listOf(TransactionSubItem()))
+    
     var quantityInput = MutableStateFlow(1)
     var photoUriInput = MutableStateFlow<String?>(null)
 
@@ -570,6 +577,7 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
     }
 
     fun resetTransactionForm() {
+        transactionSubItems.value = listOf(TransactionSubItem())
         serialNumberInput.value = ""
         modelInput.value = ""
         nameInput.value = ""
@@ -586,29 +594,71 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
         _transactionSuccessMessage.value = null
     }
 
+    fun addSubItem() {
+        quantityInput.value += 1
+        transactionSubItems.value = transactionSubItems.value + TransactionSubItem()
+    }
+
+    fun removeSubItem() {
+        if (quantityInput.value > 1) {
+            quantityInput.value -= 1
+            transactionSubItems.value = transactionSubItems.value.dropLast(1)
+            syncAggregatedFormState()
+        }
+    }
+
+    fun updateSubItem(index: Int, sn: String, amt: String) {
+        val items = transactionSubItems.value.toMutableList()
+        items[index] = items[index].copy(serialNumber = sn, amount = amt)
+        transactionSubItems.value = items
+        syncAggregatedFormState()
+    }
+    
+    private fun syncAggregatedFormState() {
+        val items = transactionSubItems.value
+        amountInput.value = items.sumOf { it.amount.toDoubleOrNull() ?: 0.0 }.toString()
+        if (items.isNotEmpty()) {
+            serialNumberInput.value = items[0].serialNumber
+        }
+    }
+
     fun executeTransaction() {
         val typeId = _transactionSelection.value // 0: Purchase, 1: Sale, 2: Return, 3: Repair
-        val serialNumber = serialNumberInput.value.trim()
         val model = modelInput.value.trim()
         val name = nameInput.value.trim()
         val phone = phoneInput.value.trim()
         val aadhaar = aadhaarInput.value.trim()
-        val amountStr = amountInput.value.trim()
         val desc = descriptionInput.value.trim()
-        val dateInMillis = System.currentTimeMillis()
-        val qty = quantityInput.value
+        val dateInMillis = dateInMillisInput.value
+        val itemsToProcess = transactionSubItems.value
         val photo = photoUriInput.value
 
         // Validation
-        if (serialNumber.isBlank() || model.isBlank() || name.isBlank() || amountStr.isBlank()) {
-            _transactionError.value = "All fields are mandatory except those marked optional."
+        if (model.isBlank() || name.isBlank()) {
+            _transactionError.value = "Model and Name fields are mandatory."
             return
         }
 
-        // IMEI - exactly 15 numeric digits (Rule 3)
-        if (!serialNumber.matches(Regex("^\\d{15}$"))) {
-            _transactionError.value = "IMEI must be exactly 15 numeric digits."
-            return
+        for (item in itemsToProcess) {
+            val serialNumber = item.serialNumber.trim()
+            val amountStr = item.amount.trim()
+
+            if (serialNumber.isBlank() || amountStr.isBlank()) {
+                _transactionError.value = "All fields are mandatory except those marked optional."
+                return
+            }
+
+            // IMEI - exactly 15 numeric digits (Rule 3)
+            if (!serialNumber.matches(Regex("^\\d{15}$"))) {
+                _transactionError.value = "IMEI must be exactly 15 numeric digits for item $serialNumber."
+                return
+            }
+            
+            val amount = amountStr.toDoubleOrNull()
+            if (amount == null || amount < 0) {
+                _transactionError.value = "Amount must be a non-negative number for item $serialNumber."
+                return
+            }
         }
 
         // Phone - 10 digits starting with 6-9 (Rule 3)
@@ -630,17 +680,6 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
             return
         }
 
-        val amount = amountStr.toDoubleOrNull()
-        if (amount == null || amount < 0) {
-            _transactionError.value = "Amount must be a non-negative number."
-            return
-        }
-
-        if (qty <= 0) {
-            _transactionError.value = "Quantity must be at least 1."
-            return
-        }
-
         // Repair validates extra technician state
         val tech = technicianNameInput.value.trim()
         val reason = repairReasonInput.value.trim()
@@ -658,109 +697,122 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                 delay(1500) // simulation latency so user sees loading flow
 
                 val activeUser = _loggedInUser.value?.username ?: "admin"
-                var success = false
+                var allSuccess = true
 
-                val timeoutResult = kotlinx.coroutines.withTimeoutOrNull(5000L) {
-                    when (typeId) {
-                        0 -> { // Purchase
-                    val existing = repository.getItemBySerialNumber(serialNumber)
-                    if (existing != null && (existing.quantity > 0 || existing.isUnderRepair)) {
-                        _transactionError.value = "Cannot purchase back: Item with IMEI/Serial '$serialNumber' is already in inventory or repair."
-                        _isUploadingTransaction.value = false
-                        return@withTimeoutOrNull
-                    }
+                val timeoutResult = kotlinx.coroutines.withTimeoutOrNull(10000L) {
+                    for (item in itemsToProcess) {
+                        val serialNumber = item.serialNumber.trim()
+                        val amount = item.amount.trim().toDoubleOrNull() ?: 0.0
+                        var success = false
+                        when (typeId) {
+                            0 -> { // Purchase
+                                val existing = repository.getItemBySerialNumber(serialNumber)
+                                if (existing != null && (existing.quantity > 0 || existing.isUnderRepair)) {
+                                    _transactionError.value = "Cannot purchase back: Item with IMEI/Serial '$serialNumber' is already in inventory or repair."
+                                    allSuccess = false
+                                    break
+                                }
 
-                    success = repository.purchaseProduct(
-                        serialNumber = serialNumber,
-                        model = model,
-                        name = name,
-                        phoneNumber = phone.ifBlank { null },
-                        aadhaarNumber = aadhaar.ifBlank { null },
-                        amount = amount,
-                        description = desc,
-                        dateInMillis = dateInMillis,
-                        quantity = qty,
-                        photoUri = photo,
-                        userId = activeUser
-                    )
-                    if (success) _transactionSuccessMessage.value = "Purchase logged successfully! Added to stock."
-                }
-                1 -> { // Sale
-                    // Verify stock availability
-                    val stockItem = repository.getItemBySerialNumber(serialNumber)
-                    if (stockItem == null) {
-                        _transactionError.value = "Item with Serial Number/IMEI '$serialNumber' is not in stock!"
-                        _isUploadingTransaction.value = false
-                        return@withTimeoutOrNull
-                    }
-                    if (stockItem.isUnderRepair) {
-                        _transactionError.value = "Cannot sell. Item is currently out for repair."
-                        _isUploadingTransaction.value = false
-                        return@withTimeoutOrNull
-                    }
+                                success = repository.purchaseProduct(
+                                    serialNumber = serialNumber,
+                                    model = model,
+                                    name = name,
+                                    phoneNumber = phone.ifBlank { null },
+                                    aadhaarNumber = aadhaar.ifBlank { null },
+                                    amount = amount,
+                                    description = desc,
+                                    dateInMillis = dateInMillis,
+                                    quantity = 1,
+                                    photoUri = photo,
+                                    userId = activeUser
+                                )
+                            }
+                            1 -> { // Sale
+                                val stockItem = repository.getItemBySerialNumber(serialNumber)
+                                if (stockItem == null) {
+                                    _transactionError.value = "Item with Serial Number/IMEI '$serialNumber' is not in stock!"
+                                    allSuccess = false
+                                    break
+                                }
+                                if (stockItem.isUnderRepair) {
+                                    _transactionError.value = "Cannot sell. Item '$serialNumber' is currently out for repair."
+                                    allSuccess = false
+                                    break
+                                }
 
-                    success = repository.saleProduct(
-                        serialNumber = serialNumber,
-                        model = model,
-                        name = name,
-                        phoneNumber = phone.ifBlank { null },
-                        aadhaarNumber = aadhaar.ifBlank { null },
-                        amount = amount,
-                        description = desc,
-                        dateInMillis = dateInMillis,
-                        quantity = qty,
-                        photoUri = photo,
-                        userId = activeUser
-                    )
-                    if (success) _transactionSuccessMessage.value = "Sale logged successfully! Removed from stock."
-                }
-                2 -> { // Return
-                    success = repository.returnProduct(
-                        serialNumber = serialNumber,
-                        model = model,
-                        name = name,
-                        phoneNumber = phone.ifBlank { null },
-                        aadhaarNumber = aadhaar.ifBlank { null },
-                        amount = amount,
-                        description = desc,
-                        dateInMillis = dateInMillis,
-                        quantity = qty,
-                        photoUri = photo,
-                        userId = activeUser
-                    )
-                    if (success) _transactionSuccessMessage.value = "Return logged successfully! Added to stock."
-                }
-                3 -> { // Repair
-                    success = repository.directRepair(
-                        serialNumber = serialNumber,
-                        model = model,
-                        name = name,
-                        phoneNumber = phone.ifBlank { null },
-                        aadhaarNumber = aadhaar.ifBlank { null },
-                        amount = amount,
-                        description = desc,
-                        dateInMillis = dateInMillis,
-                        quantity = qty,
-                        photoUri = photo,
-                        userId = activeUser,
-                        technicianName = tech,
-                        repairReason = reason
-                    )
-                    if (success) _transactionSuccessMessage.value = "Repair logged successfully! Item is added to repair pool."
-                }
+                                success = repository.saleProduct(
+                                    serialNumber = serialNumber,
+                                    model = model,
+                                    name = name,
+                                    phoneNumber = phone.ifBlank { null },
+                                    aadhaarNumber = aadhaar.ifBlank { null },
+                                    amount = amount,
+                                    description = desc,
+                                    dateInMillis = dateInMillis,
+                                    quantity = 1,
+                                    photoUri = photo,
+                                    userId = activeUser
+                                )
+                            }
+                            2 -> { // Return
+                                success = repository.returnProduct(
+                                    serialNumber = serialNumber,
+                                    model = model,
+                                    name = name,
+                                    phoneNumber = phone.ifBlank { null },
+                                    aadhaarNumber = aadhaar.ifBlank { null },
+                                    amount = amount,
+                                    description = desc,
+                                    dateInMillis = dateInMillis,
+                                    quantity = 1,
+                                    photoUri = photo,
+                                    userId = activeUser
+                                )
+                            }
+                            3 -> { // Repair
+                                success = repository.directRepair(
+                                    serialNumber = serialNumber,
+                                    model = model,
+                                    name = name,
+                                    phoneNumber = phone.ifBlank { null },
+                                    aadhaarNumber = aadhaar.ifBlank { null },
+                                    amount = amount,
+                                    description = desc,
+                                    dateInMillis = dateInMillis,
+                                    quantity = 1,
+                                    photoUri = photo,
+                                    userId = activeUser,
+                                    technicianName = tech,
+                                    repairReason = reason
+                                )
+                            }
+                        }
+                        if (!success) {
+                            allSuccess = false
+                            break
+                        }
                     }
+                    allSuccess
                 } // End timeout block
 
-                if (timeoutResult == null && !success && _transactionError.value == null) {
+                if (timeoutResult == null && !allSuccess && _transactionError.value == null) {
                     _transactionError.value = "Transaction timed out. Cloud database might be unreachable."
                 }
 
                 _isUploadingTransaction.value = false
-                if (success) {
+                if (allSuccess && _transactionError.value == null) {
+                    when (typeId) {
+                        0 -> _transactionSuccessMessage.value = "Purchase logged successfully! Added ${itemsToProcess.size} item(s)."
+                        1 -> _transactionSuccessMessage.value = "Sale logged successfully! Removed ${itemsToProcess.size} item(s)."
+                        2 -> _transactionSuccessMessage.value = "Return logged successfully! Added ${itemsToProcess.size} item(s)."
+                        3 -> _transactionSuccessMessage.value = "Repair logged successfully! ${itemsToProcess.size} item(s) sent to repair."
+                    }
                     resetTransactionForm()
                     triggerCloudSync()
                 } else {
-                    _transactionError.value = "Failed to finalize database query record. Check parameters."
+                    if (_transactionError.value == null) {
+                        _transactionError.value = "Failed to finalize database query record. Check parameters."
+                    }
                 }
             } catch (e: Exception) {
                 Log.e("StockViewModel", "Error in transaction", e)

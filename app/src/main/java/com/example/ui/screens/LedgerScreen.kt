@@ -101,11 +101,15 @@ fun LedgerScreen(viewModel: StockViewModel) {
                         else -> MaterialTheme.colorScheme.onSurfaceVariant
                     }
                     val sign = if (entry.type == "SALE" || entry.type == "PAYMENT_OUT" || entry.type == "REPAIR_SENT") "+" else "-"
+                    val formattedDate = java.text.SimpleDateFormat("dd MMM yyyy, HH:mm", java.util.Locale.getDefault()).format(java.util.Date(entry.timestamp))
+
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Row(modifier = Modifier.padding(12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Column {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(entry.type.replace("_", " "), fontWeight = FontWeight.Bold, color = color)
+                                Text(formattedDate, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 if (entry.description.isNotBlank()) {
+                                    Spacer(modifier = Modifier.height(4.dp))
                                     Text(entry.description, style = MaterialTheme.typography.bodySmall)
                                 }
                             }

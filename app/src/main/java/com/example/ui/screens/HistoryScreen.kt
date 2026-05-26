@@ -112,7 +112,7 @@ fun HistoryScreen(viewModel: StockViewModel) {
             OutlinedTextField(
                 value = searchWord,
                 onValueChange = { viewModel.setHistorySearchTerm(it) },
-                placeholder = { Text("Search IMEI history, Action info...", fontSize = 13.sp) },
+                placeholder = { Text("Search IMEI, Action...", fontSize = 13.sp) },
                 textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
                 leadingIcon = {
                     Icon(
@@ -145,6 +145,7 @@ fun HistoryScreen(viewModel: StockViewModel) {
                 ),
                 modifier = Modifier
                     .weight(1f)
+                    .height(50.dp)
                     .testTag("history_search_word")
             )
 
@@ -156,7 +157,7 @@ fun HistoryScreen(viewModel: StockViewModel) {
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer
                 ),
                 modifier = Modifier
-                    .size(44.dp)
+                    .size(50.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .testTag("history_scanner_button")
             ) {
@@ -172,7 +173,7 @@ fun HistoryScreen(viewModel: StockViewModel) {
                 IconButton(
                     onClick = { expandedFilterMenu = true },
                     modifier = Modifier
-                        .size(44.dp)
+                        .size(50.dp)
                         .clip(RoundedCornerShape(12.dp)),
                     colors = IconButtonDefaults.iconButtonColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant
@@ -599,12 +600,6 @@ fun HistoryRowItem(
                         }
                     }
 
-                    if (!event.extraDetails.isNullOrBlank()) {
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text("Log Metadata:", style = MaterialTheme.typography.bodySmall, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = themeColor)
-                        Text(event.extraDetails, style = MaterialTheme.typography.bodySmall, fontSize = 11.sp)
-                    }
-
                     if (event.description.isNotBlank()) {
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(event.description, style = MaterialTheme.typography.bodySmall, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -613,31 +608,14 @@ fun HistoryRowItem(
                     if (!event.photoUri.isNullOrBlank()) {
                         val photos = event.photoUri.split(",").filter { it.isNotBlank() && !it.startsWith("ic_") }
                         if (photos.isNotEmpty()) {
-                            Text("Photos (${photos.size}):", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                items(photos.size, key = { it }) { index ->
-                                    val uri = photos[index]
-                                    Box(
-                                        modifier = Modifier
-                                            .size(60.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
-                                            .clickable { onPhotoClick?.invoke(photos) }
-                                    ) {
-                                        val ctx = androidx.compose.ui.platform.LocalContext.current
-                                        val request = coil.request.ImageRequest.Builder(ctx)
-                                            .data(uri)
-                                            .size(200) // limit size to fix latency and memory limits
-                                            .crossfade(true)
-                                            .build()
-                                        coil.compose.AsyncImage(
-                                            model = request,
-                                            contentDescription = "Photo $index",
-                                            modifier = Modifier.fillMaxSize(),
-                                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
-                                        )
-                                    }
-                                }
+                            Button(
+                                onClick = { onPhotoClick?.invoke(photos) },
+                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Icon(Icons.Default.PhotoLibrary, contentDescription = "View Photos", modifier = Modifier.size(16.dp).padding(end=6.dp))
+                                Text("View ${photos.size} Photo(s)")
                             }
                         }
                     }
