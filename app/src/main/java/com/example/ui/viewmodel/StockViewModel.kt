@@ -635,13 +635,14 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                 val activeUser = _loggedInUser.value?.username ?: "admin"
                 var success = false
 
-                when (typeId) {
-                0 -> { // Purchase
+                val timeoutResult = kotlinx.coroutines.withTimeoutOrNull(5000L) {
+                    when (typeId) {
+                        0 -> { // Purchase
                     val existing = repository.getItemBySerialNumber(serialNumber)
                     if (existing != null && (existing.quantity > 0 || existing.isUnderRepair)) {
                         _transactionError.value = "Cannot purchase back: Item with IMEI/Serial '$serialNumber' is already in inventory or repair."
                         _isUploadingTransaction.value = false
-                        return@launch
+                        return@withTimeoutOrNull
                     }
 
                     success = repository.purchaseProduct(
@@ -665,12 +666,12 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                     if (stockItem == null) {
                         _transactionError.value = "Item with Serial Number/IMEI '$serialNumber' is not in stock!"
                         _isUploadingTransaction.value = false
-                        return@launch
+                        return@withTimeoutOrNull
                     }
                     if (stockItem.isUnderRepair) {
                         _transactionError.value = "Cannot sell. Item is currently out for repair."
                         _isUploadingTransaction.value = false
-                        return@launch
+                        return@withTimeoutOrNull
                     }
 
                     success = repository.saleProduct(
@@ -722,7 +723,12 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                     )
                     if (success) _transactionSuccessMessage.value = "Repair logged successfully! Item is added to repair pool."
                 }
-            }
+                    }
+                } // End timeout block
+
+                if (timeoutResult == null && !success && _transactionError.value == null) {
+                    _transactionError.value = "Transaction timed out. Cloud database might be unreachable."
+                }
 
                 _isUploadingTransaction.value = false
                 if (success) {
