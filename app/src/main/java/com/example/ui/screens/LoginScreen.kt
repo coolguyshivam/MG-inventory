@@ -39,7 +39,7 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun LoginScreen(viewModel: StockViewModel) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val appContext = androidx.compose.ui.platform.LocalContext.current
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var isPasswordVisible by remember { mutableStateOf(false) }
@@ -224,7 +224,7 @@ fun LoginScreen(viewModel: StockViewModel) {
 
                     // Standard Login Button
                     Button(
-                        onClick = { viewModel.login(context, username, password) },
+                        onClick = { viewModel.login(appContext, username, password) },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(50.dp)
@@ -270,7 +270,7 @@ fun LoginScreen(viewModel: StockViewModel) {
                                 biometricScanProgress = 1f
                                 delay(300)
                                 showBiometricModal = false
-                                viewModel.biometricLogin(context)
+                                viewModel.biometricLogin(appContext)
                             }
                         },
                         modifier = Modifier
@@ -496,7 +496,7 @@ fun LoginScreen(viewModel: StockViewModel) {
                                     }
                                     linkingScanProgress = 1f
                                     delay(400)
-                                    viewModel.registerBiometrics(context, tempPendingUser!!.username)
+                                    viewModel.registerBiometrics(appContext, tempPendingUser!!.username)
                                     viewModel.completeLogin(tempPendingUser!!)
                                     viewModel.showBiometricLinkingDialog.value = false
                                     linkingScanInProgress = false

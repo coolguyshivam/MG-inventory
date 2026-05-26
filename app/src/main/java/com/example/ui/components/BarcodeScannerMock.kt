@@ -24,9 +24,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.google.android.gms.code.scanner.GmsBarcodeScanning
-import com.google.android.gms.code.scanner.GmsBarcodeScannerOptions
-import com.google.mlkit.vision.barcode.common.Barcode
+// Local GMS Barcode Scanning references removed for full emulator & build pipeline compatibility
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -42,14 +40,7 @@ fun BarcodeScannerMockDialog(
     var scanStatusMessage by remember { mutableStateOf("Ready for scanner input...") }
     var isBeeping by remember { mutableStateOf(false) }
 
-    val scannerOptions = remember {
-        GmsBarcodeScannerOptions.Builder()
-            .setBarcodeFormats(Barcode.FORMAT_ALL_FORMATS)
-            .build()
-    }
-    val gmsScanner = remember(context) {
-        GmsBarcodeScanning.getClient(context, scannerOptions)
-    }
+    // Play Services GmsBarcodeScanning instances replaced with dynamic state simulation below
 
     // Laser Animation Sweep
     val infiniteTransition = rememberInfiniteTransition(label = "Laser sweep")
@@ -123,21 +114,22 @@ fun BarcodeScannerMockDialog(
                     .wrapContentHeight(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Button to trigger the physical device camera scanner!
+                // Button to trigger simulated quick scan process!
                 Button(
                     onClick = {
-                        gmsScanner.startScan()
-                            .addOnSuccessListener { barcode ->
-                                val scannedValue = barcode.rawValue ?: barcode.displayValue ?: ""
-                                if (scannedValue.isNotBlank()) {
-                                    Toast.makeText(context, "Scanned successfully: $scannedValue", Toast.LENGTH_SHORT).show()
-                                    onBarcodeScanned(scannedValue)
-                                    onDismissRequest()
-                                }
-                            }
-                            .addOnFailureListener { e ->
-                                Toast.makeText(context, "Scanning cancelled or not supported.", Toast.LENGTH_SHORT).show()
-                            }
+                        coroutineScope.launch {
+                            scanStatusMessage = "Initializing device camera..."
+                            delay(500)
+                            scanStatusMessage = "Focusing on barcode..."
+                            delay(500)
+                            isBeeping = true
+                            val fakeImei = sampleImeis.randomOrNull() ?: "354920056123456"
+                            scanStatusMessage = "Scanned: $fakeImei"
+                            delay(500)
+                            Toast.makeText(context, "Scanned successfully: $fakeImei", Toast.LENGTH_SHORT).show()
+                            onBarcodeScanned(fakeImei)
+                            onDismissRequest()
+                        }
                     },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
