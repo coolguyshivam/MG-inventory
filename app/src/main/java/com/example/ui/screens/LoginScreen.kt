@@ -39,6 +39,7 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun LoginScreen(viewModel: StockViewModel) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var isPasswordVisible by remember { mutableStateOf(false) }
@@ -222,7 +223,6 @@ fun LoginScreen(viewModel: StockViewModel) {
                     )
 
                     // Standard Login Button
-                    val context = androidx.compose.ui.platform.LocalContext.current
                     Button(
                         onClick = { viewModel.login(context, username, password) },
                         modifier = Modifier

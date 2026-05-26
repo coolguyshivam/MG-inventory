@@ -56,6 +56,9 @@ class MainActivity : ComponentActivity() {
             database.userDao()
         )
 
+        // Initialize Firebase dynamically if keys are configured
+        com.example.data.repository.FirebaseSyncManager.initialize(applicationContext)
+
         setContent {
             // Instantiate StockViewModel
             val stockViewModel: StockViewModel = viewModel(
@@ -136,22 +139,30 @@ fun MainAppContent(viewModel: StockViewModel) {
                                     color = MaterialTheme.colorScheme.onBackground
                                 )
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    val isFirebaseConnected = com.example.data.repository.FirebaseSyncManager.isConfigured()
                                     Text(
-                                        text = "REAL-TIME CLOUD SYNC",
+                                        text = if (isFirebaseConnected) "FIREBASE SYNC ACTIVE" else "LOCAL OFFLINE-FIRST",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontSize = 10.sp,
-                                        fontWeight = FontWeight.Medium,
+                                        fontWeight = FontWeight.Bold,
                                         letterSpacing = 0.5.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = if (isFirebaseConnected) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     if (isSyncing) {
                                         Icon(
                                             imageVector = Icons.Default.Sync,
                                             contentDescription = "Syncing",
-                                            tint = MaterialTheme.colorScheme.primary,
+                                            tint = if (isFirebaseConnected) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary,
                                             modifier = Modifier
                                                 .size(12.dp)
                                                 .rotate(spinningAngle)
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = if (isFirebaseConnected) Icons.Default.CloudDone else Icons.Default.CloudOff,
+                                            contentDescription = if (isFirebaseConnected) "Cloud Connected" else "Cloud Disconnected",
+                                            tint = if (isFirebaseConnected) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                            modifier = Modifier.size(12.dp)
                                         )
                                     }
                                 }

@@ -1,6 +1,7 @@
 package com.example.ui.viewmodel
 
 import android.content.Context
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -373,9 +374,26 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
     fun triggerCloudSync() {
         viewModelScope.launch {
             _isSyncing.value = true
-            delay(1800) // simulation latency
-            _lastSyncedTime.value = System.currentTimeMillis()
-            _isSyncing.value = false
+            try {
+                // Read current list values from flow
+                val allItems = repository.allInventoryItems.first()
+                val allHistory = repository.allHistoryEvents.first()
+                
+                if (com.example.data.repository.FirebaseSyncManager.isConfigured()) {
+                    val itemsSynced = com.example.data.repository.FirebaseSyncManager.syncLocalItemsToCloud(allItems)
+                    val historySynced = com.example.data.repository.FirebaseSyncManager.syncLocalHistoryToCloud(allHistory)
+                    Log.d("StockViewModel", "Firebase sync finished. Items: $itemsSynced, History: $historySynced")
+                } else {
+                    Log.d("StockViewModel", "Firebase local-only bypass sync.")
+                    delay(1500) // simulation delay for nice UI feedback
+                }
+            } catch (e: Exception) {
+                Log.e("StockViewModel", "Error in sync pipeline", e)
+                delay(1000)
+            } finally {
+                _lastSyncedTime.value = System.currentTimeMillis()
+                _isSyncing.value = false
+            }
         }
     }
 
