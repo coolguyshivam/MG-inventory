@@ -268,6 +268,9 @@ fun MainAppContent(viewModel: StockViewModel) {
                 if (canManageUsers) {
                     tabsItems.add(Triple(5, "Users", Icons.Default.Group))
                 }
+                if (canSell || canManageInventory) {
+                    tabsItems.add(Triple(6, "Ledger", Icons.Default.CompareArrows))
+                }
 
                 tabsItems.forEach { (index, title, icon) ->
                     NavigationBarItem(
@@ -303,6 +306,7 @@ fun MainAppContent(viewModel: StockViewModel) {
                     2 -> AnalyticsScreen(viewModel = viewModel)
                     3 -> HistoryScreen(viewModel = viewModel)
                     5 -> UserManagementScreen(viewModel = viewModel)
+                    6 -> com.example.ui.screens.LedgerScreen(viewModel = viewModel)
                     else -> InventoryScreen(viewModel = viewModel)
                 }
             }

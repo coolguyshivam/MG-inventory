@@ -40,6 +40,24 @@ class InventoryRepository {
         awaitClose { sub.remove() }
     }
 
+    val allParties: Flow<List<com.example.data.model.Party>> = callbackFlow {
+        val sub = db.collection("parties").addSnapshotListener { snap, err ->
+            if (snap != null) {
+                trySend(snap.documents.mapNotNull { it.toObject(com.example.data.model.Party::class.java) })
+            }
+        }
+        awaitClose { sub.remove() }
+    }
+
+    val allLedgerEntries: Flow<List<com.example.data.model.LedgerEntry>> = callbackFlow {
+        val sub = db.collection("ledger_entries").addSnapshotListener { snap, err ->
+            if (snap != null) {
+                trySend(snap.documents.mapNotNull { it.toObject(com.example.data.model.LedgerEntry::class.java) })
+            }
+        }
+        awaitClose { sub.remove() }
+    }
+
     suspend fun getUserCount(): Int {
         return try {
             db.collection("users").get().await().size()
@@ -118,6 +136,7 @@ class InventoryRepository {
             userId = userId
         )
         db.collection("history_events").document(history.id).set(history).await()
+        processPartyTransactionIfApplicable(name, "PURCHASE", amount * quantity)
         return true
     }
 
@@ -159,6 +178,7 @@ class InventoryRepository {
             userId = userId
         )
         db.collection("history_events").document(history.id).set(history).await()
+        processPartyTransactionIfApplicable(name, "SALE", amount * quantity)
         return true
     }
 
@@ -212,6 +232,7 @@ class InventoryRepository {
             userId = userId
         )
         db.collection("history_events").document(history.id).set(history).await()
+        processPartyTransactionIfApplicable(name, "RETURN", amount * quantity)
         return true
     }
 
@@ -265,6 +286,7 @@ class InventoryRepository {
             extraDetails = "Technician: $technicianName, Reason: $repairReason"
         )
         db.collection("history_events").document(history.id).set(history).await()
+        processPartyTransactionIfApplicable(name, "REPAIR_SENT", amount * quantity)
         return true
     }
 
@@ -369,6 +391,49 @@ class InventoryRepository {
         )
         db.collection("history_events").document(history.id).set(history).await()
         return true
+    }
+
+    suspend fun addParty(party: com.example.data.model.Party) {
+        db.collection("parties").document(party.id).set(party).await()
+    }
+
+    suspend fun updatePartyBalance(partyId: String, amountDelta: Double) {
+        val snap = db.collection("parties").document(partyId).get().await()
+        val party = snap.toObject(com.example.data.model.Party::class.java)
+        if (party != null) {
+            val updated = party.copy(balance = party.balance + amountDelta)
+            db.collection("parties").document(partyId).set(updated).await()
+        }
+    }
+
+    suspend fun addLedgerEntry(entry: com.example.data.model.LedgerEntry) {
+        db.collection("ledger_entries").document(entry.id).set(entry).await()
+        if (entry.type == "PAYMENT_IN") {
+            updatePartyBalance(entry.partyId, -entry.amount) // they pay us, balance down
+        } else if (entry.type == "PAYMENT_OUT") {
+            updatePartyBalance(entry.partyId, entry.amount) // we pay them, balance up (they owe us less, wait. If we pay them, we owe them less. Since balance = they owe us, negative means we owe them. If we pay them, balance goes UP towards 0). Yes, +entry.amount.
+        }
+    }
+
+    suspend fun processPartyTransactionIfApplicable(name: String, type: String, amount: Double) {
+        val match = db.collection("parties").whereEqualTo("name", name).limit(1).get().await()
+        val party = match.documents.firstOrNull()?.toObject(com.example.data.model.Party::class.java)
+        if (party != null) {
+            val entry = com.example.data.model.LedgerEntry(
+                partyId = party.id,
+                amount = amount,
+                type = type
+            )
+            db.collection("ledger_entries").document(entry.id).set(entry).await()
+            val delta = when (type) {
+                "SALE" -> amount // they owe us
+                "PURCHASE" -> -amount // we owe them
+                "RETURN" -> -amount // we owe them for returned goods, or they owe us less. Wait, if a customer returns goods, we owe them money, so balance decreases. Yes, -amount.
+                "REPAIR_SENT" -> amount // they owe us for repair fees? Or we owe them? Usually we charge for repair. 
+                else -> 0.0
+            }
+            updatePartyBalance(party.id, delta)
+        }
     }
 
     fun searchHistory(imei: String): Flow<List<HistoryEvent>> {

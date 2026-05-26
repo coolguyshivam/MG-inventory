@@ -41,10 +41,24 @@ fun HistoryScreen(viewModel: StockViewModel) {
 
     var showScannerDialog by remember { mutableStateOf(false) }
     var expandedFilterMenu by remember { mutableStateOf(false) }
+    var selectedPhotosForViewer by remember { mutableStateOf<List<String>?>(null) }
+    var activeDateFilter by remember { mutableStateOf("All Time") }
 
     // Filtering & Sorting processes
-    val filteredEvents = remember(rawEvents, searchWord, typeFilter, sortOption) {
+    val filteredEvents = remember(rawEvents, searchWord, typeFilter, sortOption, activeDateFilter) {
         var list = rawEvents
+
+        // Date Filter
+        val now = System.currentTimeMillis()
+        val threshold = when (activeDateFilter) {
+            "Today" -> now - 86400000L
+            "This Week" -> now - 86400000L * 7L
+            "This Month" -> now - 86400000L * 30L
+            else -> 0L
+        }
+        if (threshold > 0) {
+            list = list.filter { it.timestamp >= threshold }
+        }
 
         // Apply Search (IMEI matching)
         if (searchWord.isNotBlank()) {
@@ -129,9 +143,11 @@ fun HistoryScreen(viewModel: StockViewModel) {
                     focusedBorderColor = MaterialTheme.colorScheme.primary
                 ),
                 modifier = Modifier
-                    .weight(1f)
+                    .weight(0.65f)
                     .testTag("history_search_word")
             )
+
+            Spacer(modifier = Modifier.weight(0.35f))
 
             // Tactile scanner button
             val scannerContext = androidx.compose.ui.platform.LocalContext.current
@@ -229,6 +245,26 @@ fun HistoryScreen(viewModel: StockViewModel) {
             }
         }
 
+        // Date Filter Chips
+        androidx.compose.foundation.lazy.LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            val filters = listOf("All Time", "Today", "This Week", "This Month")
+            items(filters.size) { index ->
+                val filter = filters[index]
+                FilterChip(
+                    selected = activeDateFilter == filter,
+                    onClick = { activeDateFilter = filter },
+                    label = { Text(filter) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                    )
+                )
+            }
+        }
+
         // Active filters notification pill
         if (typeFilter != "All" || sortOption != "Newest First") {
             Row(
@@ -293,21 +329,75 @@ fun HistoryScreen(viewModel: StockViewModel) {
                     HistoryRowItem(
                         event = event,
                         isExpanded = isExpanded,
-                        onExpandTapped = { isExpanded = !isExpanded }
+                        onExpandTapped = { isExpanded = !isExpanded },
+                        onPhotoClick = { selectedPhotosForViewer = it }
                     )
                 }
             }
         }
+    }
 
-        // Scanner drawer modal
-        if (showScannerDialog) {
-            BarcodeScannerMockDialog(
-                onDismissRequest = { showScannerDialog = false },
-                onBarcodeScanned = { scannedImei ->
-                    viewModel.setHistorySearchTerm(scannedImei)
-                },
-                suggestedImeis = suggestedImeis
-            )
+    // FullScreen Photo Viewer
+    if (selectedPhotosForViewer != null) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { selectedPhotosForViewer = null },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            val photos = selectedPhotosForViewer!!
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black)
+            ) {
+                val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { photos.size })
+                androidx.compose.foundation.pager.HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize()
+                ) { page ->
+                    coil.compose.AsyncImage(
+                        model = photos[page],
+                        contentDescription = "Full Screen Photo",
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 8.dp),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                        .align(Alignment.TopCenter),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    IconButton(
+                        onClick = { selectedPhotosForViewer = null },
+                        modifier = Modifier.background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                    }
+                    IconButton(
+                        onClick = {
+                            android.widget.Toast.makeText(ctx, "Downloading photo ${pagerState.currentPage + 1}...", android.widget.Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                    ) {
+                        Icon(Icons.Default.Download, contentDescription = "Download", tint = Color.White)
+                    }
+                }
+                if (photos.size > 1) {
+                    Text(
+                        text = "${pagerState.currentPage + 1} / ${photos.size}",
+                        color = Color.White,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(24.dp)
+                            .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
+            }
         }
     }
 }
@@ -316,7 +406,8 @@ fun HistoryScreen(viewModel: StockViewModel) {
 fun HistoryRowItem(
     event: HistoryEvent,
     isExpanded: Boolean,
-    onExpandTapped: () -> Unit
+    onExpandTapped: () -> Unit,
+    onPhotoClick: ((List<String>) -> Unit)? = null
 ) {
     val formattedTimestamp = remember(event.timestamp) {
         val sdf = SimpleDateFormat("dd MMM yyyy \n hh:mm a", Locale.getDefault())
@@ -347,20 +438,20 @@ fun HistoryRowItem(
         ),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 4.dp, vertical = 4.dp)
+            .padding(horizontal = 4.dp, vertical = 2.dp)
             .clickable { onExpandTapped() }
             .testTag("history_event_item_${event.id}"),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .border(
-                    width = 2.dp,
-                    color = themeColor.copy(alpha = 0.8f),
+                    width = 1.dp,
+                    color = themeColor.copy(alpha = 0.5f),
                     shape = RoundedCornerShape(16.dp)
                 )
-                .padding(14.dp)
+                .padding(10.dp)
         ) {
             // Header: Icon badge + Action type + Timestamp
             Row(
@@ -388,16 +479,10 @@ fun HistoryRowItem(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = subLabel,
-                        fontSize = 11.sp,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = themeColor,
                         letterSpacing = 1.sp
-                    )
-                    Text(
-                        text = "${event.name} (${event.model})",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -502,6 +587,16 @@ fun HistoryRowItem(
                     )
                     HorizontalDivider(color = themeColor.copy(alpha = 0.2f))
 
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Model Name:", style = MaterialTheme.typography.bodySmall, fontSize = 11.sp)
+                        Text(event.model, style = MaterialTheme.typography.bodySmall, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Customer Name:", style = MaterialTheme.typography.bodySmall, fontSize = 11.sp)
+                        Text(event.name, style = MaterialTheme.typography.bodySmall, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+
                     if (!event.phoneNumber.isNullOrBlank()) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("Registered Contact:", style = MaterialTheme.typography.bodySmall, fontSize = 11.sp)
@@ -526,6 +621,32 @@ fun HistoryRowItem(
                         Spacer(modifier = Modifier.height(2.dp))
                         Text("Event Narrative details:", style = MaterialTheme.typography.bodySmall, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = themeColor)
                         Text(event.description, style = MaterialTheme.typography.bodySmall, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+
+                    if (!event.photoUri.isNullOrBlank()) {
+                        val photos = event.photoUri.split(",").filter { it.isNotBlank() && !it.startsWith("ic_") }
+                        if (photos.isNotEmpty()) {
+                            Text("Photos (${photos.size}):", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(photos.size, key = { it }) { index ->
+                                    val uri = photos[index]
+                                    Box(
+                                        modifier = Modifier
+                                            .size(60.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
+                                            .clickable { onPhotoClick?.invoke(photos) }
+                                    ) {
+                                        coil.compose.AsyncImage(
+                                            model = uri,
+                                            contentDescription = "Photo $index",
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

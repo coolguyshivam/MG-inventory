@@ -94,6 +94,12 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
     val inventoryItems: StateFlow<List<InventoryItem>> = repository.allInventoryItems
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val allParties: StateFlow<List<com.example.data.model.Party>> = repository.allParties
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allLedgerEntries: StateFlow<List<com.example.data.model.LedgerEntry>> = repository.allLedgerEntries
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     private val _inventorySearchTerm = MutableStateFlow("")
     val inventorySearchTerm: StateFlow<String> = _inventorySearchTerm.asStateFlow()
 
@@ -274,6 +280,24 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                         }
                     } catch (e: Exception) {
                         e.printStackTrace()
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+        
+        viewModelScope.launch {
+            try {
+                nameInput.collect { typedName ->
+                    val nameStr = typedName.trim()
+                    if (nameStr.isNotEmpty()) {
+                        val all = allParties.value
+                        val party = all.find { it.name.equals(nameStr, ignoreCase = true) }
+                        if (party != null) {
+                            if (phoneInput.value.isBlank()) phoneInput.value = party.phoneNumber
+                            if (aadhaarInput.value.isBlank()) aadhaarInput.value = party.aadhaarNumber
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -570,7 +594,7 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
         val aadhaar = aadhaarInput.value.trim()
         val amountStr = amountInput.value.trim()
         val desc = descriptionInput.value.trim()
-        val dateInMillis = dateInMillisInput.value
+        val dateInMillis = System.currentTimeMillis()
         val qty = quantityInput.value
         val photo = photoUriInput.value
 
@@ -742,6 +766,33 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                 _transactionError.value = "Transaction failed: ${e.message}"
             } finally {
                 _isUploadingTransaction.value = false
+            }
+        }
+    }
+
+    fun addParty(name: String, phone: String, aadhaar: String) {
+        viewModelScope.launch {
+            try {
+                val party = com.example.data.model.Party(name = name.trim(), phoneNumber = phone.trim(), aadhaarNumber = aadhaar.trim())
+                repository.addParty(party)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun addLedgerPayment(partyId: String, amount: Double, type: String, description: String) {
+        viewModelScope.launch {
+            try {
+                val entry = com.example.data.model.LedgerEntry(
+                    partyId = partyId,
+                    amount = amount,
+                    type = type,
+                    description = description
+                )
+                repository.addLedgerEntry(entry)
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
     }

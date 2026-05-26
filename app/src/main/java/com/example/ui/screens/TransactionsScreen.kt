@@ -25,6 +25,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
@@ -48,16 +50,17 @@ fun TransactionsScreen(viewModel: StockViewModel) {
     val tempCameraUriState = remember { mutableStateOf<Uri?>(null) }
 
     val galleryLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia()
-    ) { uri ->
-        if (uri != null) {
+        contract = ActivityResultContracts.PickMultipleVisualMedia()
+    ) { uris ->
+        if (uris.isNotEmpty()) {
             val currentUris = viewModel.photoUriInput.value
             val urisArray = if (currentUris.isNullOrBlank()) emptyList() else currentUris.split(",")
-            if (urisArray.size < 10) {
-                viewModel.photoUriInput.value = (urisArray + uri.toString()).joinToString(",")
-                Toast.makeText(context, "Gallery Image Linked!", Toast.LENGTH_SHORT).show()
+            val newUrisStr = uris.map { it.toString() }
+            if (urisArray.size + newUrisStr.size <= 10) {
+                viewModel.photoUriInput.value = (urisArray + newUrisStr).joinToString(",")
+                Toast.makeText(context, "Gallery Images Linked!", Toast.LENGTH_SHORT).show()
             } else {
-                Toast.makeText(context, "Maximum 10 photos allowed", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Maximum 10 photos allowed total", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -117,7 +120,6 @@ fun TransactionsScreen(viewModel: StockViewModel) {
     val technician by viewModel.technicianNameInput.collectAsState()
     val repairReason by viewModel.repairReasonInput.collectAsState()
 
-    var showScannerDialog by remember { mutableStateOf(false) }
     var showPhotoChooserDialog by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
 
@@ -259,6 +261,7 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                     modifier = Modifier
                         .weight(1f)
                         .testTag("form_serial_input"),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     leadingIcon = { Icon(Icons.Default.Dialpad, "Keypad") }
                 )
 
@@ -342,39 +345,35 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                 leadingIcon = { Icon(Icons.Default.Info, "Item Name Description") }
             )
 
-            // Split Aadhaar and Phone row (Optional fields)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                // 4. Phone Number (Optional)
-                OutlinedTextField(
-                    value = phone,
-                    onValueChange = { viewModel.phoneInput.value = it },
-                    label = { Text("Phone (optional)") },
-                    placeholder = { Text("10 digit") },
-                    singleLine = true,
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("form_phone_input"),
-                    leadingIcon = { Icon(Icons.Default.Phone, "Tel phone") }
-                )
+            // 4. Phone Number (Optional)
+            OutlinedTextField(
+                value = phone,
+                onValueChange = { viewModel.phoneInput.value = it },
+                label = { Text("Phone (optional)") },
+                placeholder = { Text("10 digit") },
+                singleLine = true,
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("form_phone_input"),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                leadingIcon = { Icon(Icons.Default.Phone, "Tel phone") }
+            )
 
-                // 5. Aadhaar Number (Optional)
-                OutlinedTextField(
-                    value = aadhaar,
-                    onValueChange = { viewModel.aadhaarInput.value = it },
-                    label = { Text("Aadhaar (optional)") },
-                    placeholder = { Text("12 digit number") },
-                    singleLine = true,
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("form_aadhaar_input"),
-                    leadingIcon = { Icon(Icons.Default.Fingerprint, "Aadhaar Card") }
-                )
-            }
+            // 5. Aadhaar Number (Optional)
+            OutlinedTextField(
+                value = aadhaar,
+                onValueChange = { viewModel.aadhaarInput.value = it },
+                label = { Text("Aadhaar (optional)") },
+                placeholder = { Text("12 digit number") },
+                singleLine = true,
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("form_aadhaar_input"),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                leadingIcon = { Icon(Icons.Default.Fingerprint, "Aadhaar Card") }
+            )
 
             // 6. Transaction Amount and Date selection
             Row(
@@ -391,32 +390,30 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                     label = { Text("Amount *") },
                     placeholder = { Text("₹ 0.00") },
                     singleLine = true,
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(8.dp),
                     modifier = Modifier
                         .weight(1f)
                         .testTag("form_amount_input"),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     leadingIcon = { Icon(Icons.Default.CurrencyRupee, "Currency") }
                 )
 
-                // Interactive Date Selector - Clicking opens Date Picker dialog
+                // Date Selector
                 OutlinedTextField(
                     value = formattedDate,
                     onValueChange = {},
                     readOnly = true,
-                    label = { Text("Date Selector *") },
-                    shape = RoundedCornerShape(14.dp),
-                    leadingIcon = { Icon(Icons.Default.CalendarToday, "DatePicker") },
-                    trailingIcon = {
-                        IconButton(
-                            onClick = { showDatePicker = true }
-                        ) {
-                            Icon(Icons.Default.DateRange, "Pick calendar Date")
-                        }
-                    },
+                    label = { Text("Date *") },
+                    shape = RoundedCornerShape(8.dp),
                     modifier = Modifier
                         .weight(1f)
-                        .clickable { showDatePicker = true }
-                        .testTag("form_date_field")
+                        .clickable { showDatePicker = true },
+                    leadingIcon = { Icon(Icons.Default.CalendarToday, "DatePicker") },
+                    trailingIcon = {
+                        IconButton(onClick = { showDatePicker = true }) {
+                            Icon(Icons.Default.DateRange, "Pick calendar Date")
+                        }
+                    }
                 )
             }
 
@@ -430,17 +427,17 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                 Card(
                     modifier = Modifier
                         .weight(1f)
-                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(14.dp)),
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                 ) {
                     Row(
-                        modifier = Modifier.padding(10.dp),
+                        modifier = Modifier.padding(6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         IconButton(
                             onClick = { if (quantity > 1) viewModel.quantityInput.value = quantity - 1 },
-                            modifier = Modifier.size(36.dp)
+                            modifier = Modifier.size(32.dp)
                         ) {
                             Icon(Icons.Default.Remove, "Minus Quantity")
                         }
@@ -452,7 +449,7 @@ fun TransactionsScreen(viewModel: StockViewModel) {
 
                         IconButton(
                             onClick = { viewModel.quantityInput.value = quantity + 1 },
-                            modifier = Modifier.size(36.dp)
+                            modifier = Modifier.size(32.dp)
                         ) {
                             Icon(Icons.Default.Add, "Add Quantity")
                         }
@@ -460,7 +457,7 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                 }
 
                 val photoCount = if (photoUri.isNullOrBlank()) 0 else photoUri!!.split(",").size
-                // Photo Selection card (Simulates camera click or choose from Gallery nicely with design options)
+                // Photo Selection card
                 Card(
                     modifier = Modifier
                         .weight(1f)
@@ -468,7 +465,7 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                         .border(
                             width = 1.dp,
                             color = if (photoCount > 0) themeColorAndLabel.first else MaterialTheme.colorScheme.outlineVariant,
-                            shape = RoundedCornerShape(14.dp)
+                            shape = RoundedCornerShape(8.dp)
                         ),
                     colors = CardDefaults.cardColors(
                         containerColor = if (photoCount > 0) themeColorAndLabel.first.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface
@@ -610,10 +607,10 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                         Icon(Icons.Default.CloudUpload, "Cloud write icon")
                         Text(
                             text = when (activeSelection) {
-                                0 -> "Log Purchase Inbound"
-                                1 -> "Log Sale Outbound"
-                                2 -> "Log Return Inbound"
-                                else -> "Log Repair Dispatch"
+                                0 -> "Submit Purchase"
+                                1 -> "Submit Sale"
+                                2 -> "Submit Return"
+                                else -> "Submit Repair"
                             },
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Black

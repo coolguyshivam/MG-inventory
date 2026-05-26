@@ -39,3 +39,21 @@ data class HistoryEvent(
     val extraDetails: String? = null
 )
 
+data class Party(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String = "",
+    val phoneNumber: String = "",
+    val aadhaarNumber: String = "",
+    val balance: Double = 0.0 // positive = they owe us, negative = we owe them
+)
+
+data class LedgerEntry(
+    val id: String = UUID.randomUUID().toString(),
+    val partyId: String = "",
+    val amount: Double = 0.0,
+    val type: String = "", // "PAYMENT_IN", "PAYMENT_OUT", "PURCHASE", "SALE", "RETURN", "REPAIR"
+    val description: String = "",
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+

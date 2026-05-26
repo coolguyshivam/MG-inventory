@@ -32,8 +32,20 @@ import com.example.ui.viewmodel.StockViewModel
 @Composable
 fun AnalyticsScreen(viewModel: StockViewModel) {
     val items by viewModel.inventoryItems.collectAsState()
-    val history by viewModel.historyEvents.collectAsState()
+    val rawHistory by viewModel.historyEvents.collectAsState()
     val scrollState = rememberScrollState()
+
+    var activeFilter by remember { mutableStateOf("All Time") }
+    val history = remember(rawHistory, activeFilter) {
+        val now = System.currentTimeMillis()
+        val threshold = when (activeFilter) {
+            "Today" -> now - 86400000L
+            "This Week" -> now - 86400000L * 7L
+            "This Month" -> now - 86400000L * 30L
+            else -> 0L
+        }
+        rawHistory.filter { it.timestamp >= threshold }
+    }
 
     // Dashboard Math Calculations
     val totalActiveStockCount = remember(items) { items.sumOf { it.quantity } }
@@ -71,6 +83,26 @@ fun AnalyticsScreen(viewModel: StockViewModel) {
             fontWeight = FontWeight.ExtraBold,
             color = MaterialTheme.colorScheme.primary
         )
+
+        // Date Filter Chips
+        androidx.compose.foundation.lazy.LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            val filters = listOf("All Time", "Today", "This Week", "This Month")
+            items(filters.size) { index ->
+                val filter = filters[index]
+                FilterChip(
+                    selected = activeFilter == filter,
+                    onClick = { activeFilter = filter },
+                    label = { Text(filter) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                    )
+                )
+            }
+        }
 
         // KPI Summary cards Grid row
         Row(

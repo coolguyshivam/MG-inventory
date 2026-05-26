@@ -52,7 +52,6 @@ fun InventoryScreen(viewModel: StockViewModel) {
     val canSeePrice by viewModel.canSeePrice.collectAsState()
     val canSell by viewModel.canSell.collectAsState()
 
-    var showScannerDialog by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
 
     // Dialog state for "Dispatch to Repair"
@@ -67,6 +66,8 @@ fun InventoryScreen(viewModel: StockViewModel) {
     var editAmount by remember { mutableStateOf("") }
     var editDesc by remember { mutableStateOf("") }
     var editQty by remember { mutableStateOf("1") }
+
+    var selectedPhotosForViewer by remember { mutableStateOf<List<String>?>(null) }
 
     // Filtering & Sorting math
     val filteredItems = remember(rawItems, searchWord, activeSubTab, sortOption, sortAscending) {
@@ -137,19 +138,6 @@ fun InventoryScreen(viewModel: StockViewModel) {
                                 )
                             }
                         }
-                        IconButton(
-                            onClick = { showScannerDialog = true },
-                            modifier = Modifier
-                                .size(28.dp)
-                                .testTag("inventory_scanner_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.QrCodeScanner,
-                                contentDescription = "IMEI scanner shortcut",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
                     }
                 },
                 singleLine = true,
@@ -161,9 +149,11 @@ fun InventoryScreen(viewModel: StockViewModel) {
                     focusedBorderColor = MaterialTheme.colorScheme.primary
                 ),
                 modifier = Modifier
-                    .weight(1f)
+                    .weight(0.65f)
                     .testTag("inventory_search_bar")
             )
+
+            Spacer(modifier = Modifier.weight(0.35f))
 
             val scannerContext = androidx.compose.ui.platform.LocalContext.current
             IconButton(
@@ -384,6 +374,9 @@ fun InventoryScreen(viewModel: StockViewModel) {
                         },
                         onSellClicked = {
                             viewModel.startDirectSale(item)
+                        },
+                        onPhotoClick = {
+                            selectedPhotosForViewer = it
                         }
                     )
                 }
@@ -529,15 +522,74 @@ fun InventoryScreen(viewModel: StockViewModel) {
             )
         }
 
-        // Barcode scanning Simulator
-        if (showScannerDialog) {
-            BarcodeScannerMockDialog(
-                onDismissRequest = { showScannerDialog = false },
-                onBarcodeScanned = { scannedImei ->
-                    viewModel.setInventorySearchTerm(scannedImei)
-                },
-                suggestedImeis = suggestedImeis
-            )
+
+
+        // FullScreen Photo Viewer
+        if (selectedPhotosForViewer != null) {
+            androidx.compose.ui.window.Dialog(
+                onDismissRequest = { selectedPhotosForViewer = null },
+                properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+            ) {
+                val photos = selectedPhotosForViewer!!
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black)
+                ) {
+                    val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { photos.size })
+                    androidx.compose.foundation.pager.HorizontalPager(
+                        state = pagerState,
+                        modifier = Modifier.fillMaxSize()
+                    ) { page ->
+                        coil.compose.AsyncImage(
+                            model = photos[page],
+                            contentDescription = "Full Screen Photo",
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 8.dp),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                        )
+                    }
+
+                    // Top Bar with Close & Download Buttons
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                            .align(Alignment.TopCenter),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        IconButton(
+                            onClick = { selectedPhotosForViewer = null },
+                            modifier = Modifier.background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                        }
+
+                        IconButton(
+                            onClick = {
+                                android.widget.Toast.makeText(ctx, "Downloading photo ${pagerState.currentPage + 1}...", android.widget.Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                        ) {
+                            Icon(Icons.Default.Download, contentDescription = "Download", tint = Color.White)
+                        }
+                    }
+                    
+                    if (photos.size > 1) {
+                        Text(
+                            text = "${pagerState.currentPage + 1} / ${photos.size}",
+                            color = Color.White,
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(24.dp)
+                                .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -557,7 +609,8 @@ fun InventoryCardItem(
     onEditClicked: () -> Unit,
     onRepairClicked: () -> Unit,
     onDeleteClicked: () -> Unit,
-    onSellClicked: () -> Unit // Rule 6
+    onSellClicked: () -> Unit, // Rule 6
+    onPhotoClick: (List<String>) -> Unit = {}
 ) {
     var expandedActionsMenu by remember { mutableStateOf(false) }
     val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
@@ -800,6 +853,7 @@ fun InventoryCardItem(
                                             .size(80.dp)
                                             .clip(RoundedCornerShape(8.dp))
                                             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
+                                            .clickable { onPhotoClick(photos) }
                                     ) {
                                         coil.compose.AsyncImage(
                                             model = uri,
