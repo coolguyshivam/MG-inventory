@@ -1,7 +1,7 @@
 package com.example
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.*
@@ -30,7 +30,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.data.database.AppDatabase
 import com.example.data.repository.InventoryRepository
 import com.example.ui.components.PullToRefreshContainer
 import com.example.ui.screens.*
@@ -40,24 +39,17 @@ import com.example.ui.viewmodel.ViewModelFactory
 import java.text.SimpleDateFormat
 import java.util.*
 
-class MainActivity : ComponentActivity() {
-    private lateinit var database: AppDatabase
+class MainActivity : FragmentActivity() {
     private lateinit var repository: InventoryRepository
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Initialize database & repository singletons safely at activity scope
-        database = AppDatabase.getDatabase(applicationContext)
-        repository = InventoryRepository(
-            database.inventoryDao(),
-            database.historyDao(),
-            database.userDao()
-        )
-
         // Initialize Firebase dynamically if keys are configured
         com.example.data.repository.FirebaseSyncManager.initialize(applicationContext)
+
+        repository = InventoryRepository()
 
         setContent {
             // Instantiate StockViewModel

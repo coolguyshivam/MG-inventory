@@ -76,7 +76,7 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                 directory.mkdirs()
             }
             val tempFile = File.createTempFile("photo_${System.currentTimeMillis()}", ".jpg", directory)
-            FileProvider.getUriForFile(context, "com.example.fileprovider", tempFile)
+            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", tempFile)
         } catch (e: Exception) {
             e.printStackTrace()
             null
@@ -250,8 +250,20 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                     leadingIcon = { Icon(Icons.Default.Dialpad, "Keypad") }
                 )
 
+                val scannerContext = LocalContext.current
                 IconButton(
-                    onClick = { showScannerDialog = true },
+                    onClick = {
+                        val scanner = com.google.mlkit.vision.codescanner.GmsBarcodeScanning.getClient(scannerContext)
+                        scanner.startScan()
+                            .addOnSuccessListener { barcode ->
+                                barcode.rawValue?.let { scannedImei ->
+                                    viewModel.serialNumberInput.value = scannedImei
+                                }
+                            }
+                            .addOnFailureListener {
+                                Toast.makeText(scannerContext, "Barcode scan failed", Toast.LENGTH_SHORT).show()
+                            }
+                    },
                     colors = IconButtonDefaults.iconButtonColors(
                         containerColor = themeColorAndLabel.first,
                         contentColor = Color.White
@@ -598,16 +610,7 @@ fun TransactionsScreen(viewModel: StockViewModel) {
             }
         }
 
-        // Barcode reader frame modal
-        if (showScannerDialog) {
-            BarcodeScannerMockDialog(
-                onDismissRequest = { showScannerDialog = false },
-                onBarcodeScanned = { scannedImei ->
-                    viewModel.serialNumberInput.value = scannedImei
-                },
-                suggestedImeis = suggestedImeis
-            )
-        }
+
 
         // Photo picker Mock Selector trigger (Rule 9)
         if (showPhotoChooserDialog) {

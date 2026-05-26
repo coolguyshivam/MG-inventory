@@ -47,10 +47,6 @@ fun LoginScreen(viewModel: StockViewModel) {
     val loginError by viewModel.loginError.collectAsState()
     val isSyncing by viewModel.isSyncing.collectAsState()
     val coroutineScope = rememberCoroutineScope()
-
-    // Biometric Modal Simulation
-    var showBiometricModal by remember { mutableStateOf(false) }
-    var biometricScanProgress by remember { mutableStateOf(0f) }
     
     // Gradient brush background
     val bgGradient = Brush.verticalGradient(
@@ -259,18 +255,36 @@ fun LoginScreen(viewModel: StockViewModel) {
                     // Biometric Authentication Trigger button
                     OutlinedButton(
                         onClick = {
-                            showBiometricModal = true
-                            biometricScanProgress = 0f
-                            coroutineScope.launch {
-                                // Simulate finger scanning process
-                                while (biometricScanProgress < 1f) {
-                                    delay(100)
-                                    biometricScanProgress += 0.08f
-                                }
-                                biometricScanProgress = 1f
-                                delay(300)
-                                showBiometricModal = false
-                                viewModel.biometricLogin(appContext)
+                            val activity = appContext as? androidx.fragment.app.FragmentActivity
+                            if (activity != null) {
+                                val executor = androidx.core.content.ContextCompat.getMainExecutor(activity)
+                                val biometricPrompt = androidx.biometric.BiometricPrompt(activity, executor,
+                                    object : androidx.biometric.BiometricPrompt.AuthenticationCallback() {
+                                        override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                                            super.onAuthenticationError(errorCode, errString)
+                                            android.widget.Toast.makeText(appContext, "Authentication error: $errString", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
+
+                                        override fun onAuthenticationSucceeded(result: androidx.biometric.BiometricPrompt.AuthenticationResult) {
+                                            super.onAuthenticationSucceeded(result)
+                                            viewModel.biometricLogin(appContext)
+                                        }
+
+                                        override fun onAuthenticationFailed() {
+                                            super.onAuthenticationFailed()
+                                            android.widget.Toast.makeText(appContext, "Authentication failed", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
+                                    })
+
+                                val promptInfo = androidx.biometric.BiometricPrompt.PromptInfo.Builder()
+                                    .setTitle("Biometric Login")
+                                    .setSubtitle("Log in using your biometric credential")
+                                    .setAllowedAuthenticators(androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG or androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL)
+                                    .build()
+
+                                biometricPrompt.authenticate(promptInfo)
+                            } else {
+                                android.widget.Toast.makeText(appContext, "Biometrics not supported here", android.widget.Toast.LENGTH_SHORT).show()
                             }
                         },
                         modifier = Modifier
@@ -322,85 +336,11 @@ fun LoginScreen(viewModel: StockViewModel) {
             }
         }
 
-        // Tactile Biometric Overlay Simulation Dialog
-        if (showBiometricModal) {
-            AlertDialog(
-                onDismissRequest = { showBiometricModal = false },
-                confirmButton = {},
-                title = {
-                    Text(
-                        text = "Sign-In with Device Biometrics",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                },
-                text = {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = "Please touch the fingerprint sensor and hold still.",
-                            style = MaterialTheme.typography.bodySmall,
-                            textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                        )
 
-                        // Pulsating scan icon box
-                        Box(
-                            modifier = Modifier
-                                .size(90.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f))
-                                .border(
-                                    width = 2.dp,
-                                    color = if (biometricScanProgress >= 1f) Color.Green else MaterialTheme.colorScheme.primary,
-                                    shape = CircleShape
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Fingerprint,
-                                contentDescription = "Fingerprint Sensor",
-                                tint = if (biometricScanProgress >= 1f) Color.Green else MaterialTheme.colorScheme.primary,
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .scale(1f + 0.1f * kotlin.math.sin(biometricScanProgress * Math.PI).toFloat())
-                            )
-                        }
-
-                        // Scanning loading bar
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            LinearProgressIndicator(
-                                progress = { biometricScanProgress },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(6.dp)
-                                    .clip(RoundedCornerShape(3.dp)),
-                                color = if (biometricScanProgress >= 1f) Color.Green else MaterialTheme.colorScheme.secondary
-                            )
-                            Text(
-                                text = "Authentication status: " + if (biometricScanProgress >= 1f) "Verified!" else "${(biometricScanProgress * 100).toInt()}% scanned",
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.Bold,
-                                color = if (biometricScanProgress >= 1f) Color.Green else MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.fillMaxWidth(),
-                                textAlign = TextAlign.Center
-                            )
-                        }
-                    }
-                }
-            )
-        }
 
         // Biometric registration / linking dialog flow
         val showBiometricLinkingDialog by viewModel.showBiometricLinkingDialog.collectAsState()
         val tempPendingUser by viewModel.tempPendingUser.collectAsState()
-        var linkingScanProgress by remember { mutableStateOf(0f) }
-        var linkingScanInProgress by remember { mutableStateOf(false) }
 
         if (showBiometricLinkingDialog && tempPendingUser != null) {
             AlertDialog(
@@ -430,80 +370,49 @@ fun LoginScreen(viewModel: StockViewModel) {
                             textAlign = TextAlign.Center
                         )
 
-                        if (linkingScanInProgress) {
-                            // Pulsating scan icon box
-                            Box(
-                                modifier = Modifier
-                                    .size(90.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f))
-                                    .border(
-                                        width = 2.dp,
-                                        color = if (linkingScanProgress >= 1f) Color.Green else MaterialTheme.colorScheme.primary,
-                                        shape = CircleShape
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Fingerprint,
-                                    contentDescription = "Fingerprint Sensor",
-                                    tint = if (linkingScanProgress >= 1f) Color.Green else MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier
-                                        .size(48.dp)
-                                        .scale(1f + 0.1f * kotlin.math.sin(linkingScanProgress * Math.PI).toFloat())
-                                )
-                            }
-
-                            // Scanning loading bar
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                LinearProgressIndicator(
-                                    progress = { linkingScanProgress },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(6.dp)
-                                        .clip(RoundedCornerShape(3.dp)),
-                                    color = if (linkingScanProgress >= 1f) Color.Green else MaterialTheme.colorScheme.secondary
-                                )
-                                Text(
-                                    text = if (linkingScanProgress >= 1f) "Biometrics Linked!" else "Scanning fingerprint: ${(linkingScanProgress * 100).toInt()}%",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (linkingScanProgress >= 1f) Color.Green else MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    textAlign = TextAlign.Center
-                                )
-                            }
-                        } else {
-                            Icon(
-                                imageVector = Icons.Default.Fingerprint,
-                                contentDescription = "Prompt Fingerprint",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(56.dp)
-                            )
-                        }
+                        Icon(
+                            imageVector = Icons.Default.Fingerprint,
+                            contentDescription = "Prompt Fingerprint",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(56.dp)
+                        )
                     }
                 },
                 confirmButton = {
                     Button(
                         onClick = {
-                            if (!linkingScanInProgress) {
-                                linkingScanInProgress = true
-                                linkingScanProgress = 0f
-                                coroutineScope.launch {
-                                    while (linkingScanProgress < 1f) {
-                                        delay(100)
-                                        linkingScanProgress += 0.1f
-                                    }
-                                    linkingScanProgress = 1f
-                                    delay(400)
-                                    viewModel.registerBiometrics(appContext, tempPendingUser!!.username)
-                                    viewModel.completeLogin(tempPendingUser!!)
-                                    viewModel.showBiometricLinkingDialog.value = false
-                                    linkingScanInProgress = false
-                                }
+                            val activity = appContext as? androidx.fragment.app.FragmentActivity
+                            if (activity != null) {
+                                val executor = androidx.core.content.ContextCompat.getMainExecutor(activity)
+                                val biometricPrompt = androidx.biometric.BiometricPrompt(activity, executor,
+                                    object : androidx.biometric.BiometricPrompt.AuthenticationCallback() {
+                                        override fun onAuthenticationSucceeded(result: androidx.biometric.BiometricPrompt.AuthenticationResult) {
+                                            super.onAuthenticationSucceeded(result)
+                                            viewModel.registerBiometrics(appContext, tempPendingUser!!.username)
+                                            viewModel.completeLogin(tempPendingUser!!)
+                                            viewModel.showBiometricLinkingDialog.value = false
+                                        }
+
+                                        override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                                            super.onAuthenticationError(errorCode, errString)
+                                            android.widget.Toast.makeText(appContext, "Authentication error: $errString", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
+                                        
+                                        override fun onAuthenticationFailed() {
+                                            super.onAuthenticationFailed()
+                                            android.widget.Toast.makeText(appContext, "Authentication failed", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
+                                    })
+                                    
+                                val promptInfo = androidx.biometric.BiometricPrompt.PromptInfo.Builder()
+                                    .setTitle("Link Biometric")
+                                    .setSubtitle("Scan to register biometric sign-in")
+                                    .setAllowedAuthenticators(androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG or androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL)
+                                    .build()
+                                    
+                                biometricPrompt.authenticate(promptInfo)
                             }
-                        },
-                        enabled = !linkingScanInProgress
+                        }
                     ) {
                         Text("Enable & Link")
                     }
@@ -513,8 +422,7 @@ fun LoginScreen(viewModel: StockViewModel) {
                         onClick = {
                             viewModel.completeLogin(tempPendingUser!!)
                             viewModel.showBiometricLinkingDialog.value = false
-                        },
-                        enabled = !linkingScanInProgress
+                        }
                     ) {
                         Text("Skip for Now")
                     }

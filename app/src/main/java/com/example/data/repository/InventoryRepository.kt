@@ -1,40 +1,78 @@
 package com.example.data.repository
 
-import com.example.data.database.HistoryDao
-import com.example.data.database.InventoryDao
-import com.example.data.database.UserDao
 import com.example.data.model.HistoryEvent
 import com.example.data.model.InventoryItem
 import com.example.data.model.User
+import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.tasks.await
+import java.util.UUID
 
-class InventoryRepository(
-    private val inventoryDao: InventoryDao,
-    private val historyDao: HistoryDao,
-    private val userDao: UserDao
-) {
-    // Collect reactive streams
-    val allInventoryItems: Flow<List<InventoryItem>> = inventoryDao.getAllItemsFlow()
-    val allHistoryEvents: Flow<List<HistoryEvent>> = historyDao.getAllEventsFlow()
-    val allUsers: Flow<List<User>> = userDao.getAllUsers()
+class InventoryRepository {
+    private val db = FirebaseFirestore.getInstance()
 
-    suspend fun getUserCount(): Int = userDao.getUserCount()
-    suspend fun getUserByUsername(username: String): User? = userDao.getUserByUsername(username)
-    suspend fun insertUser(user: User) = userDao.insertUser(user)
-    suspend fun deleteUser(user: User) = userDao.deleteUser(user)
-    suspend fun updateUser(user: User) = userDao.updateUser(user)
+    val allInventoryItems: Flow<List<InventoryItem>> = callbackFlow {
+        val sub = db.collection("inventory_items").addSnapshotListener { snap, err ->
+            if (snap != null) {
+                trySend(snap.documents.mapNotNull { it.toObject(InventoryItem::class.java) })
+            }
+        }
+        awaitClose { sub.remove() }
+    }
 
-    // Fetch single item
+    val allHistoryEvents: Flow<List<HistoryEvent>> = callbackFlow {
+        val sub = db.collection("history_events").addSnapshotListener { snap, err ->
+            if (snap != null) {
+                trySend(snap.documents.mapNotNull { it.toObject(HistoryEvent::class.java) })
+            }
+        }
+        awaitClose { sub.remove() }
+    }
+
+    val allUsers: Flow<List<User>> = callbackFlow {
+        val sub = db.collection("users").addSnapshotListener { snap, err ->
+            if (snap != null) {
+                trySend(snap.documents.mapNotNull { it.toObject(User::class.java) })
+            }
+        }
+        awaitClose { sub.remove() }
+    }
+
+    suspend fun getUserCount(): Int {
+        return try {
+            db.collection("users").get().await().size()
+        } catch(e:Exception) { 0 }
+    }
+
+    suspend fun getUserByUsername(username: String): User? {
+        return try {
+            db.collection("users").document(username).get().await().toObject(User::class.java)
+        } catch(e:Exception) { null }
+    }
+
+    suspend fun insertUser(user: User) {
+        db.collection("users").document(user.username).set(user).await()
+    }
+
+    suspend fun deleteUser(user: User) {
+        db.collection("users").document(user.username).delete().await()
+    }
+
+    suspend fun updateUser(user: User) {
+        db.collection("users").document(user.username).set(user).await()
+    }
+
     suspend fun getItemBySerialNumber(serialNumber: String): InventoryItem? {
-        return inventoryDao.getItemBySerialNumber(serialNumber)
+        val snap = db.collection("inventory_items").whereEqualTo("serialNumber", serialNumber).limit(1).get().await()
+        return snap.documents.firstOrNull()?.toObject(InventoryItem::class.java)
     }
 
-    suspend fun getItemById(id: Int): InventoryItem? {
-        return inventoryDao.getItemById(id)
+    suspend fun getItemById(id: String): InventoryItem? {
+        return db.collection("inventory_items").document(id).get().await().toObject(InventoryItem::class.java)
     }
 
-    // Purchase - adds a brand new item to inventory & registers a history event
     suspend fun purchaseProduct(
         serialNumber: String,
         model: String,
@@ -48,8 +86,8 @@ class InventoryRepository(
         photoUri: String?,
         userId: String
     ): Boolean {
-        // Create inventory item
         val item = InventoryItem(
+            id = UUID.randomUUID().toString(),
             serialNumber = serialNumber,
             model = model,
             name = name,
@@ -62,31 +100,27 @@ class InventoryRepository(
             photoUri = photoUri,
             isUnderRepair = false
         )
-        val rowId = inventoryDao.insertItem(item)
+        db.collection("inventory_items").document(item.id).set(item).await()
 
-        // Generate History Event
-        if (rowId > 0) {
-            val history = HistoryEvent(
-                actionType = "PURCHASE",
-                serialNumber = serialNumber,
-                model = model,
-                name = name,
-                phoneNumber = phoneNumber,
-                aadhaarNumber = aadhaarNumber,
-                amount = amount,
-                description = description,
-                dateInMillis = dateInMillis,
-                quantity = quantity,
-                photoUri = photoUri,
-                userId = userId
-            )
-            historyDao.insertEvent(history)
-            return true
-        }
-        return false
+        val history = HistoryEvent(
+            id = UUID.randomUUID().toString(),
+            actionType = "PURCHASE",
+            serialNumber = serialNumber,
+            model = model,
+            name = name,
+            phoneNumber = phoneNumber,
+            aadhaarNumber = aadhaarNumber,
+            amount = amount,
+            description = description,
+            dateInMillis = dateInMillis,
+            quantity = quantity,
+            photoUri = photoUri,
+            userId = userId
+        )
+        db.collection("history_events").document(history.id).set(history).await()
+        return true
     }
 
-    // Sale - removes item from local inventory list & records a history event
     suspend fun saleProduct(
         serialNumber: String,
         model: String,
@@ -100,20 +134,17 @@ class InventoryRepository(
         photoUri: String?,
         userId: String
     ): Boolean {
-        // Find existing product in inventory to remove or update quantity
-        val existing = inventoryDao.getItemBySerialNumber(serialNumber)
+        val existing = getItemBySerialNumber(serialNumber)
         if (existing != null) {
             if (existing.quantity <= quantity) {
-                // Remove from inventory
-                inventoryDao.deleteItem(existing)
+                db.collection("inventory_items").document(existing.id).delete().await()
             } else {
-                // Decrement inventory quantity
-                inventoryDao.updateItem(existing.copy(quantity = existing.quantity - quantity))
+                db.collection("inventory_items").document(existing.id).update("quantity", existing.quantity - quantity).await()
             }
         }
 
-        // Add history event for the sale
         val history = HistoryEvent(
+            id = UUID.randomUUID().toString(),
             actionType = "SALE",
             serialNumber = serialNumber,
             model = model,
@@ -127,11 +158,10 @@ class InventoryRepository(
             photoUri = photoUri ?: existing?.photoUri,
             userId = userId
         )
-        val eventId = historyDao.insertEvent(history)
-        return eventId > 0
+        db.collection("history_events").document(history.id).set(history).await()
+        return true
     }
 
-    // Return - adds an item back structure and records return event
     suspend fun returnProduct(
         serialNumber: String,
         model: String,
@@ -145,11 +175,12 @@ class InventoryRepository(
         photoUri: String?,
         userId: String
     ): Boolean {
-        val existing = inventoryDao.getItemBySerialNumber(serialNumber)
+        val existing = getItemBySerialNumber(serialNumber)
         if (existing != null) {
-            inventoryDao.updateItem(existing.copy(quantity = existing.quantity + quantity))
+            db.collection("inventory_items").document(existing.id).update("quantity", existing.quantity + quantity).await()
         } else {
             val item = InventoryItem(
+                id = UUID.randomUUID().toString(),
                 serialNumber = serialNumber,
                 model = model,
                 name = name,
@@ -162,11 +193,11 @@ class InventoryRepository(
                 photoUri = photoUri,
                 isUnderRepair = false
             )
-            inventoryDao.insertItem(item)
+            db.collection("inventory_items").document(item.id).set(item).await()
         }
 
-        // Add event to history
         val history = HistoryEvent(
+            id = UUID.randomUUID().toString(),
             actionType = "RETURN",
             serialNumber = serialNumber,
             model = model,
@@ -180,10 +211,10 @@ class InventoryRepository(
             photoUri = photoUri,
             userId = userId
         )
-        return historyDao.insertEvent(history) > 0
+        db.collection("history_events").document(history.id).set(history).await()
+        return true
     }
 
-    // Repair via Transactions form (registers directly)
     suspend fun directRepair(
         serialNumber: String,
         model: String,
@@ -199,8 +230,8 @@ class InventoryRepository(
         technicianName: String,
         repairReason: String
     ): Boolean {
-        // Adds item directly to inventory marked as under repair
         val item = InventoryItem(
+            id = UUID.randomUUID().toString(),
             serialNumber = serialNumber,
             model = model,
             name = name,
@@ -215,10 +246,10 @@ class InventoryRepository(
             technicianName = technicianName,
             repairReason = repairReason
         )
-        inventoryDao.insertItem(item)
+        db.collection("inventory_items").document(item.id).set(item).await()
 
-        // Event
         val history = HistoryEvent(
+            id = UUID.randomUUID().toString(),
             actionType = "REPAIR_SENT",
             serialNumber = serialNumber,
             model = model,
@@ -233,21 +264,21 @@ class InventoryRepository(
             userId = userId,
             extraDetails = "Technician: $technicianName, Reason: $repairReason"
         )
-        return historyDao.insertEvent(history) > 0
+        db.collection("history_events").document(history.id).set(history).await()
+        return true
     }
 
-    // Send existing inventory item to Repair
-    suspend fun sendItemToRepair(itemId: Int, technicianName: String, reason: String, userId: String): Boolean {
-        val existing = inventoryDao.getItemById(itemId) ?: return false
+    suspend fun sendItemToRepair(itemId: String, technicianName: String, reason: String, userId: String): Boolean {
+        val existing = getItemById(itemId) ?: return false
         val updated = existing.copy(
             isUnderRepair = true,
             technicianName = technicianName,
             repairReason = reason
         )
-        inventoryDao.updateItem(updated)
+        db.collection("inventory_items").document(itemId).set(updated).await()
 
-        // History
         val history = HistoryEvent(
+            id = UUID.randomUUID().toString(),
             actionType = "REPAIR_SENT",
             serialNumber = existing.serialNumber,
             model = existing.model,
@@ -262,22 +293,21 @@ class InventoryRepository(
             userId = userId,
             extraDetails = "Technician: $technicianName, Reason: $reason"
         )
-        historyDao.insertEvent(history)
+        db.collection("history_events").document(history.id).set(history).await()
         return true
     }
 
-    // Return item from repair back to main inventory
-    suspend fun returnItemFromRepair(itemId: Int, userId: String): Boolean {
-        val existing = inventoryDao.getItemById(itemId) ?: return false
+    suspend fun returnItemFromRepair(itemId: String, userId: String): Boolean {
+        val existing = getItemById(itemId) ?: return false
         val updated = existing.copy(
             isUnderRepair = false,
             technicianName = null,
             repairReason = null
         )
-        inventoryDao.updateItem(updated)
+        db.collection("inventory_items").document(itemId).set(updated).await()
 
-        // History
         val history = HistoryEvent(
+            id = UUID.randomUUID().toString(),
             actionType = "REPAIR_RETURNED",
             serialNumber = existing.serialNumber,
             model = existing.model,
@@ -292,16 +322,15 @@ class InventoryRepository(
             userId = userId,
             extraDetails = "Technician responsible was: " + (existing.technicianName ?: "Unknown")
         )
-        historyDao.insertEvent(history)
+        db.collection("history_events").document(history.id).set(history).await()
         return true
     }
 
-    // Edit item details
     suspend fun updateInventoryItem(item: InventoryItem, userId: String): Boolean {
-        inventoryDao.updateItem(item)
+        db.collection("inventory_items").document(item.id).set(item).await()
 
-        // Save a history event of the edit
         val history = HistoryEvent(
+            id = UUID.randomUUID().toString(),
             actionType = "EDIT",
             serialNumber = item.serialNumber,
             model = item.model,
@@ -315,17 +344,16 @@ class InventoryRepository(
             photoUri = item.photoUri,
             userId = userId
         )
-        historyDao.insertEvent(history)
+        db.collection("history_events").document(history.id).set(history).await()
         return true
     }
 
-    // Delete item details
-    suspend fun deleteInventoryItem(itemId: Int, userId: String): Boolean {
-        val existing = inventoryDao.getItemById(itemId) ?: return false
-        inventoryDao.deleteItem(existing)
+    suspend fun deleteInventoryItem(itemId: String, userId: String): Boolean {
+        val existing = getItemById(itemId) ?: return false
+        db.collection("inventory_items").document(itemId).delete().await()
 
-        // Add to history stream
         val history = HistoryEvent(
+            id = UUID.randomUUID().toString(),
             actionType = "DELETE",
             serialNumber = existing.serialNumber,
             model = existing.model,
@@ -339,16 +367,22 @@ class InventoryRepository(
             photoUri = existing.photoUri,
             userId = userId
         )
-        historyDao.insertEvent(history)
+        db.collection("history_events").document(history.id).set(history).await()
         return true
     }
 
-    // Get filtered history flow
     fun searchHistory(imei: String): Flow<List<HistoryEvent>> {
         return if (imei.isBlank()) {
             allHistoryEvents
         } else {
-            historyDao.getEventsByImeiFlow(imei)
+            callbackFlow {
+                val sub = db.collection("history_events").whereEqualTo("serialNumber", imei).addSnapshotListener { snap, err ->
+                    if (snap != null) {
+                        trySend(snap.documents.mapNotNull { it.toObject(HistoryEvent::class.java) })
+                    }
+                }
+                awaitClose { sub.remove() }
+            }
         }
     }
 }

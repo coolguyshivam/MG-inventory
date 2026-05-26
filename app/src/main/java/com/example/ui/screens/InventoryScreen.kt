@@ -559,7 +559,7 @@ fun InventoryCardItem(
                     .padding(12.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Photo Placeholder
+                // Photo
                 Box(
                     modifier = Modifier
                         .size(80.dp)
@@ -568,12 +568,21 @@ fun InventoryCardItem(
                         .border(1.dp, if (isRepair) Color(0xFFFEF3C7) else Color.Transparent, RoundedCornerShape(16.dp)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = if (isRepair) Icons.Default.BuildCircle else Icons.Default.Smartphone,
-                        contentDescription = "Simulated product photo",
-                        tint = if (isRepair) Color(0xFFFCD34D) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f), // amber-300 or slate-300
-                        modifier = Modifier.size(36.dp)
-                    )
+                    if (item.photoUri != null && item.photoUri.isNotBlank() && !item.photoUri.startsWith("ic_")) {
+                        coil.compose.AsyncImage(
+                            model = item.photoUri,
+                            contentDescription = "Item Photo",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                        )
+                    } else {
+                        Icon(
+                            imageVector = if (isRepair) Icons.Default.BuildCircle else Icons.Default.Smartphone,
+                            contentDescription = "Simulated product photo",
+                            tint = if (isRepair) Color(0xFFFCD34D) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f), // amber-300 or slate-300
+                            modifier = Modifier.size(36.dp)
+                        )
+                    }
                 }
 
                 // Info Column (IMEI & Model ALWAYS on top - Rule 8)

@@ -421,12 +421,36 @@ fun HistoryRowItem(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text(
-                        text = "IMEI: ${event.serialNumber}",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(bottom = 2.dp)
+                    ) {
+                        Text(
+                            text = "IMEI: ${event.serialNumber}",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        val clipboardContext = androidx.compose.ui.platform.LocalContext.current
+                        IconButton(
+                            onClick = {
+                                val clip = android.content.ClipData.newPlainText("IMEI", event.serialNumber)
+                                val clipboardManager = clipboardContext.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                clipboardManager.setPrimaryClip(clip)
+                                android.widget.Toast.makeText(clipboardContext, "IMEI Copied", android.widget.Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier
+                                .size(24.dp)
+                                .padding(start = 4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = "Copy IMEI",
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
                     Text(
                         text = "Qty: ${event.quantity} units",
                         style = MaterialTheme.typography.bodySmall,
