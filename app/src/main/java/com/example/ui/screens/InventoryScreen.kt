@@ -165,6 +165,36 @@ fun InventoryScreen(viewModel: StockViewModel) {
                     .testTag("inventory_search_bar")
             )
 
+            val scannerContext = androidx.compose.ui.platform.LocalContext.current
+            IconButton(
+                onClick = {
+                    val scanner = com.google.mlkit.vision.codescanner.GmsBarcodeScanning.getClient(scannerContext)
+                    scanner.startScan()
+                        .addOnSuccessListener { barcode ->
+                            barcode.rawValue?.let { scannedImei ->
+                                viewModel.setInventorySearchTerm(scannedImei)
+                            }
+                        }
+                        .addOnFailureListener {
+                            android.widget.Toast.makeText(scannerContext, "Barcode scan failed", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                },
+                colors = IconButtonDefaults.iconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                ),
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .testTag("inventory_scanner_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.QrCodeScanner,
+                    contentDescription = "Start scanning",
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+
             // Filters & Sort options dropdown
             Box {
                 IconButton(

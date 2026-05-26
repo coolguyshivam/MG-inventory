@@ -48,6 +48,12 @@ class MainActivity : FragmentActivity() {
 
         // Initialize Firebase dynamically if keys are configured
         com.example.data.repository.FirebaseSyncManager.initialize(applicationContext)
+        
+        try {
+            com.google.firebase.auth.FirebaseAuth.getInstance().signInAnonymously()
+        } catch (e: Exception) {
+            // Ignore if Firebase Auth is not available
+        }
 
         repository = InventoryRepository()
 

@@ -60,6 +60,16 @@ object FirebaseSyncManager {
                     firestoreInstance = FirebaseFirestore.getInstance()
                     isInitialized = true
                     Log.d("FirebaseSyncManager", "Firebase initialized successfully dynamic!")
+                    
+                    // Attempt Anonymous Sign-in for Firestore Auth rules
+                    com.google.firebase.auth.FirebaseAuth.getInstance().signInAnonymously()
+                        .addOnCompleteListener { task ->
+                            if (task.isSuccessful) {
+                                Log.d("FirebaseSyncManager", "signInAnonymously:success")
+                            } else {
+                                Log.w("FirebaseSyncManager", "signInAnonymously:failure", task.exception)
+                            }
+                        }
                 } else {
                     Log.d("FirebaseSyncManager", "Firebase configurations missing/placeholders. Local mode.")
                 }

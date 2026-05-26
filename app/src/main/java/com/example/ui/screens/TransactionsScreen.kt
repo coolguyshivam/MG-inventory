@@ -654,7 +654,11 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                                     val uri = createTempImageUri()
                                     if (uri != null) {
                                         tempCameraUriState.value = uri
-                                        cameraLauncher.launch(uri)
+                                        try {
+                                            cameraLauncher.launch(uri)
+                                        } catch (e: Exception) {
+                                            android.widget.Toast.makeText(context, "No camera app found", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
                                     } else {
                                         val currentUris = viewModel.photoUriInput.value
                                         val urisArray = if (currentUris.isNullOrBlank()) emptyList() else currentUris.split(",")
@@ -699,9 +703,13 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    galleryLauncher.launch(
-                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                    )
+                                    try {
+                                        galleryLauncher.launch(
+                                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                        )
+                                    } catch (e: Exception) {
+                                        android.widget.Toast.makeText(context, "No gallery app found", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
                                     showPhotoChooserDialog = false
                                 }
                         ) {

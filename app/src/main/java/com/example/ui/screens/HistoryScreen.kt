@@ -134,8 +134,20 @@ fun HistoryScreen(viewModel: StockViewModel) {
             )
 
             // Tactile scanner button
+            val scannerContext = androidx.compose.ui.platform.LocalContext.current
             IconButton(
-                onClick = { showScannerDialog = true },
+                onClick = { 
+                    val scanner = com.google.mlkit.vision.codescanner.GmsBarcodeScanning.getClient(scannerContext)
+                    scanner.startScan()
+                        .addOnSuccessListener { barcode ->
+                            barcode.rawValue?.let { scannedImei ->
+                                viewModel.setHistorySearchTerm(scannedImei)
+                            }
+                        }
+                        .addOnFailureListener {
+                            android.widget.Toast.makeText(scannerContext, "Barcode scan failed", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                },
                 colors = IconButtonDefaults.iconButtonColors(
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer
