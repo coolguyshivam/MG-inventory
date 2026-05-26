@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
@@ -76,7 +77,7 @@ fun TransactionsScreen(viewModel: StockViewModel) {
         when (activeSelection) {
             0 -> Triple(Color(0xFF3B82F6), "INBOUND PURCHASE", Icons.Default.ShoppingCart)
             1 -> Triple(Color(0xFF10B981), "OUTBOUND SALE", Icons.Default.Sell)
-            2 -> Triple(Color(0xFF9333EA), "PRODUCT RETURN", Icons.Default.AssignmentReturn)
+            2 -> Triple(Color(0xFF9333EA), "PRODUCT RETURN", Icons.AutoMirrored.Filled.AssignmentReturn)
             else -> Triple(Color(0xFFEAB308), "REPAIR SUBMISSION", Icons.Default.Build)
         }
     }

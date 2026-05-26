@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -241,7 +242,7 @@ fun MainAppContent(viewModel: StockViewModel) {
                 tabsItems.add(Triple(0, "Inventory", Icons.Default.Inventory))
                 
                 if (canManageInventory || canSell) {
-                    tabsItems.add(Triple(1, "Transactions", Icons.Default.Send))
+                    tabsItems.add(Triple(1, "Transactions", Icons.AutoMirrored.Filled.Send))
                 }
                 if (canViewAnalytics) {
                     tabsItems.add(Triple(2, "Analytics", Icons.Default.Assessment))

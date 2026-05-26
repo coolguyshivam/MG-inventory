@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -299,10 +300,10 @@ fun HistoryRowItem(
     val actionPalette = remember(event.actionType) {
         when (event.actionType) {
             "PURCHASE" -> Triple(TransactionColors.PurchaseBlue, "PURCHASED INBOUND", Icons.Default.AddShoppingCart)
-            "SALE" -> Triple(TransactionColors.SaleGreen, "SOLD OUTBOUND", Icons.Default.OfflineShare)
+            "SALE" -> Triple(TransactionColors.SaleGreen, "SOLD OUTBOUND", Icons.AutoMirrored.Filled.OfflineShare)
             "REPAIR_SENT" -> Triple(TransactionColors.RepairYellow, "SENT OUT TO REPAIR", Icons.Default.Build)
             "REPAIR_RETURNED" -> Triple(TransactionColors.RepairYellow, "REPAIRED BACK", Icons.Default.BuildCircle)
-            "RETURN" -> Triple(TransactionColors.ReturnPurple, "PRODUCT RETURNED", Icons.Default.KeyboardReturn)
+            "RETURN" -> Triple(TransactionColors.ReturnPurple, "PRODUCT RETURNED", Icons.AutoMirrored.Filled.KeyboardReturn)
             "EDIT" -> Triple(TransactionColors.EditPink, "PRODUCT EDITED", Icons.Default.Edit)
             "DELETE" -> Triple(TransactionColors.DeleteRed, "PRODUCT DELETED", Icons.Default.DeleteForever)
             else -> Triple(Color.Gray, "SYSTEM LOG", Icons.Default.History)

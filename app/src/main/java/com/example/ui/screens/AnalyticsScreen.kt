@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -86,7 +87,7 @@ fun AnalyticsScreen(viewModel: StockViewModel) {
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
                     Icon(
-                        imageVector = Icons.Default.TrendingUp,
+                        imageVector = Icons.AutoMirrored.Filled.TrendingUp,
                         contentDescription = "Monetary trending indicator",
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(24.dp)
