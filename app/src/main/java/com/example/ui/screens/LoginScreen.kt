@@ -102,7 +102,7 @@ fun LoginScreen(viewModel: StockViewModel) {
                 }
                 
                 Text(
-                    text = "STOCK GATE",
+                    text = "MOBILE GALLERY",
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.ExtraBold,
                     color = MaterialTheme.colorScheme.onBackground,
@@ -110,7 +110,7 @@ fun LoginScreen(viewModel: StockViewModel) {
                 )
 
                 Text(
-                    text = "Professional Inventory Guardian",
+                    text = "Smartphones & Gadgets Inventory Suite",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
                     textAlign = TextAlign.Center

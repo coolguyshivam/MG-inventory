@@ -41,17 +41,22 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 class MainActivity : ComponentActivity() {
+    private lateinit var database: AppDatabase
+    private lateinit var repository: InventoryRepository
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent {
-            // Initialize database & repository singletons locally
-            val context = LocalContext.current
-            val database = remember { AppDatabase.getDatabase(context) }
-            val repository = remember {
-                InventoryRepository(database.inventoryDao(), database.historyDao(), database.userDao())
-            }
 
+        // Initialize database & repository singletons safely at activity scope
+        database = AppDatabase.getDatabase(applicationContext)
+        repository = InventoryRepository(
+            database.inventoryDao(),
+            database.historyDao(),
+            database.userDao()
+        )
+
+        setContent {
             // Instantiate StockViewModel
             val stockViewModel: StockViewModel = viewModel(
                 factory = ViewModelFactory(repository)
@@ -124,7 +129,7 @@ fun MainAppContent(viewModel: StockViewModel) {
                             }
                             Column {
                                 Text(
-                                    text = "Inventory",
+                                    text = "Mobile Gallery",
                                     style = MaterialTheme.typography.titleLarge,
                                     fontWeight = FontWeight.SemiBold,
                                     letterSpacing = (-0.5).sp,

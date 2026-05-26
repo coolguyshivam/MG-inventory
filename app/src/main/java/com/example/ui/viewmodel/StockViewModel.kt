@@ -159,32 +159,40 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
 
         // Collect modern combination of selection state category and search serial input
         viewModelScope.launch {
-            combine(serialNumberInput, _transactionSelection) { sn, selection ->
-                Pair(sn, selection)
-            }.collect { (sn, selection) ->
-                val trimmedSn = sn.trim()
-                if (trimmedSn.isNotBlank()) {
-                    val matchingItem = repository.getItemBySerialNumber(trimmedSn)
-                    if (matchingItem != null) {
-                        if (selection == 1) { // SALE Category
-                            // Rule 7: Model number should autofill, but other fields should be empty.
-                            modelInput.value = matchingItem.model
-                            nameInput.value = ""
-                            phoneInput.value = ""
-                            aadhaarInput.value = ""
-                            amountInput.value = ""
-                            descriptionInput.value = ""
-                        } else if (selection == 2) { // RETURN Category
-                            // Rule 7: For returns, all details should be copied.
-                            modelInput.value = matchingItem.model
-                            nameInput.value = matchingItem.name
-                            phoneInput.value = matchingItem.phoneNumber ?: ""
-                            aadhaarInput.value = matchingItem.aadhaarNumber ?: ""
-                            amountInput.value = matchingItem.amount.toString()
-                            descriptionInput.value = matchingItem.description
+            try {
+                combine(serialNumberInput, _transactionSelection) { sn, selection ->
+                    Pair(sn, selection)
+                }.collect { (sn, selection) ->
+                    try {
+                        val trimmedSn = sn.trim()
+                        if (trimmedSn.isNotBlank()) {
+                            val matchingItem = repository.getItemBySerialNumber(trimmedSn)
+                            if (matchingItem != null) {
+                                if (selection == 1) { // SALE Category
+                                    // Rule 7: Model number should autofill, but other fields should be empty.
+                                    modelInput.value = matchingItem.model
+                                    nameInput.value = ""
+                                    phoneInput.value = ""
+                                    aadhaarInput.value = ""
+                                    amountInput.value = ""
+                                    descriptionInput.value = ""
+                                } else if (selection == 2) { // RETURN Category
+                                    // Rule 7: For returns, all details should be copied.
+                                    modelInput.value = matchingItem.model
+                                    nameInput.value = matchingItem.name
+                                    phoneInput.value = matchingItem.phoneNumber ?: ""
+                                    aadhaarInput.value = matchingItem.aadhaarNumber ?: ""
+                                    amountInput.value = matchingItem.amount.toString()
+                                    descriptionInput.value = matchingItem.description
+                                }
+                            }
                         }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
                     }
                 }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
     }

@@ -25,7 +25,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "stock_inventory_database"
                 )
-                .fallbackToDestructiveMigration(dropAllTables = true)
+                .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance
                 instance
