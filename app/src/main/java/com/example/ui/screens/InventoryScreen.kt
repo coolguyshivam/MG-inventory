@@ -568,9 +568,10 @@ fun InventoryCardItem(
                         .border(1.dp, if (isRepair) Color(0xFFFEF3C7) else Color.Transparent, RoundedCornerShape(16.dp)),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (item.photoUri != null && item.photoUri.isNotBlank() && !item.photoUri.startsWith("ic_")) {
+                    val firstPhoto = item.photoUri?.split(",")?.firstOrNull()
+                    if (firstPhoto != null && firstPhoto.isNotBlank() && !firstPhoto.startsWith("ic_")) {
                         coil.compose.AsyncImage(
-                            model = item.photoUri,
+                            model = firstPhoto,
                             contentDescription = "Item Photo",
                             modifier = Modifier.fillMaxSize(),
                             contentScale = androidx.compose.ui.layout.ContentScale.Crop
@@ -756,6 +757,31 @@ fun InventoryCardItem(
                     )
 
                     HorizontalDivider()
+
+                    if (!item.photoUri.isNullOrBlank()) {
+                        val photos = item.photoUri.split(",").filter { it.isNotBlank() && !it.startsWith("ic_") }
+                        if (photos.isNotEmpty()) {
+                            Text("Photos (${photos.size}):", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(photos.size, key = { it }) { index ->
+                                    val uri = photos[index]
+                                    Box(
+                                        modifier = Modifier
+                                            .size(80.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
+                                    ) {
+                                        coil.compose.AsyncImage(
+                                            model = uri,
+                                            contentDescription = "Additional Photo $index",
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
 
                     // Rule 8: Rest details like Product Name here in show more section
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

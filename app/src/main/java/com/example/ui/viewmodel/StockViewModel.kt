@@ -457,40 +457,64 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
     // --- Actions under Inventory cards ---
     fun markItemForRepair(itemId: String, technician: String, reason: String) {
         viewModelScope.launch {
-            _isSyncing.value = true
-            val success = repository.sendItemToRepair(itemId, technician, reason, _loggedInUser.value?.username ?: "admin")
-            if (success) {
-                triggerCloudSync()
+            try {
+                _isSyncing.value = true
+                val success = repository.sendItemToRepair(itemId, technician, reason, _loggedInUser.value?.username ?: "admin")
+                if (success) {
+                    triggerCloudSync()
+                }
+            } catch (e: Exception) {
+                Log.e("StockViewModel", "Error marking repair", e)
+            } finally {
+                _isSyncing.value = false
             }
         }
     }
 
     fun resolveRepairItem(itemId: String) {
         viewModelScope.launch {
-            _isSyncing.value = true
-            val success = repository.returnItemFromRepair(itemId, _loggedInUser.value?.username ?: "admin")
-            if (success) {
-                triggerCloudSync()
+            try {
+                _isSyncing.value = true
+                val success = repository.returnItemFromRepair(itemId, _loggedInUser.value?.username ?: "admin")
+                if (success) {
+                    triggerCloudSync()
+                }
+            } catch (e: Exception) {
+                Log.e("StockViewModel", "Error resolving repair", e)
+            } finally {
+                _isSyncing.value = false
             }
         }
     }
 
     fun editInventoryItem(itemId: String, updatedItem: InventoryItem) {
         viewModelScope.launch {
-            _isSyncing.value = true
-            val success = repository.updateInventoryItem(updatedItem, _loggedInUser.value?.username ?: "admin")
-            if (success) {
-                triggerCloudSync()
+            try {
+                _isSyncing.value = true
+                val success = repository.updateInventoryItem(updatedItem, _loggedInUser.value?.username ?: "admin")
+                if (success) {
+                    triggerCloudSync()
+                }
+            } catch (e: Exception) {
+                Log.e("StockViewModel", "Error editing item", e)
+            } finally {
+                _isSyncing.value = false
             }
         }
     }
 
     fun deleteInventoryItem(itemId: String) {
         viewModelScope.launch {
-            _isSyncing.value = true
-            val success = repository.deleteInventoryItem(itemId, _loggedInUser.value?.username ?: "admin")
-            if (success) {
-                triggerCloudSync()
+            try {
+                _isSyncing.value = true
+                val success = repository.deleteInventoryItem(itemId, _loggedInUser.value?.username ?: "admin")
+                if (success) {
+                    triggerCloudSync()
+                }
+            } catch (e: Exception) {
+                Log.e("StockViewModel", "Error deleting item", e)
+            } finally {
+                _isSyncing.value = false
             }
         }
     }
@@ -603,14 +627,15 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
         }
 
         viewModelScope.launch {
-            _isUploadingTransaction.value = true
-            _transactionError.value = null
-            delay(1500) // simulation latency so user sees loading flow
+            try {
+                _isUploadingTransaction.value = true
+                _transactionError.value = null
+                delay(1500) // simulation latency so user sees loading flow
 
-            val activeUser = _loggedInUser.value?.username ?: "admin"
-            var success = false
+                val activeUser = _loggedInUser.value?.username ?: "admin"
+                var success = false
 
-            when (typeId) {
+                when (typeId) {
                 0 -> { // Purchase
                     val existing = repository.getItemBySerialNumber(serialNumber)
                     if (existing != null && (existing.quantity > 0 || existing.isUnderRepair)) {
@@ -699,12 +724,18 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                 }
             }
 
-            _isUploadingTransaction.value = false
-            if (success) {
-                resetTransactionForm()
-                triggerCloudSync()
-            } else {
-                _transactionError.value = "Failed to finalize database query record. Check parameters."
+                _isUploadingTransaction.value = false
+                if (success) {
+                    resetTransactionForm()
+                    triggerCloudSync()
+                } else {
+                    _transactionError.value = "Failed to finalize database query record. Check parameters."
+                }
+            } catch (e: Exception) {
+                Log.e("StockViewModel", "Error in transaction", e)
+                _transactionError.value = "Transaction failed: ${e.message}"
+            } finally {
+                _isUploadingTransaction.value = false
             }
         }
     }

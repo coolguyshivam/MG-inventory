@@ -51,8 +51,14 @@ fun TransactionsScreen(viewModel: StockViewModel) {
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri != null) {
-            viewModel.photoUriInput.value = uri.toString()
-            Toast.makeText(context, "Gallery Image Linked!", Toast.LENGTH_SHORT).show()
+            val currentUris = viewModel.photoUriInput.value
+            val urisArray = if (currentUris.isNullOrBlank()) emptyList() else currentUris.split(",")
+            if (urisArray.size < 10) {
+                viewModel.photoUriInput.value = (urisArray + uri.toString()).joinToString(",")
+                Toast.makeText(context, "Gallery Image Linked!", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(context, "Maximum 10 photos allowed", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -61,8 +67,14 @@ fun TransactionsScreen(viewModel: StockViewModel) {
     ) { success ->
         if (success) {
             tempCameraUriState.value?.let { uri ->
-                viewModel.photoUriInput.value = uri.toString()
-                Toast.makeText(context, "Camera Snapshot Attached!", Toast.LENGTH_SHORT).show()
+                val currentUris = viewModel.photoUriInput.value
+                val urisArray = if (currentUris.isNullOrBlank()) emptyList() else currentUris.split(",")
+                if (urisArray.size < 10) {
+                    viewModel.photoUriInput.value = (urisArray + uri.toString()).joinToString(",")
+                    Toast.makeText(context, "Camera Snapshot Attached!", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "Maximum 10 photos allowed", Toast.LENGTH_SHORT).show()
+                }
             }
         } else {
             Toast.makeText(context, "Camera capture cancelled or failed.", Toast.LENGTH_SHORT).show()
@@ -447,6 +459,7 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                     }
                 }
 
+                val photoCount = if (photoUri.isNullOrBlank()) 0 else photoUri!!.split(",").size
                 // Photo Selection card (Simulates camera click or choose from Gallery nicely with design options)
                 Card(
                     modifier = Modifier
@@ -454,11 +467,11 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                         .clickable { showPhotoChooserDialog = true }
                         .border(
                             width = 1.dp,
-                            color = if (photoUri != null) themeColorAndLabel.first else MaterialTheme.colorScheme.outlineVariant,
+                            color = if (photoCount > 0) themeColorAndLabel.first else MaterialTheme.colorScheme.outlineVariant,
                             shape = RoundedCornerShape(14.dp)
                         ),
                     colors = CardDefaults.cardColors(
-                        containerColor = if (photoUri != null) themeColorAndLabel.first.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface
+                        containerColor = if (photoCount > 0) themeColorAndLabel.first.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface
                     )
                 ) {
                     Column(
@@ -469,19 +482,19 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                         verticalArrangement = Arrangement.Center
                     ) {
                         Icon(
-                            imageVector = if (photoUri != null) Icons.Default.AddPhotoAlternate else Icons.Default.CameraAlt,
+                            imageVector = if (photoCount > 0) Icons.Default.AddPhotoAlternate else Icons.Default.CameraAlt,
                             contentDescription = "Camera picker icon",
-                            tint = if (photoUri != null) themeColorAndLabel.first else MaterialTheme.colorScheme.onSurfaceVariant,
+                            tint = if (photoCount > 0) themeColorAndLabel.first else MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(24.dp)
                         )
                         Text(
-                            text = if (photoUri != null) "Photo Selected" else "Attach Photo *",
+                            text = if (photoCount > 0) "$photoCount Photos Added" else "Attach Photo(s)",
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Bold,
-                            color = if (photoUri != null) themeColorAndLabel.first else MaterialTheme.colorScheme.onSurfaceVariant
+                            color = if (photoCount > 0) themeColorAndLabel.first else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = if (photoUri != null) photoUri!! else "Camera/Gallery",
+                            text = if (photoCount > 0) "(Tap to add more, max 10)" else "Camera/Gallery",
                             style = MaterialTheme.typography.labelSmall,
                             fontSize = 9.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
@@ -643,8 +656,14 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                                         tempCameraUriState.value = uri
                                         cameraLauncher.launch(uri)
                                     } else {
-                                        viewModel.photoUriInput.value = "camera_snapshot.jpg"
-                                        android.widget.Toast.makeText(context, "Clicked Photo via Camera (Demo)!", android.widget.Toast.LENGTH_SHORT).show()
+                                        val currentUris = viewModel.photoUriInput.value
+                                        val urisArray = if (currentUris.isNullOrBlank()) emptyList() else currentUris.split(",")
+                                        if (urisArray.size < 10) {
+                                            viewModel.photoUriInput.value = (urisArray + "camera_snapshot.jpg").joinToString(",")
+                                            android.widget.Toast.makeText(context, "Clicked Photo via Camera (Demo)!", android.widget.Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            android.widget.Toast.makeText(context, "Maximum 10 photos allowed", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
                                     }
                                     showPhotoChooserDialog = false
                                 }

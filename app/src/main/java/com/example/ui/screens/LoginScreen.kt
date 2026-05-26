@@ -237,12 +237,16 @@ fun LoginScreen(viewModel: StockViewModel) {
                         )
                     }
 
-                    // Visual OR separator
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
+                    // Check if biometric user is registered
+                    val hasBiometricUser = remember { viewModel.getBiometricRegisteredUser(appContext) != null }
+                    
+                    if (hasBiometricUser) {
+                        // Visual OR separator
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
                         HorizontalDivider(modifier = Modifier.weight(1f))
                         Text(
                             text = "OR",
@@ -309,6 +313,7 @@ fun LoginScreen(viewModel: StockViewModel) {
                             )
                         }
                     }
+                }
                 }
             }
 
