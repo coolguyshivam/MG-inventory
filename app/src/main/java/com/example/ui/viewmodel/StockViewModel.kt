@@ -11,6 +11,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
+data class Partner(
+    val name: String,
+    val phone: String,
+    val aadhaar: String
+)
+
 class StockViewModel(private val repository: InventoryRepository) : ViewModel() {
 
     // --- Theme State (Default to Light Theme) ---
@@ -38,7 +44,8 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
     val canManageUsers = _loggedInUser.map { it?.role == "Admin" }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val canManageInventory = _loggedInUser.map { it?.role in listOf("Admin", "Manager", "Operator") }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val canRepair = _loggedInUser.map { it?.role in listOf("Admin", "Manager", "Operator") }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
-    val canViewAnalytics = _loggedInUser.map { it?.role in listOf("Admin", "Manager", "MIS", "Sales") }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    val canViewAnalytics = _loggedInUser.map { it?.role == "Admin" }.stateIn(viewModelScope, SharingStarted.Eagerly, false) // Restricted to Admin Only
+    val canSeePrice = _loggedInUser.map { it?.role in listOf("Admin", "Manager") }.stateIn(viewModelScope, SharingStarted.Eagerly, false) // Restricted to Admin & Manager
     val canSell = _loggedInUser.map { it?.role in listOf("Admin", "Manager", "Sales") }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val canDelete = _loggedInUser.map { it?.role in listOf("Admin", "Manager") }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
@@ -112,18 +119,70 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
     private val _transactionSuccessMessage = MutableStateFlow<String?>(null)
     val transactionSuccessMessage: StateFlow<String?> = _transactionSuccessMessage.asStateFlow()
 
-    // --- Search autofit tracking ---
+    // --- Regular Partners/Vendors & Ledger auto-population list ---
+    val regularPartners = listOf(
+        Partner("Shrinath Telecom", "9876543210", "123456789012"),
+        Partner("Rajat Distributors", "9988776655", "987654321098"),
+        Partner("Ananya Mobile Point", "9123456789", "111122223333"),
+        Partner("Sandeep Enterprises", "7766554433", "444455556666")
+    )
+
+    fun startDirectSale(item: InventoryItem) {
+        _activeTab.value = 1 // Navigate to Transactions
+        _transactionSelection.value = 1 // Choose "Sale" state category
+        serialNumberInput.value = item.serialNumber
+        modelInput.value = item.model
+        // Empty all other fields as per Rule 7 and clean UI criteria
+        nameInput.value = ""
+        phoneInput.value = ""
+        aadhaarInput.value = ""
+        amountInput.value = ""
+        descriptionInput.value = ""
+        quantityInput.value = 1
+        photoUriInput.value = null
+        clearFormErrorAndSuccess()
+    }
+
+    // --- Search autofit tracking (Rule 7 logic & reactivity) ---
     init {
-        // Automatically fetch details when serialNumber is scanned or typed in Sales or Returns
+        // Seed initial admin user eagerly so biometric and standard logins are fully functional instantly
         viewModelScope.launch {
-            serialNumberInput.collect { sn ->
-                if (sn.isNotBlank() && (_transactionSelection.value == 1 || _transactionSelection.value == 2)) {
-                    val matchingItem = repository.getItemBySerialNumber(sn.trim())
+            try {
+                val count = repository.getUserCount()
+                if (count == 0) {
+                    repository.insertUser(User("admin", "admin", "Admin"))
+                }
+            } catch (e: Exception) {
+                // Safe exception catch during database startup
+            }
+        }
+
+        // Collect modern combination of selection state category and search serial input
+        viewModelScope.launch {
+            combine(serialNumberInput, _transactionSelection) { sn, selection ->
+                Pair(sn, selection)
+            }.collect { (sn, selection) ->
+                val trimmedSn = sn.trim()
+                if (trimmedSn.isNotBlank()) {
+                    val matchingItem = repository.getItemBySerialNumber(trimmedSn)
                     if (matchingItem != null) {
-                        modelInput.value = matchingItem.model
-                        nameInput.value = matchingItem.name
-                        amountInput.value = matchingItem.amount.toString()
-                        descriptionInput.value = matchingItem.description
+                        if (selection == 1) { // SALE Category
+                            // Rule 7: Model number should autofill, but other fields should be empty.
+                            modelInput.value = matchingItem.model
+                            nameInput.value = ""
+                            phoneInput.value = ""
+                            aadhaarInput.value = ""
+                            amountInput.value = ""
+                            descriptionInput.value = ""
+                        } else if (selection == 2) { // RETURN Category
+                            // Rule 7: For returns, all details should be copied.
+                            modelInput.value = matchingItem.model
+                            nameInput.value = matchingItem.name
+                            phoneInput.value = matchingItem.phoneNumber ?: ""
+                            aadhaarInput.value = matchingItem.aadhaarNumber ?: ""
+                            amountInput.value = matchingItem.amount.toString()
+                            descriptionInput.value = matchingItem.description
+                        }
                     }
                 }
             }
@@ -148,56 +207,64 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
     // --- Auth Actions ---
     fun login(usernameStr: String, passwordStr: String) {
         viewModelScope.launch {
-            val username = usernameStr.trim()
-            val user = repository.getUserByUsername(username)
-            
-            if (user != null) {
-                if (user.passwordHash == passwordStr) {
-                    _isLoggedIn.value = true
-                    _loggedInUser.value = user
-                    _loginError.value = null
-                    _activeTab.value = 0
-                    triggerCloudSync()
+            try {
+                val username = usernameStr.trim()
+                val user = repository.getUserByUsername(username)
+                
+                if (user != null) {
+                    if (user.passwordHash == passwordStr) {
+                        _isLoggedIn.value = true
+                        _loggedInUser.value = user
+                        _loginError.value = null
+                        _activeTab.value = 0
+                        triggerCloudSync()
+                    } else {
+                        _loginError.value = "Invalid username or password."
+                    }
                 } else {
-                    _loginError.value = "Invalid username or password."
+                    // Seed Admin if database has no users and admin/admin is tried
+                    val userCount = repository.getUserCount()
+                    if (userCount == 0 && username == "admin" && passwordStr == "admin") {
+                        val adminUser = User("admin", "admin", "Admin")
+                        repository.insertUser(adminUser)
+                        _isLoggedIn.value = true
+                        _loggedInUser.value = adminUser
+                        _loginError.value = null
+                        _activeTab.value = 0
+                        triggerCloudSync()
+                    } else {
+                        _loginError.value = "User not found or invalid credentials."
+                    }
                 }
-            } else {
-                // Seed Admin if database has no users and admin/admin is tried
-                val userCount = repository.getUserCount()
-                if (userCount == 0 && username == "admin" && passwordStr == "admin") {
-                    val adminUser = User("admin", "admin", "Admin")
-                    repository.insertUser(adminUser)
-                    _isLoggedIn.value = true
-                    _loggedInUser.value = adminUser
-                    _loginError.value = null
-                    _activeTab.value = 0
-                    triggerCloudSync()
-                } else {
-                    _loginError.value = "User not found or invalid credentials."
-                }
+            } catch (e: Exception) {
+                _loginError.value = "Sign-in error: ${e.message}"
             }
         }
     }
 
     fun biometricLogin() {
         viewModelScope.launch {
-            var user = repository.getUserByUsername("admin")
-            if (user == null) {
-                val userCount = repository.getUserCount()
-                if (userCount == 0) {
-                    val adminUser = User("admin", "admin", "Admin")
-                    repository.insertUser(adminUser)
-                    user = adminUser
+            try {
+                var user = repository.getUserByUsername("admin")
+                if (user == null) {
+                    val userCount = repository.getUserCount()
+                    if (userCount == 0) {
+                        val adminUser = User("admin", "admin", "Admin")
+                        repository.insertUser(adminUser)
+                        user = adminUser
+                    }
                 }
-            }
-            if (user != null) {
-                _isLoggedIn.value = true
-                _loggedInUser.value = user
-                _loginError.value = null
-                _activeTab.value = 0
-                triggerCloudSync()
-            } else {
-                _loginError.value = "Default administrator user could not be initialized."
+                if (user != null) {
+                    _isLoggedIn.value = true
+                    _loggedInUser.value = user
+                    _loginError.value = null
+                    _activeTab.value = 0
+                    triggerCloudSync()
+                } else {
+                    _loginError.value = "Default administrator user could not be initialized."
+                }
+            } catch (e: Exception) {
+                _loginError.value = "Biometric authentication failed: ${e.message}"
             }
         }
     }
@@ -389,6 +456,31 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
             return
         }
 
+        // IMEI - exactly 15 numeric digits (Rule 3)
+        if (!serialNumber.matches(Regex("^\\d{15}$"))) {
+            _transactionError.value = "IMEI must be exactly 15 numeric digits."
+            return
+        }
+
+        // Phone - 10 digits starting with 6-9 (Rule 3)
+        if (phone.isNotBlank() && !phone.matches(Regex("^[6-9]\\d{9}$"))) {
+            _transactionError.value = "Phone number must be optional or a valid 10-digit number starting with 6-9."
+            return
+        }
+
+        // Aadhaar - exactly 12 numeric digits (Rule 3)
+        if (aadhaar.isNotBlank() && !aadhaar.matches(Regex("^\\d{12}$"))) {
+            _transactionError.value = "Aadhaar number must be optional or a valid 12-digit numeric code."
+            return
+        }
+
+        // Selecting future dates is not allowed (Rule 14)
+        val now = System.currentTimeMillis()
+        if (dateInMillis > now + 60_000) { // 1 min buffer
+            _transactionError.value = "Selecting future dates is not allowed."
+            return
+        }
+
         val amount = amountStr.toDoubleOrNull()
         if (amount == null || amount < 0) {
             _transactionError.value = "Amount must be a non-negative number."
@@ -420,6 +512,13 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
 
             when (typeId) {
                 0 -> { // Purchase
+                    val existing = repository.getItemBySerialNumber(serialNumber)
+                    if (existing != null && (existing.quantity > 0 || existing.isUnderRepair)) {
+                        _transactionError.value = "Cannot purchase back: Item with IMEI/Serial '$serialNumber' is already in inventory or repair."
+                        _isUploadingTransaction.value = false
+                        return@launch
+                    }
+
                     success = repository.purchaseProduct(
                         serialNumber = serialNumber,
                         model = model,

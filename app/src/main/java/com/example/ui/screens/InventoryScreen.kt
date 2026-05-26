@@ -39,6 +39,7 @@ import java.util.*
 @Composable
 fun InventoryScreen(viewModel: StockViewModel) {
     val rawItems by viewModel.inventoryItems.collectAsState()
+    val suggestedImeis = remember(rawItems) { rawItems.map { it.serialNumber } }
     val searchWord by viewModel.inventorySearchTerm.collectAsState()
     val activeSubTab by viewModel.inventorySubTab.collectAsState() // 0 = Inventory, 1 = Repair
     val sortOption by viewModel.inventorySortOption.collectAsState()
@@ -48,6 +49,8 @@ fun InventoryScreen(viewModel: StockViewModel) {
     val canManageInventory by viewModel.canManageInventory.collectAsState()
     val canRepair by viewModel.canRepair.collectAsState()
     val canDelete by viewModel.canDelete.collectAsState()
+    val canSeePrice by viewModel.canSeePrice.collectAsState()
+    val canSell by viewModel.canSell.collectAsState()
 
     var showScannerDialog by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
@@ -110,40 +113,49 @@ fun InventoryScreen(viewModel: StockViewModel) {
             OutlinedTextField(
                 value = searchWord,
                 onValueChange = { viewModel.setInventorySearchTerm(it) },
-                placeholder = { Text("Search IMEI or Model...", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                placeholder = { Text("Search IMEI or Model...", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Default.Search,
                         contentDescription = "Search icon",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
                     )
                 },
                 trailingIcon = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (searchWord.isNotEmpty()) {
-                            IconButton(onClick = { viewModel.setInventorySearchTerm("") }) {
+                            IconButton(
+                                onClick = { viewModel.setInventorySearchTerm("") },
+                                modifier = Modifier.size(28.dp)
+                            ) {
                                 Icon(
                                     imageVector = Icons.Default.Close,
-                                    contentDescription = "Clear search term"
+                                    contentDescription = "Clear search term",
+                                    modifier = Modifier.size(16.dp)
                                 )
                             }
                         }
                         IconButton(
                             onClick = { showScannerDialog = true },
-                            modifier = Modifier.testTag("inventory_scanner_button")
+                            modifier = Modifier
+                                .size(28.dp)
+                                .testTag("inventory_scanner_button")
                         ) {
                             Icon(
                                 imageVector = Icons.Default.QrCodeScanner,
                                 contentDescription = "IMEI scanner shortcut",
-                                tint = MaterialTheme.colorScheme.primary
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                     }
                 },
                 singleLine = true,
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(12.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                     focusedContainerColor = MaterialTheme.colorScheme.surface,
                     unfocusedBorderColor = Color.Transparent,
                     focusedBorderColor = MaterialTheme.colorScheme.primary
@@ -158,16 +170,17 @@ fun InventoryScreen(viewModel: StockViewModel) {
                 IconButton(
                     onClick = { showSortMenu = true },
                     modifier = Modifier
-                        .size(48.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .border(1.dp, MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(16.dp))
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .border(1.dp, MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp))
                         .background(MaterialTheme.colorScheme.surface)
                         .testTag("inventory_sort_button")
                 ) {
                     Icon(
                         imageVector = Icons.Default.FilterList,
                         contentDescription = "Filter and Sort categories",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
 
@@ -313,6 +326,8 @@ fun InventoryScreen(viewModel: StockViewModel) {
                         canManageInventory = canManageInventory,
                         canRepair = canRepair,
                         canDelete = canDelete,
+                        canSeePrice = canSeePrice,
+                        canSell = canSell,
                         onCardTapped = { isCardExpanded = !isCardExpanded },
                         onEyeToggled = { viewModel.togglePriceReveal(item.id) },
                         onEditClicked = {
@@ -336,6 +351,9 @@ fun InventoryScreen(viewModel: StockViewModel) {
                         },
                         onDeleteClicked = {
                             viewModel.deleteInventoryItem(item.id)
+                        },
+                        onSellClicked = {
+                            viewModel.startDirectSale(item)
                         }
                     )
                 }
@@ -487,7 +505,8 @@ fun InventoryScreen(viewModel: StockViewModel) {
                 onDismissRequest = { showScannerDialog = false },
                 onBarcodeScanned = { scannedImei ->
                     viewModel.setInventorySearchTerm(scannedImei)
-                }
+                },
+                suggestedImeis = suggestedImeis
             )
         }
     }
@@ -501,13 +520,19 @@ fun InventoryCardItem(
     canManageInventory: Boolean,
     canRepair: Boolean,
     canDelete: Boolean,
+    canSeePrice: Boolean,  // Rule 4
+    canSell: Boolean,      // Rule 6
     onCardTapped: () -> Unit,
     onEyeToggled: () -> Unit,
     onEditClicked: () -> Unit,
     onRepairClicked: () -> Unit,
-    onDeleteClicked: () -> Unit
+    onDeleteClicked: () -> Unit,
+    onSellClicked: () -> Unit // Rule 6
 ) {
     var expandedActionsMenu by remember { mutableStateOf(false) }
+    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+    val context = androidx.compose.ui.platform.LocalContext.current
+
     val formattedDate = remember(item.dateInMillis) {
         val sdf = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
         sdf.format(Date(item.dateInMillis))
@@ -551,7 +576,7 @@ fun InventoryCardItem(
                     )
                 }
 
-                // Info Column
+                // Info Column (IMEI & Model ALWAYS on top - Rule 8)
                 Column(modifier = Modifier.weight(1f)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -559,9 +584,9 @@ fun InventoryCardItem(
                         verticalAlignment = Alignment.Top
                     ) {
                         Text(
-                            text = "${item.name} ${item.model}",
+                            text = "Model: ${item.model}",
                             style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
+                            fontWeight = FontWeight.Black,
                             color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
                             modifier = Modifier.weight(1f).padding(end = 8.dp)
@@ -617,13 +642,30 @@ fun InventoryCardItem(
                         }
                     }
 
-                    Text(
-                        text = "IMEI: ${item.serialNumber}",
-                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 2.dp)
-                    )
+                    // IMEI row with long-press & copy button (Rule 16)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier
+                            .padding(top = 2.dp)
+                            .clickable {
+                                clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(item.serialNumber))
+                                android.widget.Toast.makeText(context, "Copied IMEI: ${item.serialNumber}", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                    ) {
+                        Text(
+                            text = "IMEI: ${item.serialNumber}",
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Icon(
+                            imageVector = Icons.Default.ContentCopy,
+                            contentDescription = "Copy IMEI number",
+                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                            modifier = Modifier.size(13.dp)
+                        )
+                    }
 
                     Row(
                         modifier = Modifier
@@ -632,22 +674,28 @@ fun InventoryCardItem(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text(
-                                text = if (isPriceRevealed) "₹${String.format("%,.0f", item.amount)}" else "₹ •••••",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onBackground
-                            )
-                            Icon(
-                                imageVector = Icons.Outlined.Visibility,
-                                contentDescription = "Toggle pricing lock mask",
-                                modifier = Modifier.size(16.dp).clickable { onEyeToggled() },
-                                tint = MaterialTheme.colorScheme.primary
-                            )
+                        // Display price only if role allows (Rule 4)
+                        if (canSeePrice) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = if (isPriceRevealed) "₹${String.format("%,.0f", item.amount)}" else "₹ •••••",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onBackground
+                                )
+                                Icon(
+                                    imageVector = if (isPriceRevealed) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                    contentDescription = "Toggle pricing lock mask",
+                                    modifier = Modifier.size(16.dp).clickable { onEyeToggled() },
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        } else {
+                            // Blank spacers if price is hidden for Operators/MIS/Sales
+                            Spacer(modifier = Modifier.width(4.dp))
                         }
 
                         // Status Badge
@@ -700,6 +748,12 @@ fun InventoryCardItem(
 
                     HorizontalDivider()
 
+                    // Rule 8: Rest details like Product Name here in show more section
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Product Name:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(item.name, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                    }
+
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Purchased On:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(formattedDate, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
@@ -747,6 +801,30 @@ fun InventoryCardItem(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+
+                    // Direct sale checker button (Rule 6)
+                    if (canSell && !isRepair && item.quantity > 0) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(
+                            onClick = onSellClicked,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                                .testTag("direct_sale_${item.serialNumber}")
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(Icons.Default.ShoppingCart, "Sell direct checkout", modifier = Modifier.size(18.dp))
+                                Text("Direct Sale (Checkout)", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
                     }
                 }
             }

@@ -34,6 +34,7 @@ import java.util.*
 @Composable
 fun HistoryScreen(viewModel: StockViewModel) {
     val rawEvents by viewModel.historyEvents.collectAsState()
+    val suggestedImeis = remember(rawEvents) { rawEvents.map { it.serialNumber } }
     val searchWord by viewModel.historySearchTerm.collectAsState()
     val typeFilter by viewModel.historyTypeFilter.collectAsState() // "All", "PURCHASE", "SALE", "REPAIR_SENT", "REPAIR_RETURNED", "RETURN", "EDIT", "DELETE"
     val sortOption by viewModel.historySortOption.collectAsState()
@@ -96,25 +97,37 @@ fun HistoryScreen(viewModel: StockViewModel) {
             OutlinedTextField(
                 value = searchWord,
                 onValueChange = { viewModel.setHistorySearchTerm(it) },
-                placeholder = { Text("Search IMEI history, Action info...") },
+                placeholder = { Text("Search IMEI history, Action info...", fontSize = 13.sp) },
+                textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Default.Search,
-                        contentDescription = "Search history stream"
+                        contentDescription = "Search history stream",
+                        modifier = Modifier.size(18.dp)
                     )
                 },
                 trailingIcon = {
                     if (searchWord.isNotEmpty()) {
-                        IconButton(onClick = { viewModel.setHistorySearchTerm("") }) {
+                        IconButton(
+                            onClick = { viewModel.setHistorySearchTerm("") },
+                            modifier = Modifier.size(28.dp)
+                        ) {
                             Icon(
                                 imageVector = Icons.Default.Close,
-                                contentDescription = "Clear entries"
+                                contentDescription = "Clear entries",
+                                modifier = Modifier.size(16.dp)
                             )
                         }
                     }
                 },
                 singleLine = true,
                 shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    focusedContainerColor = MaterialTheme.colorScheme.surface,
+                    unfocusedBorderColor = Color.Transparent,
+                    focusedBorderColor = MaterialTheme.colorScheme.primary
+                ),
                 modifier = Modifier
                     .weight(1f)
                     .testTag("history_search_word")
@@ -128,13 +141,14 @@ fun HistoryScreen(viewModel: StockViewModel) {
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer
                 ),
                 modifier = Modifier
-                    .size(48.dp)
+                    .size(44.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .testTag("history_scanner_button")
             ) {
                 Icon(
                     imageVector = Icons.Default.QrCodeScanner,
-                    contentDescription = "Start scanning"
+                    contentDescription = "Start scanning",
+                    modifier = Modifier.size(18.dp)
                 )
             }
 
@@ -143,7 +157,7 @@ fun HistoryScreen(viewModel: StockViewModel) {
                 IconButton(
                     onClick = { expandedFilterMenu = true },
                     modifier = Modifier
-                        .size(48.dp)
+                        .size(44.dp)
                         .clip(RoundedCornerShape(12.dp)),
                     colors = IconButtonDefaults.iconButtonColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant
@@ -151,7 +165,8 @@ fun HistoryScreen(viewModel: StockViewModel) {
                 ) {
                     Icon(
                         imageVector = Icons.Default.Tune,
-                        contentDescription = "Expand filters dropdown"
+                        contentDescription = "Expand filters dropdown",
+                        modifier = Modifier.size(18.dp)
                     )
                 }
 
@@ -259,7 +274,7 @@ fun HistoryScreen(viewModel: StockViewModel) {
                     .fillMaxWidth()
                     .weight(1f)
                     .testTag("history_events_stream"),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 items(filteredEvents, key = { it.id }) { event ->
                     var isExpanded by remember { mutableStateOf(false) }
@@ -278,7 +293,8 @@ fun HistoryScreen(viewModel: StockViewModel) {
                 onDismissRequest = { showScannerDialog = false },
                 onBarcodeScanned = { scannedImei ->
                     viewModel.setHistorySearchTerm(scannedImei)
-                }
+                },
+                suggestedImeis = suggestedImeis
             )
         }
     }
@@ -315,20 +331,21 @@ fun HistoryRowItem(
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = Color.White
+            containerColor = MaterialTheme.colorScheme.surface
         ),
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 4.dp)
             .clickable { onExpandTapped() }
             .testTag("history_event_item_${event.id}"),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .border(
                     width = 2.dp,
-                    color = themeColor.copy(alpha = 0.5f),
+                    color = themeColor.copy(alpha = 0.8f),
                     shape = RoundedCornerShape(16.dp)
                 )
                 .padding(14.dp)
@@ -448,11 +465,6 @@ fun HistoryRowItem(
                         color = themeColor
                     )
                     HorizontalDivider(color = themeColor.copy(alpha = 0.2f))
-
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Action Classification:", style = MaterialTheme.typography.bodySmall, fontSize = 11.sp)
-                        Text(event.actionType, style = MaterialTheme.typography.bodySmall, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    }
 
                     if (!event.phoneNumber.isNullOrBlank()) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

@@ -42,6 +42,8 @@ fun TransactionsScreen(viewModel: StockViewModel) {
     val isUploading by viewModel.isUploadingTransaction.collectAsState()
     val errMessage by viewModel.transactionError.collectAsState()
     val successMessage by viewModel.transactionSuccessMessage.collectAsState()
+    val rawItems by viewModel.inventoryItems.collectAsState()
+    val suggestedImeis = remember(rawItems) { rawItems.map { it.serialNumber } }
 
     val serialNumber by viewModel.serialNumberInput.collectAsState()
     val model by viewModel.modelInput.collectAsState()
@@ -135,50 +137,6 @@ fun TransactionsScreen(viewModel: StockViewModel) {
             }
         }
 
-        // Active Theme branding segment card
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = themeColorAndLabel.first.copy(alpha = 0.12f)
-            ),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(themeColorAndLabel.first),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = themeColorAndLabel.third,
-                        contentDescription = "Active icon key",
-                        tint = Color.White
-                    )
-                }
-                Column {
-                    Text(
-                        text = themeColorAndLabel.second,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Black,
-                        color = themeColorAndLabel.first,
-                        letterSpacing = 1.sp
-                    )
-                    Text(
-                        text = "Fill fields below to register inventory parameters.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-                    )
-                }
-            }
-        }
 
         // Success message or error reporting block
         AnimatedVisibility(visible = successMessage != null) {
@@ -600,12 +558,14 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                 onDismissRequest = { showScannerDialog = false },
                 onBarcodeScanned = { scannedImei ->
                     viewModel.serialNumberInput.value = scannedImei
-                }
+                },
+                suggestedImeis = suggestedImeis
             )
         }
 
-        // Photo picker Mock Selector trigger
+        // Photo picker Mock Selector trigger (Rule 9)
         if (showPhotoChooserDialog) {
+            val context = androidx.compose.ui.platform.LocalContext.current
             AlertDialog(
                 onDismissRequest = { showPhotoChooserDialog = false },
                 confirmButton = {},
@@ -614,41 +574,81 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                         Text("Cancel Selection")
                     }
                 },
-                title = { Text("Select Attached Tech Image") },
+                title = { Text("Select Photo Source", fontWeight = FontWeight.Bold) },
                 text = {
                     Column(
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(
-                            text = "Simulate mock photo attachments by choosing a theme asset preset:",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                        mockPhotoPresets.forEach { preset ->
-                            Card(
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                ),
+                        // Option 1: Click Photo via Camera
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.photoUriInput.value = "camera_snapshot.jpg"
+                                    showPhotoChooserDialog = false
+                                    android.widget.Toast.makeText(context, "Clicked Photo via Camera!", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                        ) {
+                            Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable {
-                                        viewModel.photoUriInput.value = preset.second
-                                        showPhotoChooserDialog = false
-                                    }
+                                    .padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(preset.first, fontWeight = FontWeight.SemiBold)
-                                    Icon(
-                                        imageVector = Icons.Default.ChevronRight,
-                                        contentDescription = "Proceed selection"
-                                    )
+                                Icon(
+                                    imageVector = Icons.Default.CameraAlt,
+                                    contentDescription = "Capture option click",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                                Text(
+                                    text = "Click Photo",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
+                        }
+
+                        // Option 2: Upload from Gallery
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.35f)
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.photoUriInput.value = "gallery_upload.jpg"
+                                    showPhotoChooserDialog = false
+                                    android.widget.Toast.makeText(context, "Photo uploaded from Gallery!", android.widget.Toast.LENGTH_SHORT).show()
                                 }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Image,
+                                    contentDescription = "Gallery option click",
+                                    tint = MaterialTheme.colorScheme.secondary,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                                Text(
+                                    text = "Upload from Gallery",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
                             }
                         }
                     }

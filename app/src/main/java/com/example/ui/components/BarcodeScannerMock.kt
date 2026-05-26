@@ -28,7 +28,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun BarcodeScannerMockDialog(
     onDismissRequest: () -> Unit,
-    onBarcodeScanned: (String) -> Unit
+    onBarcodeScanned: (String) -> Unit,
+    suggestedImeis: List<String> = emptyList()
 ) {
     val coroutineScope = rememberCoroutineScope()
     var typedBarcode by remember { mutableStateOf("") }
@@ -47,14 +48,16 @@ fun BarcodeScannerMockDialog(
         label = "Laser sweep"
     )
 
-    // Quick mock data for IMEIs to choose from to make it extremely easy to test!
-    val sampleImeis = listOf(
-        "IMEI-88043-98218-A",
-        "IMEI-35492-00561-B",
-        "IMEI-99824-77169-C",
-        "IMEI-12345-67890-D",
-        "IMEI-77402-99214-E"
-    )
+    // Quick mock data for IMEIs combined with dynamic suggestions!
+    val sampleImeis = remember(suggestedImeis) {
+        (suggestedImeis.take(10) + listOf(
+            "IMEI-88043-98218-A",
+            "IMEI-35492-00561-B",
+            "IMEI-99824-77169-C",
+            "IMEI-12345-67890-D",
+            "IMEI-77402-99214-E"
+        )).distinct().filter { it.isNotBlank() }
+    }
 
     AlertDialog(
         onDismissRequest = onDismissRequest,
