@@ -26,6 +26,8 @@ import com.example.data.model.LedgerEntry
 fun LedgerScreen(viewModel: StockViewModel) {
     val allParties by viewModel.allParties.collectAsState()
     val allLedgerEntries by viewModel.allLedgerEntries.collectAsState()
+    val historyEvents by viewModel.historyEvents.collectAsState()
+    var selectedEventForDialog by remember { mutableStateOf<com.example.data.model.HistoryEvent?>(null) }
 
     var showAddPartyDialog by remember { mutableStateOf(false) }
     var selectedParty by remember { mutableStateOf<Party?>(null) }
@@ -90,30 +92,53 @@ fun LedgerScreen(viewModel: StockViewModel) {
                 Text(balanceText, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black, color = balanceColor)
             }
             HorizontalDivider()
-            LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(partyLedger) { entry ->
-                    val color = when (entry.type) {
-                        "SALE" -> Color(0xFF10B981)
-                        "PURCHASE" -> Color(0xFF3B82F6)
-                        "PAYMENT_IN" -> Color(0xFF10B981)
-                        "PAYMENT_OUT" -> Color(0xFFEAB308)
-                        "RETURN" -> Color(0xFF9333EA)
-                        else -> MaterialTheme.colorScheme.onSurfaceVariant
-                    }
-                    val sign = if (entry.type == "SALE" || entry.type == "PAYMENT_OUT" || entry.type == "REPAIR_SENT") "+" else "-"
-                    val formattedDate = java.text.SimpleDateFormat("dd MMM yyyy, HH:mm", java.util.Locale.getDefault()).format(java.util.Date(entry.timestamp))
+            val groupedLedger = remember(partyLedger) {
+                partyLedger.groupBy { 
+                    java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.getDefault()).format(java.util.Date(it.timestamp)) 
+                }
+            }
 
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Row(modifier = Modifier.padding(12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(entry.type.replace("_", " "), fontWeight = FontWeight.Bold, color = color)
-                                Text(formattedDate, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                if (entry.description.isNotBlank()) {
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(entry.description, style = MaterialTheme.typography.bodySmall)
+            LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                groupedLedger.forEach { (dateStr, entries) ->
+                    item {
+                        Text(
+                            text = dateStr,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 16.dp, bottom = 4.dp)
+                        )
+                    }
+                    items(entries) { entry ->
+                        val color = when (entry.type) {
+                            "SALE" -> Color(0xFF10B981)
+                            "PURCHASE" -> Color(0xFF3B82F6)
+                            "PAYMENT_IN" -> Color(0xFF10B981)
+                            "PAYMENT_OUT" -> Color(0xFFEAB308)
+                            "RETURN" -> Color(0xFF9333EA)
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                        val sign = if (entry.type == "SALE" || entry.type == "PAYMENT_OUT" || entry.type == "REPAIR_SENT") "+" else "-"
+                        val timeStr = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(entry.timestamp))
+
+                        Card(
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                if (entry.historyEventId != null) {
+                                    selectedEventForDialog = historyEvents.find { it.id == entry.historyEventId }
                                 }
                             }
-                            Text("$sign₹${entry.amount}", fontWeight = FontWeight.Bold, color = color, fontSize = 16.sp)
+                        ) {
+                            Row(modifier = Modifier.padding(12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(entry.type.replace("_", " "), fontWeight = FontWeight.Bold, color = color)
+                                    Text(timeStr, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    if (entry.description.isNotBlank()) {
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(entry.description, style = MaterialTheme.typography.bodySmall)
+                                    }
+                                }
+                                Text("$sign₹${entry.amount}", fontWeight = FontWeight.Bold, color = color, fontSize = 16.sp)
+                            }
                         }
                     }
                 }
@@ -183,6 +208,26 @@ fun LedgerScreen(viewModel: StockViewModel) {
             },
             dismissButton = {
                 TextButton(onClick = { showPaymentDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (selectedEventForDialog != null) {
+        AlertDialog(
+            onDismissRequest = { selectedEventForDialog = null },
+            title = { Text("Transaction Details", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) },
+            text = {
+                // Keep it single list context style for HistoryRowItem
+                // that expects a column
+                HistoryRowItem(
+                    event = selectedEventForDialog!!,
+                    isExpanded = true,
+                    onExpandTapped = {},
+                    onPhotoClick = { } 
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { selectedEventForDialog = null }) { Text("Close") }
             }
         )
     }

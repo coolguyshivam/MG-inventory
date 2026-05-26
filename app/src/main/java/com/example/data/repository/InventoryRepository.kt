@@ -136,7 +136,7 @@ class InventoryRepository {
             userId = userId
         )
         db.collection("history_events").document(history.id).set(history).await()
-        processPartyTransactionIfApplicable(name, "PURCHASE", amount * quantity)
+        processPartyTransactionIfApplicable(name, "PURCHASE", amount * quantity, history.id)
         return true
     }
 
@@ -178,7 +178,7 @@ class InventoryRepository {
             userId = userId
         )
         db.collection("history_events").document(history.id).set(history).await()
-        processPartyTransactionIfApplicable(name, "SALE", amount * quantity)
+        processPartyTransactionIfApplicable(name, "SALE", amount * quantity, history.id)
         return true
     }
 
@@ -232,7 +232,7 @@ class InventoryRepository {
             userId = userId
         )
         db.collection("history_events").document(history.id).set(history).await()
-        processPartyTransactionIfApplicable(name, "RETURN", amount * quantity)
+        processPartyTransactionIfApplicable(name, "RETURN", amount * quantity, history.id)
         return true
     }
 
@@ -286,7 +286,7 @@ class InventoryRepository {
             extraDetails = "Technician: $technicianName, Reason: $repairReason"
         )
         db.collection("history_events").document(history.id).set(history).await()
-        processPartyTransactionIfApplicable(name, "REPAIR_SENT", amount * quantity)
+        processPartyTransactionIfApplicable(name, "REPAIR_SENT", amount * quantity, history.id)
         return true
     }
 
@@ -415,14 +415,15 @@ class InventoryRepository {
         }
     }
 
-    suspend fun processPartyTransactionIfApplicable(name: String, type: String, amount: Double) {
+    suspend fun processPartyTransactionIfApplicable(name: String, type: String, amount: Double, historyEventId: String? = null) {
         val match = db.collection("parties").whereEqualTo("name", name).limit(1).get().await()
         val party = match.documents.firstOrNull()?.toObject(com.example.data.model.Party::class.java)
         if (party != null) {
             val entry = com.example.data.model.LedgerEntry(
                 partyId = party.id,
                 amount = amount,
-                type = type
+                type = type,
+                historyEventId = historyEventId
             )
             db.collection("ledger_entries").document(entry.id).set(entry).await()
             val delta = when (type) {

@@ -53,7 +53,8 @@ data class LedgerEntry(
     val amount: Double = 0.0,
     val type: String = "", // "PAYMENT_IN", "PAYMENT_OUT", "PURCHASE", "SALE", "RETURN", "REPAIR"
     val description: String = "",
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val historyEventId: String? = null
 )
 
 
