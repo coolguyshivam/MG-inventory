@@ -51,11 +51,11 @@ fun BarcodeScannerMockDialog(
     // Quick mock data for IMEIs combined with dynamic suggestions!
     val sampleImeis = remember(suggestedImeis) {
         (suggestedImeis.take(10) + listOf(
-            "IMEI-88043-98218-A",
-            "IMEI-35492-00561-B",
-            "IMEI-99824-77169-C",
-            "IMEI-12345-67890-D",
-            "IMEI-77402-99214-E"
+            "354920056123456",
+            "880439821876543",
+            "998247716900124",
+            "123456789012345",
+            "774029921455667"
         )).distinct().filter { it.isNotBlank() }
     }
 
