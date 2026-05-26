@@ -1,5 +1,6 @@
 package com.example.ui.viewmodel
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -33,6 +34,27 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
 
     private val _loggedInUser = MutableStateFlow<User?>(null)
     val loggedInUser: StateFlow<User?> = _loggedInUser.asStateFlow()
+
+    val showBiometricLinkingDialog = MutableStateFlow(false)
+    val tempPendingUser = MutableStateFlow<User?>(null)
+
+    fun getBiometricRegisteredUser(context: Context): String? {
+        val prefs = context.getSharedPreferences("mobile_gallery_prefs", Context.MODE_PRIVATE)
+        return prefs.getString("biometric_username", null)
+    }
+
+    fun registerBiometrics(context: Context, username: String) {
+        val prefs = context.getSharedPreferences("mobile_gallery_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putString("biometric_username", username).apply()
+    }
+
+    fun completeLogin(user: User) {
+        _isLoggedIn.value = true
+        _loggedInUser.value = user
+        _loginError.value = null
+        _activeTab.value = 0
+        triggerCloudSync()
+    }
 
     // Permissions based on Role
     // Admin: canManageUsers, canManageInventory, canRepair, canViewAnalytics, canSell, canDelete
@@ -152,6 +174,68 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                 if (count == 0) {
                     repository.insertUser(User("admin", "admin", "Admin"))
                 }
+                
+                // Seed default items and audit histories if empty to restore vanished cards
+                val currentItems = repository.allInventoryItems.first()
+                if (currentItems.isEmpty()) {
+                    repository.purchaseProduct(
+                        serialNumber = "354920056123456",
+                        model = "Pixel 9 Pro",
+                        name = "Google Pixel 9 Pro (128GB)",
+                        phoneNumber = "9876543210",
+                        aadhaarNumber = "123456789012",
+                        amount = 99999.00,
+                        description = "Brand new inbound stock from Delhi distributor",
+                        dateInMillis = System.currentTimeMillis() - 86400000 * 2,
+                        quantity = 5,
+                        photoUri = "ic_phone_blue",
+                        userId = "admin"
+                    )
+                    
+                    repository.purchaseProduct(
+                        serialNumber = "880439821876543",
+                        model = "Galaxy S25 Ultra",
+                        name = "Samsung Galaxy S25 Ultra",
+                        phoneNumber = "9988776655",
+                        aadhaarNumber = "987654321098",
+                        amount = 129000.00,
+                        description = "Pre-owned high tier premium stock intake",
+                        dateInMillis = System.currentTimeMillis() - 86400000,
+                        quantity = 3,
+                        photoUri = "ic_phone_amber",
+                        userId = "admin"
+                    )
+                    
+                    repository.purchaseProduct(
+                        serialNumber = "998247716900124",
+                        model = "iPhone 16 Pro Max",
+                        name = "Apple iPhone 16 Pro Max",
+                        phoneNumber = "9123456789",
+                        aadhaarNumber = "111122223333",
+                        amount = 144900.00,
+                        description = "Direct store incoming purchase",
+                        dateInMillis = System.currentTimeMillis() - 3600000 * 4,
+                        quantity = 2,
+                        photoUri = "ic_watch",
+                        userId = "admin"
+                    )
+                    
+                    repository.directRepair(
+                        serialNumber = "123456789012345",
+                        model = "OnePlus 12",
+                        name = "OnePlus 12 Black Onyx",
+                        phoneNumber = "7766554433",
+                        aadhaarNumber = "444455556666",
+                        amount = 64999.00,
+                        description = "Display flickering issue repair inbound log",
+                        dateInMillis = System.currentTimeMillis() - 3600000 * 2,
+                        quantity = 1,
+                        photoUri = "ic_tablet",
+                        userId = "admin",
+                        technicianName = "John Miller",
+                        repairReason = "Screen Replacement"
+                    )
+                }
             } catch (e: Exception) {
                 // Safe exception catch during database startup
             }
@@ -213,7 +297,7 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
     val historyTypeFilter: StateFlow<String> = _historyTypeFilter.asStateFlow()
 
     // --- Auth Actions ---
-    fun login(usernameStr: String, passwordStr: String) {
+    fun login(context: Context, usernameStr: String, passwordStr: String) {
         viewModelScope.launch {
             try {
                 val username = usernameStr.trim()
@@ -221,11 +305,14 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                 
                 if (user != null) {
                     if (user.passwordHash == passwordStr) {
-                        _isLoggedIn.value = true
-                        _loggedInUser.value = user
-                        _loginError.value = null
-                        _activeTab.value = 0
-                        triggerCloudSync()
+                        val registeredUser = getBiometricRegisteredUser(context)
+                        if (registeredUser == username) {
+                            completeLogin(user)
+                        } else {
+                            // First time login - prompt to enable biometric login
+                            tempPendingUser.value = user
+                            showBiometricLinkingDialog.value = true
+                        }
                     } else {
                         _loginError.value = "Invalid username or password."
                     }
@@ -235,11 +322,13 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                     if (userCount == 0 && username == "admin" && passwordStr == "admin") {
                         val adminUser = User("admin", "admin", "Admin")
                         repository.insertUser(adminUser)
-                        _isLoggedIn.value = true
-                        _loggedInUser.value = adminUser
-                        _loginError.value = null
-                        _activeTab.value = 0
-                        triggerCloudSync()
+                        val registeredUser = getBiometricRegisteredUser(context)
+                        if (registeredUser == "admin") {
+                            completeLogin(adminUser)
+                        } else {
+                            tempPendingUser.value = adminUser
+                            showBiometricLinkingDialog.value = true
+                        }
                     } else {
                         _loginError.value = "User not found or invalid credentials."
                     }
@@ -250,26 +339,23 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
         }
     }
 
-    fun biometricLogin() {
+    fun biometricLogin(context: Context) {
         viewModelScope.launch {
             try {
-                var user = repository.getUserByUsername("admin")
-                if (user == null) {
-                    val userCount = repository.getUserCount()
-                    if (userCount == 0) {
-                        val adminUser = User("admin", "admin", "Admin")
-                        repository.insertUser(adminUser)
-                        user = adminUser
+                val registeredUser = getBiometricRegisteredUser(context)
+                if (registeredUser != null) {
+                    val user = repository.getUserByUsername(registeredUser)
+                    if (user != null) {
+                        _isLoggedIn.value = true
+                        _loggedInUser.value = user
+                        _loginError.value = null
+                        _activeTab.value = 0
+                        triggerCloudSync()
+                    } else {
+                        _loginError.value = "Biometric account not found. Please log in with password to re-link."
                     }
-                }
-                if (user != null) {
-                    _isLoggedIn.value = true
-                    _loggedInUser.value = user
-                    _loginError.value = null
-                    _activeTab.value = 0
-                    triggerCloudSync()
                 } else {
-                    _loginError.value = "Default administrator user could not be initialized."
+                    _loginError.value = "Biometrics not set up yet. Log in with password once to link fingerprint."
                 }
             } catch (e: Exception) {
                 _loginError.value = "Biometric authentication failed: ${e.message}"

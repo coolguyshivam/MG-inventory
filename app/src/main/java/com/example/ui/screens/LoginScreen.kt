@@ -222,8 +222,9 @@ fun LoginScreen(viewModel: StockViewModel) {
                     )
 
                     // Standard Login Button
+                    val context = androidx.compose.ui.platform.LocalContext.current
                     Button(
-                        onClick = { viewModel.login(username, password) },
+                        onClick = { viewModel.login(context, username, password) },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(50.dp)
@@ -269,7 +270,7 @@ fun LoginScreen(viewModel: StockViewModel) {
                                 biometricScanProgress = 1f
                                 delay(300)
                                 showBiometricModal = false
-                                viewModel.biometricLogin()
+                                viewModel.biometricLogin(context)
                             }
                         },
                         modifier = Modifier
@@ -390,6 +391,132 @@ fun LoginScreen(viewModel: StockViewModel) {
                                 textAlign = TextAlign.Center
                             )
                         }
+                    }
+                }
+            )
+        }
+
+        // Biometric registration / linking dialog flow
+        val showBiometricLinkingDialog by viewModel.showBiometricLinkingDialog.collectAsState()
+        val tempPendingUser by viewModel.tempPendingUser.collectAsState()
+        var linkingScanProgress by remember { mutableStateOf(0f) }
+        var linkingScanInProgress by remember { mutableStateOf(false) }
+
+        if (showBiometricLinkingDialog && tempPendingUser != null) {
+            AlertDialog(
+                onDismissRequest = {
+                    viewModel.showBiometricLinkingDialog.value = false
+                    viewModel.completeLogin(tempPendingUser!!)
+                },
+                title = {
+                    Text(
+                        text = "Unlock with Biometrics?",
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleMedium,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Text(
+                            text = "Would you like to enable quick fingerprint login for ${tempPendingUser!!.username}? Next time you sign in, simply click the biometric button to log in instantly.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            textAlign = TextAlign.Center
+                        )
+
+                        if (linkingScanInProgress) {
+                            // Pulsating scan icon box
+                            Box(
+                                modifier = Modifier
+                                    .size(90.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f))
+                                    .border(
+                                        width = 2.dp,
+                                        color = if (linkingScanProgress >= 1f) Color.Green else MaterialTheme.colorScheme.primary,
+                                        shape = CircleShape
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Fingerprint,
+                                    contentDescription = "Fingerprint Sensor",
+                                    tint = if (linkingScanProgress >= 1f) Color.Green else MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .scale(1f + 0.1f * kotlin.math.sin(linkingScanProgress * Math.PI).toFloat())
+                                )
+                            }
+
+                            // Scanning loading bar
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                LinearProgressIndicator(
+                                    progress = { linkingScanProgress },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(6.dp)
+                                        .clip(RoundedCornerShape(3.dp)),
+                                    color = if (linkingScanProgress >= 1f) Color.Green else MaterialTheme.colorScheme.secondary
+                                )
+                                Text(
+                                    text = if (linkingScanProgress >= 1f) "Biometrics Linked!" else "Scanning fingerprint: ${(linkingScanProgress * 100).toInt()}%",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (linkingScanProgress >= 1f) Color.Green else MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Fingerprint,
+                                contentDescription = "Prompt Fingerprint",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(56.dp)
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (!linkingScanInProgress) {
+                                linkingScanInProgress = true
+                                linkingScanProgress = 0f
+                                coroutineScope.launch {
+                                    while (linkingScanProgress < 1f) {
+                                        delay(100)
+                                        linkingScanProgress += 0.1f
+                                    }
+                                    linkingScanProgress = 1f
+                                    delay(400)
+                                    viewModel.registerBiometrics(context, tempPendingUser!!.username)
+                                    viewModel.completeLogin(tempPendingUser!!)
+                                    viewModel.showBiometricLinkingDialog.value = false
+                                    linkingScanInProgress = false
+                                }
+                            }
+                        },
+                        enabled = !linkingScanInProgress
+                    ) {
+                        Text("Enable & Link")
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            viewModel.completeLogin(tempPendingUser!!)
+                            viewModel.showBiometricLinkingDialog.value = false
+                        },
+                        enabled = !linkingScanInProgress
+                    ) {
+                        Text("Skip for Now")
                     }
                 }
             )

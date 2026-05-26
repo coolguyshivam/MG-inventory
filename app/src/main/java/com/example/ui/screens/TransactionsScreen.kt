@@ -1,5 +1,10 @@
 package com.example.ui.screens
 
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -26,8 +31,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import com.example.ui.components.BarcodeScannerMockDialog
 import com.example.ui.viewmodel.StockViewModel
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -36,6 +43,45 @@ import java.util.*
 fun TransactionsScreen(viewModel: StockViewModel) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
+
+    // Real Camera and Gallery integration launchers
+    val tempCameraUriState = remember { mutableStateOf<Uri?>(null) }
+
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.photoUriInput.value = uri.toString()
+            Toast.makeText(context, "Gallery Image Linked!", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success) {
+            tempCameraUriState.value?.let { uri ->
+                viewModel.photoUriInput.value = uri.toString()
+                Toast.makeText(context, "Camera Snapshot Attached!", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            Toast.makeText(context, "Camera capture cancelled or failed.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun createTempImageUri(): Uri? {
+        return try {
+            val directory = File(context.cacheDir, "camera_photos")
+            if (!directory.exists()) {
+                directory.mkdirs()
+            }
+            val tempFile = File.createTempFile("photo_${System.currentTimeMillis()}", ".jpg", directory)
+            FileProvider.getUriForFile(context, "com.example.fileprovider", tempFile)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
 
     // ViewModel form states
     val activeSelection by viewModel.transactionSelection.collectAsState() // 0: Purchase, 1: Sale, 2: Return, 3: Repair
@@ -589,9 +635,15 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    viewModel.photoUriInput.value = "camera_snapshot.jpg"
+                                    val uri = createTempImageUri()
+                                    if (uri != null) {
+                                        tempCameraUriState.value = uri
+                                        cameraLauncher.launch(uri)
+                                    } else {
+                                        viewModel.photoUriInput.value = "camera_snapshot.jpg"
+                                        android.widget.Toast.makeText(context, "Clicked Photo via Camera (Demo)!", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
                                     showPhotoChooserDialog = false
-                                    android.widget.Toast.makeText(context, "Clicked Photo via Camera!", android.widget.Toast.LENGTH_SHORT).show()
                                 }
                         ) {
                             Row(
@@ -625,9 +677,10 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    viewModel.photoUriInput.value = "gallery_upload.jpg"
+                                    galleryLauncher.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
                                     showPhotoChooserDialog = false
-                                    android.widget.Toast.makeText(context, "Photo uploaded from Gallery!", android.widget.Toast.LENGTH_SHORT).show()
                                 }
                         ) {
                             Row(

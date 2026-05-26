@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import android.widget.Toast
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -19,9 +20,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.google.android.gms.code.scanner.GmsBarcodeScanning
+import com.google.android.gms.code.scanner.GmsBarcodeScannerOptions
+import com.google.mlkit.vision.barcode.common.Barcode
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -31,10 +36,20 @@ fun BarcodeScannerMockDialog(
     onBarcodeScanned: (String) -> Unit,
     suggestedImeis: List<String> = emptyList()
 ) {
+    val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     var typedBarcode by remember { mutableStateOf("") }
-    var scanStatusMessage by remember { mutableStateOf("Scanning for IMEI Barcode...") }
+    var scanStatusMessage by remember { mutableStateOf("Ready for scanner input...") }
     var isBeeping by remember { mutableStateOf(false) }
+
+    val scannerOptions = remember {
+        GmsBarcodeScannerOptions.Builder()
+            .setBarcodeFormats(Barcode.FORMAT_ALL_FORMATS)
+            .build()
+    }
+    val gmsScanner = remember(context) {
+        GmsBarcodeScanning.getClient(context, scannerOptions)
+    }
 
     // Laser Animation Sweep
     val infiniteTransition = rememberInfiniteTransition(label = "Laser sweep")
@@ -95,7 +110,7 @@ fun BarcodeScannerMockDialog(
                     tint = MaterialTheme.colorScheme.primary
                 )
                 Text(
-                    text = "Tactile IMEI Scanner",
+                    text = "High-Precision Barcode Scanner",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
@@ -108,11 +123,38 @@ fun BarcodeScannerMockDialog(
                     .wrapContentHeight(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                // Button to trigger the physical device camera scanner!
+                Button(
+                    onClick = {
+                        gmsScanner.startScan()
+                            .addOnSuccessListener { barcode ->
+                                val scannedValue = barcode.rawValue ?: barcode.displayValue ?: ""
+                                if (scannedValue.isNotBlank()) {
+                                    Toast.makeText(context, "Scanned successfully: $scannedValue", Toast.LENGTH_SHORT).show()
+                                    onBarcodeScanned(scannedValue)
+                                    onDismissRequest()
+                                }
+                            }
+                            .addOnFailureListener { e ->
+                                Toast.makeText(context, "Scanning cancelled or not supported.", Toast.LENGTH_SHORT).show()
+                            }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                ) {
+                    Icon(imageVector = Icons.Default.QrCodeScanner, contentDescription = "Camera Scanner icon")
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Scan with Device Camera", fontWeight = FontWeight.Bold)
+                }
+
+                HorizontalDivider()
+
                 // Mock Camera Frame
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(180.dp)
+                        .height(130.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .background(Color.Black)
                         .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp)),
@@ -141,7 +183,7 @@ fun BarcodeScannerMockDialog(
                     // Framing Corners overlay
                     Box(
                         modifier = Modifier
-                            .size(100.dp)
+                            .size(80.dp)
                             .border(2.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
                     )
 
@@ -165,7 +207,7 @@ fun BarcodeScannerMockDialog(
 
                 // Quick selector for testing
                 Text(
-                    text = "Simulate scan by clicking below:",
+                    text = "Or simulate scanning below:",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold
                 )
@@ -173,7 +215,7 @@ fun BarcodeScannerMockDialog(
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 130.dp),
+                        .heightIn(max = 110.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     items(sampleImeis) { imei ->
