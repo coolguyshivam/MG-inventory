@@ -23,24 +23,34 @@ fun UserManagementScreen(viewModel: StockViewModel) {
     val users by viewModel.allUsers.collectAsState()
     var showAddUserDialog by remember { mutableStateOf(false) }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("User Management", fontWeight = FontWeight.Bold) },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
-                )
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "User Management Console",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.colorScheme.primary
             )
-        },
-        floatingActionButton = {
-            FloatingActionButton(onClick = { showAddUserDialog = true }, containerColor = MaterialTheme.colorScheme.primary) {
-                Icon(Icons.Default.Add, "Add User", tint = Color.White)
+            FloatingActionButton(
+                onClick = { showAddUserDialog = true },
+                containerColor = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(40.dp)
+            ) {
+                Icon(Icons.Default.Add, "Add User", tint = Color.White, modifier = Modifier.size(20.dp))
             }
         }
-    ) { padding ->
+
         LazyColumn(
-            modifier = Modifier.padding(padding).padding(16.dp),
+            modifier = Modifier.fillMaxWidth().weight(1f),
             contentPadding = PaddingValues(bottom = 80.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
