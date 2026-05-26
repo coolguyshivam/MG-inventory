@@ -8,7 +8,7 @@ import com.example.data.model.HistoryEvent
 import com.example.data.model.InventoryItem
 import com.example.data.model.User
 
-@Database(entities = [InventoryItem::class, HistoryEvent::class, User::class], version = 2, exportSchema = false)
+@Database(entities = [InventoryItem::class, HistoryEvent::class, User::class], version = 3, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun inventoryDao(): InventoryDao
     abstract fun historyDao(): HistoryDao
@@ -25,7 +25,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "stock_inventory_database"
                 )
-                .fallbackToDestructiveMigration()
+                .fallbackToDestructiveMigration(true)
                 .build()
                 INSTANCE = instance
                 instance
