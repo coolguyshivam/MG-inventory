@@ -21,6 +21,11 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
+    - name: Ensure Gradle Wrapper is Valid
+      run: |
+        rm -f gradle/wrapper/gradle-wrapper.jar
+        curl -sSL --fail -o gradle/wrapper/gradle-wrapper.jar https://github.com/gradle/gradle/raw/v8.5/gradle/wrapper/gradle-wrapper.jar || gradle wrapper
+
     - name: Grant Execute Permission to Gradlew
       run: chmod +x gradlew
 
