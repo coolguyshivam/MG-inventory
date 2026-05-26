@@ -40,6 +40,7 @@ import java.util.*
 fun InventoryScreen(viewModel: StockViewModel) {
     val rawItems by viewModel.inventoryItems.collectAsState()
     val suggestedImeis = remember(rawItems) { rawItems.map { it.serialNumber } }
+    var showScanner by remember { mutableStateOf(false) }
     val searchWord by viewModel.inventorySearchTerm.collectAsState()
     val activeSubTab by viewModel.inventorySubTab.collectAsState() // 0 = Inventory, 1 = Repair
     val sortOption by viewModel.inventorySortOption.collectAsState()
@@ -149,26 +150,12 @@ fun InventoryScreen(viewModel: StockViewModel) {
                     focusedBorderColor = MaterialTheme.colorScheme.primary
                 ),
                 modifier = Modifier
-                    .weight(0.65f)
+                    .weight(1f)
                     .testTag("inventory_search_bar")
             )
 
-            Spacer(modifier = Modifier.weight(0.35f))
-
-            val scannerContext = androidx.compose.ui.platform.LocalContext.current
             IconButton(
-                onClick = {
-                    val scanner = com.google.mlkit.vision.codescanner.GmsBarcodeScanning.getClient(scannerContext)
-                    scanner.startScan()
-                        .addOnSuccessListener { barcode ->
-                            barcode.rawValue?.let { scannedImei ->
-                                viewModel.setInventorySearchTerm(scannedImei)
-                            }
-                        }
-                        .addOnFailureListener {
-                            android.widget.Toast.makeText(scannerContext, "Barcode scan failed", android.widget.Toast.LENGTH_SHORT).show()
-                        }
-                },
+                onClick = { showScanner = true },
                 colors = IconButtonDefaults.iconButtonColors(
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer
@@ -381,6 +368,14 @@ fun InventoryScreen(viewModel: StockViewModel) {
                     )
                 }
             }
+        }
+
+        if (showScanner) {
+            BarcodeScannerMockDialog(
+                onDismissRequest = { showScanner = false },
+                onBarcodeScanned = { viewModel.setInventorySearchTerm(it) },
+                suggestedImeis = suggestedImeis
+            )
         }
 
         // Dialogue Modal for adding repair context properties (Technician & Reason)

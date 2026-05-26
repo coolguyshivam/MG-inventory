@@ -243,6 +243,7 @@ fun MainAppContent(viewModel: StockViewModel) {
             val canViewAnalytics by viewModel.canViewAnalytics.collectAsState()
             val canManageInventory by viewModel.canManageInventory.collectAsState()
             val canSell by viewModel.canSell.collectAsState()
+            val canViewLedger by viewModel.canViewLedger.collectAsState()
             
             NavigationBar(
                 containerColor = MaterialTheme.colorScheme.surface,
@@ -268,7 +269,7 @@ fun MainAppContent(viewModel: StockViewModel) {
                 if (canManageUsers) {
                     tabsItems.add(Triple(5, "Users", Icons.Default.Group))
                 }
-                if (canSell || canManageInventory) {
+                if (canViewLedger) {
                     tabsItems.add(Triple(6, "Ledger", Icons.Default.CompareArrows))
                 }
 

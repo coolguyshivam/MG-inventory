@@ -1,6 +1,9 @@
 package com.example.ui.screens
 
+import android.app.Activity
+import android.content.Intent
 import android.net.Uri
+import android.speech.RecognizerIntent
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -45,6 +48,21 @@ import java.util.*
 fun TransactionsScreen(viewModel: StockViewModel) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
+    
+    val speechLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val data = result.data
+            val results = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            if (!results.isNullOrEmpty()) {
+                val spokenText = results[0]
+                val currentDescription = viewModel.descriptionInput.value
+                val separator = if (currentDescription.isNotBlank()) " " else ""
+                viewModel.descriptionInput.value = currentDescription + separator + spokenText
+            }
+        }
+    }
 
     // Real Camera and Gallery integration launchers
     val tempCameraUriState = remember { mutableStateOf<Uri?>(null) }
@@ -122,6 +140,7 @@ fun TransactionsScreen(viewModel: StockViewModel) {
 
     var showPhotoChooserDialog by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
+    var showScanner by remember { mutableStateOf(false) }
 
     // Date formatting helper
     val formattedDate = remember(dateInMillis) {
@@ -265,20 +284,8 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                     leadingIcon = { Icon(Icons.Default.Dialpad, "Keypad") }
                 )
 
-                val scannerContext = LocalContext.current
                 IconButton(
-                    onClick = {
-                        val scanner = com.google.mlkit.vision.codescanner.GmsBarcodeScanning.getClient(scannerContext)
-                        scanner.startScan()
-                            .addOnSuccessListener { barcode ->
-                                barcode.rawValue?.let { scannedImei ->
-                                    viewModel.serialNumberInput.value = scannedImei
-                                }
-                            }
-                            .addOnFailureListener {
-                                Toast.makeText(scannerContext, "Barcode scan failed", Toast.LENGTH_SHORT).show()
-                            }
-                    },
+                    onClick = { showScanner = true },
                     colors = IconButtonDefaults.iconButtonColors(
                         containerColor = themeColorAndLabel.first,
                         contentColor = Color.White
@@ -561,6 +568,22 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                 label = { Text("Description *") },
                 placeholder = { Text("Provide notes on condition, buyer/vender logs, serial updates...") },
                 shape = RoundedCornerShape(14.dp),
+                trailingIcon = {
+                    IconButton(onClick = {
+                        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "hi-IN")
+                            putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak now in Hindi or English")
+                        }
+                        try {
+                            speechLauncher.launch(intent)
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Speech recognizer not available", Toast.LENGTH_SHORT).show()
+                        }
+                    }) {
+                        Icon(Icons.Default.Mic, contentDescription = "Dictate Description")
+                    }
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 100.dp)
@@ -623,7 +646,15 @@ fun TransactionsScreen(viewModel: StockViewModel) {
 
 
         // Photo picker Mock Selector trigger (Rule 9)
-        if (showPhotoChooserDialog) {
+        if (showScanner) {
+        BarcodeScannerMockDialog(
+            onDismissRequest = { showScanner = false },
+            onBarcodeScanned = { viewModel.serialNumberInput.value = it },
+            suggestedImeis = suggestedImeis
+        )
+    }
+
+    if (showPhotoChooserDialog) {
             val context = androidx.compose.ui.platform.LocalContext.current
             AlertDialog(
                 onDismissRequest = { showPhotoChooserDialog = false },

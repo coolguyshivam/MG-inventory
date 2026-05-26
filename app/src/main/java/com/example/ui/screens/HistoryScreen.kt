@@ -35,6 +35,7 @@ import java.util.*
 fun HistoryScreen(viewModel: StockViewModel) {
     val rawEvents by viewModel.historyEvents.collectAsState()
     val suggestedImeis = remember(rawEvents) { rawEvents.map { it.serialNumber } }
+    var showScanner by remember { mutableStateOf(false) }
     val searchWord by viewModel.historySearchTerm.collectAsState()
     val typeFilter by viewModel.historyTypeFilter.collectAsState() // "All", "PURCHASE", "SALE", "REPAIR_SENT", "REPAIR_RETURNED", "RETURN", "EDIT", "DELETE"
     val sortOption by viewModel.historySortOption.collectAsState()
@@ -143,27 +144,13 @@ fun HistoryScreen(viewModel: StockViewModel) {
                     focusedBorderColor = MaterialTheme.colorScheme.primary
                 ),
                 modifier = Modifier
-                    .weight(0.65f)
+                    .weight(1f)
                     .testTag("history_search_word")
             )
 
-            Spacer(modifier = Modifier.weight(0.35f))
-
             // Tactile scanner button
-            val scannerContext = androidx.compose.ui.platform.LocalContext.current
             IconButton(
-                onClick = { 
-                    val scanner = com.google.mlkit.vision.codescanner.GmsBarcodeScanning.getClient(scannerContext)
-                    scanner.startScan()
-                        .addOnSuccessListener { barcode ->
-                            barcode.rawValue?.let { scannedImei ->
-                                viewModel.setHistorySearchTerm(scannedImei)
-                            }
-                        }
-                        .addOnFailureListener {
-                            android.widget.Toast.makeText(scannerContext, "Barcode scan failed", android.widget.Toast.LENGTH_SHORT).show()
-                        }
-                },
+                onClick = { showScanner = true },
                 colors = IconButtonDefaults.iconButtonColors(
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer
@@ -335,6 +322,14 @@ fun HistoryScreen(viewModel: StockViewModel) {
                 }
             }
         }
+    }
+
+    if (showScanner) {
+        BarcodeScannerMockDialog(
+            onDismissRequest = { showScanner = false },
+            onBarcodeScanned = { viewModel.setHistorySearchTerm(it) },
+            suggestedImeis = suggestedImeis
+        )
     }
 
     // FullScreen Photo Viewer
@@ -579,14 +574,7 @@ fun HistoryRowItem(
                         .padding(10.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text(
-                        text = "Complete Transaction Footprint",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = themeColor
-                    )
-                    HorizontalDivider(color = themeColor.copy(alpha = 0.2f))
-
+                    // removed Complete Transaction Footprint header
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Model Name:", style = MaterialTheme.typography.bodySmall, fontSize = 11.sp)
                         Text(event.model, style = MaterialTheme.typography.bodySmall, fontSize = 11.sp, fontWeight = FontWeight.Bold)
@@ -619,7 +607,6 @@ fun HistoryRowItem(
 
                     if (event.description.isNotBlank()) {
                         Spacer(modifier = Modifier.height(2.dp))
-                        Text("Event Narrative details:", style = MaterialTheme.typography.bodySmall, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = themeColor)
                         Text(event.description, style = MaterialTheme.typography.bodySmall, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
 
@@ -637,8 +624,14 @@ fun HistoryRowItem(
                                             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
                                             .clickable { onPhotoClick?.invoke(photos) }
                                     ) {
+                                        val ctx = androidx.compose.ui.platform.LocalContext.current
+                                        val request = coil.request.ImageRequest.Builder(ctx)
+                                            .data(uri)
+                                            .size(200) // limit size to fix latency and memory limits
+                                            .crossfade(true)
+                                            .build()
                                         coil.compose.AsyncImage(
-                                            model = uri,
+                                            model = request,
                                             contentDescription = "Photo $index",
                                             modifier = Modifier.fillMaxSize(),
                                             contentScale = androidx.compose.ui.layout.ContentScale.Crop
@@ -648,8 +641,92 @@ fun HistoryRowItem(
                             }
                         }
                     }
+
+                    val context = androidx.compose.ui.platform.LocalContext.current
+                    Button(
+                        onClick = { printHistoryEvent(context, event) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = themeColor)
+                    ) {
+                        Icon(Icons.Default.Print, contentDescription = "Print", modifier = Modifier.size(18.dp).padding(end = 6.dp))
+                        Text("Print / Generate PDF")
+                    }
                 }
             }
         }
+    }
+}
+
+private var activePrintWebView: android.webkit.WebView? = null // Retain webview to avoid GC crash during print
+
+fun printHistoryEvent(context: android.content.Context, event: HistoryEvent) {
+    try {
+        val printManager = context.getSystemService(android.content.Context.PRINT_SERVICE) as? android.print.PrintManager
+        if (printManager == null) {
+            android.widget.Toast.makeText(context, "Print service not available", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        val webView = android.webkit.WebView(context).apply {
+            settings.allowContentAccess = true
+            settings.allowFileAccess = true
+        }
+        activePrintWebView = webView
+        
+        val sdf = SimpleDateFormat("dd MMM yyyy hh:mm a", Locale.getDefault())
+        val date = sdf.format(Date(event.timestamp))
+        
+        val imgTags = event.photoUri?.split(",")?.filter { it.isNotBlank() && !it.startsWith("ic_") }?.joinToString("") {
+            "<img src='$it' style='max-width: 100%; height: auto; margin-top: 10px; border: 1px solid #ddd; padding: 4px;'/>"
+        } ?: ""
+
+        val htmlDocument = """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <style>
+                    body { font-family: sans-serif; padding: 20px; color: #333; line-height: 1.5; }
+                    h1 { border-bottom: 2px solid #ccc; padding-bottom: 10px; }
+                    .label { font-weight: bold; width: 150px; display: inline-block; }
+                    .row { border-bottom: 1px solid #eee; padding: 8px 0; }
+                    .photos { margin-top: 20px; }
+                </style>
+            </head>
+            <body>
+                <h1>Transaction Receipt</h1>
+                <div class="row"><span class="label">Date:</span> $date</div>
+                <div class="row"><span class="label">Action Type:</span> ${event.actionType}</div>
+                <div class="row"><span class="label">IMEI/Serial:</span> ${event.serialNumber}</div>
+                <div class="row"><span class="label">Model:</span> ${event.model}</div>
+                <div class="row"><span class="label">Party Name:</span> ${event.name}</div>
+                <div class="row"><span class="label">Phone:</span> ${event.phoneNumber ?: "N/A"}</div>
+                <div class="row"><span class="label">Quantity:</span> ${event.quantity}</div>
+                <div class="row"><span class="label">Amount:</span> INR ${event.amount}</div>
+                <div class="row"><span class="label">Audited By:</span> ${event.userId}</div>
+                <div class="row"><span class="label">Description:</span> ${event.description}</div>
+                <div class="photos">$imgTags</div>
+            </body>
+            </html>
+        """.trimIndent()
+
+        webView.webViewClient = object : android.webkit.WebViewClient() {
+            override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
+                try {
+                    view?.let {
+                        val printAdapter = it.createPrintDocumentAdapter("Transaction Receipt")
+                        val jobName = "Receipt_${event.serialNumber}"
+                        printManager.print(jobName, printAdapter, android.print.PrintAttributes.Builder().build())
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+        webView.loadDataWithBaseURL(null, htmlDocument, "text/HTML", "UTF-8", null)
+    } catch (e: Exception) {
+        e.printStackTrace()
+        android.widget.Toast.makeText(context, "Cannot generate PDF", android.widget.Toast.LENGTH_SHORT).show()
     }
 }

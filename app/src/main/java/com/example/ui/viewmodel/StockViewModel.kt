@@ -65,12 +65,13 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
     // Sales: canSell, canViewAnalytics
     
     val canManageUsers = _loggedInUser.map { it?.role == "Admin" }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
-    val canManageInventory = _loggedInUser.map { it?.role in listOf("Admin", "Manager", "Operator") }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
-    val canRepair = _loggedInUser.map { it?.role in listOf("Admin", "Manager", "Operator") }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    val canManageInventory = _loggedInUser.map { it?.role in listOf("Admin", "Manager", "Operator", "MIS") }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    val canRepair = _loggedInUser.map { it?.role in listOf("Admin", "Manager", "Operator", "MIS") }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val canViewAnalytics = _loggedInUser.map { it?.role == "Admin" }.stateIn(viewModelScope, SharingStarted.Eagerly, false) // Restricted to Admin Only
-    val canSeePrice = _loggedInUser.map { it?.role in listOf("Admin", "Manager") }.stateIn(viewModelScope, SharingStarted.Eagerly, false) // Restricted to Admin & Manager
-    val canSell = _loggedInUser.map { it?.role in listOf("Admin", "Manager", "Sales") }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
-    val canDelete = _loggedInUser.map { it?.role in listOf("Admin", "Manager") }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    val canSeePrice = _loggedInUser.map { it?.role in listOf("Admin", "Manager", "MIS") }.stateIn(viewModelScope, SharingStarted.Eagerly, false) // Restricted to Admin & Manager
+    val canSell = _loggedInUser.map { it?.role in listOf("Admin", "Manager", "Sales", "MIS") }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    val canDelete = _loggedInUser.map { it?.role in listOf("Admin", "Manager", "MIS") }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    val canViewLedger = _loggedInUser.map { it?.role in listOf("Admin", "Manager", "MIS") }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     private val _loginError = MutableStateFlow<String?>(null)
     val loginError: StateFlow<String?> = _loginError.asStateFlow()
