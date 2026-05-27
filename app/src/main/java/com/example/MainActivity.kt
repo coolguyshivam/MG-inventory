@@ -38,6 +38,7 @@ import com.example.ui.components.PullToRefreshContainer
 import com.example.ui.screens.*
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.viewmodel.StockViewModel
+import com.example.util.AppUtils
 import com.example.ui.viewmodel.ViewModelFactory
 import java.text.SimpleDateFormat
 import java.util.*
@@ -121,6 +122,21 @@ fun MainAppContent(viewModel: StockViewModel) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val coroutineScope = rememberCoroutineScope()
 
+    val allNotifications by viewModel.allNotifications.collectAsState()
+    val loggedInUser by viewModel.loggedInUser.collectAsState()
+    var lastAlertTime by remember { mutableStateOf(System.currentTimeMillis()) }
+    
+    LaunchedEffect(allNotifications) {
+        val userRole = loggedInUser?.role
+        if (userRole == "Admin" || userRole == "Manager") {
+            val latest = allNotifications.maxByOrNull { it.timestamp }
+            if (latest != null && latest.timestamp > lastAlertTime) {
+                lastAlertTime = latest.timestamp
+                AppUtils.postSystemNotification(context, latest.title, latest.message)
+            }
+        }
+    }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -149,13 +165,13 @@ fun MainAppContent(viewModel: StockViewModel) {
                     Spacer(Modifier.height(8.dp))
                     Button(
                         onClick = {
-                            android.widget.Toast.makeText(context, "Attendance Marked Successfully (Simulated)", android.widget.Toast.LENGTH_SHORT).show()
+                            viewModel.setTab(4)
                             coroutineScope.launch { drawerState.close() }
                         },
                         modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth()
                     ) {
-                        Icon(Icons.Default.CameraAlt, contentDescription = "Take Selfie", modifier = Modifier.size(18.dp).padding(end = 4.dp))
-                        Text("Check In")
+                        Icon(Icons.Default.CameraAlt, contentDescription = "Go to Attendance Tab", modifier = Modifier.size(18.dp).padding(end = 4.dp))
+                        Text("Mark Attendance")
                     }
 
                     // Theme Branded Icons header
@@ -379,6 +395,9 @@ fun MainAppContent(viewModel: StockViewModel) {
                 // Everyone can see history
                 tabsItems.add(Triple(3, "History", Icons.Default.History))
                 
+                // Track check-ins & checkouts with location coordinates
+                tabsItems.add(Triple(4, "Attendance", Icons.Default.Fingerprint))
+                
                 if (canManageUsers) {
                     tabsItems.add(Triple(5, "Users", Icons.Default.Group))
                 }
@@ -419,6 +438,7 @@ fun MainAppContent(viewModel: StockViewModel) {
                     1 -> TransactionsScreen(viewModel = viewModel)
                     2 -> AnalyticsScreen(viewModel = viewModel)
                     3 -> HistoryScreen(viewModel = viewModel)
+                    4 -> AttendanceScreen(viewModel = viewModel)
                     5 -> UserManagementScreen(viewModel = viewModel)
                     6 -> com.example.ui.screens.LedgerScreen(viewModel = viewModel)
                     else -> InventoryScreen(viewModel = viewModel)

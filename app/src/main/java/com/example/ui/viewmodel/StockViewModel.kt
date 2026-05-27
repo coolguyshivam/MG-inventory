@@ -8,6 +8,9 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.model.HistoryEvent
 import com.example.data.model.InventoryItem
 import com.example.data.model.User
+import com.example.data.model.AttendanceRecord
+import com.example.data.model.LeaveApplication
+import com.example.data.model.NotificationLog
 import com.example.data.repository.InventoryRepository
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
@@ -193,6 +196,8 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
         descriptionInput.value = ""
         quantityInput.value = 1
         photoUriInput.value = null
+        transactionSubItems.value = listOf(TransactionSubItem(serialNumber = item.serialNumber, amount = item.amount.toInt().toString()))
+        syncAggregatedFormState()
         clearFormErrorAndSuccess()
     }
 
@@ -490,6 +495,191 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
     val allUsers: StateFlow<List<User>> = repository.allUsers
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val allAttendanceRecords: StateFlow<List<AttendanceRecord>> = repository.allAttendanceRecords
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allLeaveApplications: StateFlow<List<LeaveApplication>> = repository.allLeaveApplications
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allNotifications: StateFlow<List<NotificationLog>> = repository.allNotifications
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun markCheckIn(context: Context, selfieBase64: String, location: String) {
+        val currentUser = _loggedInUser.value ?: return
+        viewModelScope.launch {
+            try {
+                val now = System.currentTimeMillis()
+                val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+                val todayStr = sdf.format(java.util.Date(now))
+
+                val record = AttendanceRecord(
+                    id = java.util.UUID.randomUUID().toString(),
+                    userId = currentUser.username,
+                    userName = currentUser.username,
+                    dateString = todayStr,
+                    checkInTime = now,
+                    checkInSelfieBase64 = selfieBase64,
+                    checkInLocationSpec = location,
+                    status = "Present"
+                )
+                repository.insertAttendanceRecord(record)
+
+                val message = "Employee ${currentUser.username} checked in at ${java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(now))} from $location."
+                val notification = NotificationLog(
+                    id = java.util.UUID.randomUUID().toString(),
+                    title = "New Check-In!",
+                    message = message,
+                    timestamp = now,
+                    type = "CHECK_IN"
+                )
+                repository.insertNotification(notification)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun markCheckOut(context: Context, selfieBase64: String, location: String) {
+        val currentUser = _loggedInUser.value ?: return
+        viewModelScope.launch {
+            try {
+                val now = System.currentTimeMillis()
+                val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+                val todayStr = sdf.format(java.util.Date(now))
+
+                val existing = allAttendanceRecords.value.find { it.userId == currentUser.username && it.dateString == todayStr }
+                val updated = if (existing != null) {
+                    existing.copy(
+                        checkOutTime = now,
+                        checkOutSelfieBase64 = selfieBase64,
+                        checkOutLocationSpec = location
+                    )
+                } else {
+                    AttendanceRecord(
+                        id = java.util.UUID.randomUUID().toString(),
+                        userId = currentUser.username,
+                        userName = currentUser.username,
+                        dateString = todayStr,
+                        checkInTime = now - 3600000,
+                        checkOutTime = now,
+                        checkOutSelfieBase64 = selfieBase64,
+                        checkOutLocationSpec = location,
+                        status = "Present"
+                    )
+                }
+                repository.insertAttendanceRecord(updated)
+
+                val message = "Employee ${currentUser.username} checked out at ${java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(now))}."
+                val notification = NotificationLog(
+                    id = java.util.UUID.randomUUID().toString(),
+                    title = "New Check-Out!",
+                    message = message,
+                    timestamp = now,
+                    type = "CHECK_OUT"
+                )
+                repository.insertNotification(notification)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun applyForLeave(startDate: String, endDate: String, type: String, reason: String) {
+        val currentUser = _loggedInUser.value ?: return
+        viewModelScope.launch {
+            try {
+                val leave = LeaveApplication(
+                    id = java.util.UUID.randomUUID().toString(),
+                    userId = currentUser.username,
+                    userName = currentUser.username,
+                    startDateString = startDate,
+                    endDateString = endDate,
+                    leaveType = type,
+                    reason = reason,
+                    status = "Pending"
+                )
+                repository.insertLeaveApplication(leave)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun approveOrRejectLeave(leave: LeaveApplication, status: String, approverName: String) {
+        viewModelScope.launch {
+            try {
+                val updatedLeave = leave.copy(
+                    status = status,
+                    approvedBy = approverName
+                )
+                repository.updateLeaveApplication(updatedLeave)
+
+                if (status == "Approved") {
+                    val dates = getDatesList(leave.startDateString, leave.endDateString)
+                    for (d in dates) {
+                        val record = AttendanceRecord(
+                            id = java.util.UUID.randomUUID().toString(),
+                            userId = leave.userId,
+                            userName = leave.userName,
+                            dateString = d,
+                            status = "On Leave",
+                            notes = "Leave Approved: ${leave.reason} (${leave.leaveType})"
+                        )
+                        repository.insertAttendanceRecord(record)
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun modifyAttendance(userId: String, userName: String, dateString: String, status: String, notes: String) {
+        viewModelScope.launch {
+            try {
+                val existing = allAttendanceRecords.value.find { it.userId == userId && it.dateString == dateString }
+                val updated = if (existing != null) {
+                    existing.copy(
+                        status = status,
+                        notes = notes
+                    )
+                } else {
+                    AttendanceRecord(
+                        id = java.util.UUID.randomUUID().toString(),
+                        userId = userId,
+                        userName = userName,
+                        dateString = dateString,
+                        checkInTime = if (status == "Present") System.currentTimeMillis() else 0,
+                        status = status,
+                        notes = notes
+                    )
+                }
+                repository.insertAttendanceRecord(updated)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    private fun getDatesList(startStr: String, endStr: String): List<String> {
+        val result = mutableListOf<String>()
+        try {
+            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+            val startDate = sdf.parse(startStr)
+            val endDate = sdf.parse(endStr)
+            
+            val calendar = java.util.Calendar.getInstance()
+            calendar.time = startDate
+            while (!calendar.time.after(endDate)) {
+                result.add(sdf.format(calendar.time))
+                calendar.add(java.util.Calendar.DATE, 1)
+            }
+        } catch (e: Exception) {
+            result.add(startStr)
+        }
+        return result
+    }
+
     fun addUser(username: String, passwordHash: String, role: String) {
         viewModelScope.launch {
             repository.insertUser(User(username, passwordHash, role))
@@ -655,6 +845,12 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
         // Validation
         if (model.isBlank() || name.isBlank()) {
             _transactionError.value = "Model and Name fields are mandatory."
+            return
+        }
+
+        val inputImeis = itemsToProcess.map { it.serialNumber.trim() }
+        if (inputImeis.size != inputImeis.distinct().size) {
+            _transactionError.value = "Duplicate IMEI numbers are not allowed in the same transaction."
             return
         }
 

@@ -84,32 +84,19 @@ fun TransactionsScreen(viewModel: StockViewModel) {
     val tempCameraUriState = remember { mutableStateOf<Uri?>(null) }
 
     val galleryLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickMultipleVisualMedia()
+        contract = ActivityResultContracts.GetMultipleContents()
     ) { uris ->
         if (uris.isNotEmpty()) {
             val currentUris = viewModel.photoUriInput.value
             val urisArray = if (currentUris.isNullOrBlank()) emptyList() else currentUris.split(",")
             
-            // Map the URIs to local cache so they persist
             val newUrisStr = uris.mapNotNull { uri ->
-                try {
-                    val stream = context.contentResolver.openInputStream(uri)
-                    val file = File(context.cacheDir, "gallery_image_${System.currentTimeMillis()}_${java.util.UUID.randomUUID().toString().take(4)}.jpg")
-                    stream?.use { input ->
-                        java.io.FileOutputStream(file).use { output ->
-                            input.copyTo(output)
-                        }
-                    }
-                    androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.provider", file).toString()
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                    null
-                }
+                com.example.util.AppUtils.uriToBase64(context, uri)
             }
             
             if (urisArray.size + newUrisStr.size <= 10) {
                 viewModel.photoUriInput.value = (urisArray + newUrisStr).joinToString(",")
-                Toast.makeText(context, "Gallery Images Linked!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Gallery Images Attached & Sync-optimized!", Toast.LENGTH_SHORT).show()
             } else {
                 Toast.makeText(context, "Maximum 10 photos allowed total", Toast.LENGTH_SHORT).show()
             }
@@ -124,8 +111,13 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                 val currentUris = viewModel.photoUriInput.value
                 val urisArray = if (currentUris.isNullOrBlank()) emptyList() else currentUris.split(",")
                 if (urisArray.size < 10) {
-                    viewModel.photoUriInput.value = (urisArray + uri.toString()).joinToString(",")
-                    Toast.makeText(context, "Camera Snapshot Attached!", Toast.LENGTH_SHORT).show()
+                    val base64 = com.example.util.AppUtils.uriToBase64(context, uri)
+                    if (base64 != null) {
+                        viewModel.photoUriInput.value = (urisArray + base64).joinToString(",")
+                        Toast.makeText(context, "Camera Snapshot Attached & Sync-optimized!", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Error: Failed to compress snapshot.", Toast.LENGTH_SHORT).show()
+                    }
                 } else {
                     Toast.makeText(context, "Maximum 10 photos allowed", Toast.LENGTH_SHORT).show()
                 }
@@ -801,9 +793,7 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                                 .fillMaxWidth()
                                 .clickable {
                                     try {
-                                        galleryLauncher.launch(
-                                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                        )
+                                        galleryLauncher.launch("image/*")
                                     } catch (e: Exception) {
                                         android.widget.Toast.makeText(context, "No gallery app found", android.widget.Toast.LENGTH_SHORT).show()
                                     }

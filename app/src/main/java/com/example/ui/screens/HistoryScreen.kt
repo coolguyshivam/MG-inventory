@@ -383,7 +383,7 @@ fun HistoryScreen(viewModel: StockViewModel) {
                     modifier = Modifier.fillMaxSize()
                 ) { page ->
                     coil.compose.AsyncImage(
-                        model = photos[page],
+                        model = com.example.util.AppUtils.resolveImageModel(photos[page]),
                         contentDescription = "Full Screen Photo",
                         modifier = Modifier
                             .fillMaxSize()
@@ -406,7 +406,7 @@ fun HistoryScreen(viewModel: StockViewModel) {
                     }
                     IconButton(
                         onClick = {
-                            android.widget.Toast.makeText(ctx, "Downloading photo ${pagerState.currentPage + 1}...", android.widget.Toast.LENGTH_SHORT).show()
+                            com.example.util.AppUtils.saveImageToGallery(ctx, photos[pagerState.currentPage])
                         },
                         modifier = Modifier.background(Color.Black.copy(alpha = 0.5f), CircleShape)
                     ) {

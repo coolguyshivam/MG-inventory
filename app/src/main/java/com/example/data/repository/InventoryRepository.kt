@@ -3,6 +3,9 @@ package com.example.data.repository
 import com.example.data.model.HistoryEvent
 import com.example.data.model.InventoryItem
 import com.example.data.model.User
+import com.example.data.model.AttendanceRecord
+import com.example.data.model.LeaveApplication
+import com.example.data.model.NotificationLog
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -53,6 +56,33 @@ class InventoryRepository {
         val sub = db.collection("ledger_entries").addSnapshotListener { snap, err ->
             if (snap != null) {
                 trySend(snap.documents.mapNotNull { it.toObject(com.example.data.model.LedgerEntry::class.java) })
+            }
+        }
+        awaitClose { sub.remove() }
+    }
+
+    val allAttendanceRecords: Flow<List<AttendanceRecord>> = callbackFlow {
+        val sub = db.collection("attendance_records").addSnapshotListener { snap, err ->
+            if (snap != null) {
+                trySend(snap.documents.mapNotNull { it.toObject(AttendanceRecord::class.java) })
+            }
+        }
+        awaitClose { sub.remove() }
+    }
+
+    val allLeaveApplications: Flow<List<LeaveApplication>> = callbackFlow {
+        val sub = db.collection("leave_applications").addSnapshotListener { snap, err ->
+            if (snap != null) {
+                trySend(snap.documents.mapNotNull { it.toObject(LeaveApplication::class.java) })
+            }
+        }
+        awaitClose { sub.remove() }
+    }
+
+    val allNotifications: Flow<List<NotificationLog>> = callbackFlow {
+        val sub = db.collection("attendance_notifications").addSnapshotListener { snap, err ->
+            if (snap != null) {
+                trySend(snap.documents.mapNotNull { it.toObject(NotificationLog::class.java) })
             }
         }
         awaitClose { sub.remove() }
@@ -463,5 +493,26 @@ class InventoryRepository {
                 awaitClose { sub.remove() }
             }
         }
+    }
+
+    // --- Cloud-Synced Attendance Systems ---
+    suspend fun insertAttendanceRecord(record: AttendanceRecord) {
+        db.collection("attendance_records").document(record.id).set(record).await()
+    }
+
+    suspend fun updateAttendanceRecord(record: AttendanceRecord) {
+        db.collection("attendance_records").document(record.id).set(record).await()
+    }
+
+    suspend fun insertLeaveApplication(leave: LeaveApplication) {
+        db.collection("leave_applications").document(leave.id).set(leave).await()
+    }
+
+    suspend fun updateLeaveApplication(leave: LeaveApplication) {
+        db.collection("leave_applications").document(leave.id).set(leave).await()
+    }
+
+    suspend fun insertNotification(notification: NotificationLog) {
+        db.collection("attendance_notifications").document(notification.id).set(notification).await()
     }
 }

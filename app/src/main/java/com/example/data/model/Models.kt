@@ -57,4 +57,41 @@ data class LedgerEntry(
     val historyEventId: String? = null
 )
 
+data class AttendanceRecord(
+    val id: String = UUID.randomUUID().toString(),
+    val userId: String = "",
+    val userName: String = "",
+    val dateString: String = "", // "yyyy-MM-dd"
+    val checkInTime: Long = 0,
+    val checkInSelfieBase64: String? = null,
+    val checkInLocationSpec: String? = null,
+    val checkOutTime: Long = 0,
+    val checkOutSelfieBase64: String? = null,
+    val checkOutLocationSpec: String? = null,
+    val status: String = "Present", // "Present", "On Leave"
+    val notes: String? = null
+)
+
+data class LeaveApplication(
+    val id: String = UUID.randomUUID().toString(),
+    val userId: String = "",
+    val userName: String = "",
+    val startDateString: String = "", // "yyyy-MM-dd"
+    val endDateString: String = "",   // "yyyy-MM-dd"
+    val leaveType: String = "Sick Leave", // "Sick Leave", "Casual Leave", "Earned Leave"
+    val reason: String = "",
+    val status: String = "Pending",     // "Pending", "Approved", "Rejected"
+    val approvedBy: String? = null,
+    val appliedOn: Long = System.currentTimeMillis()
+)
+
+data class NotificationLog(
+    val id: String = UUID.randomUUID().toString(),
+    val title: String = "",
+    val message: String = "",
+    val timestamp: Long = System.currentTimeMillis(),
+    val type: String = "INFO" // "INFO", "CHECK_IN", "CHECK_OUT"
+)
+
+
 

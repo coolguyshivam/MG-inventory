@@ -602,7 +602,7 @@ fun InventoryScreen(viewModel: StockViewModel) {
                         modifier = Modifier.fillMaxSize()
                     ) { page ->
                         coil.compose.AsyncImage(
-                            model = photos[page],
+                            model = com.example.util.AppUtils.resolveImageModel(photos[page]),
                             contentDescription = "Full Screen Photo",
                             modifier = Modifier
                                 .fillMaxSize()
@@ -628,7 +628,7 @@ fun InventoryScreen(viewModel: StockViewModel) {
 
                         IconButton(
                             onClick = {
-                                android.widget.Toast.makeText(ctx, "Downloading photo ${pagerState.currentPage + 1}...", android.widget.Toast.LENGTH_SHORT).show()
+                                com.example.util.AppUtils.saveImageToGallery(ctx, photos[pagerState.currentPage])
                             },
                             modifier = Modifier.background(Color.Black.copy(alpha = 0.5f), CircleShape)
                         ) {
@@ -752,7 +752,7 @@ fun InventoryCardItem(
                     val firstPhoto = item.photoUri?.split(",")?.firstOrNull()
                     if (firstPhoto != null && firstPhoto.isNotBlank() && !firstPhoto.startsWith("ic_")) {
                         coil.compose.AsyncImage(
-                            model = firstPhoto,
+                            model = com.example.util.AppUtils.resolveImageModel(firstPhoto),
                             contentDescription = "Item Photo",
                             modifier = Modifier.fillMaxSize(),
                             contentScale = androidx.compose.ui.layout.ContentScale.Crop
@@ -954,7 +954,7 @@ fun InventoryCardItem(
                                             .clickable { onPhotoClick(photos) }
                                     ) {
                                         coil.compose.AsyncImage(
-                                            model = uri,
+                                            model = com.example.util.AppUtils.resolveImageModel(uri),
                                             contentDescription = "Additional Photo $index",
                                             modifier = Modifier.fillMaxSize(),
                                             contentScale = androidx.compose.ui.layout.ContentScale.Crop
