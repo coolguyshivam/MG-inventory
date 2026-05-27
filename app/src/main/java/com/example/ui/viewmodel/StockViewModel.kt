@@ -131,6 +131,7 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
     var phoneInput = MutableStateFlow("")
     var aadhaarInput = MutableStateFlow("")
     var amountInput = MutableStateFlow("")
+    var addressInput = MutableStateFlow("")
     var descriptionInput = MutableStateFlow("")
     var dateInMillisInput = MutableStateFlow(System.currentTimeMillis())
     
@@ -584,6 +585,7 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
         phoneInput.value = ""
         aadhaarInput.value = ""
         amountInput.value = ""
+        addressInput.value = ""
         descriptionInput.value = ""
         dateInMillisInput.value = System.currentTimeMillis()
         quantityInput.value = 1
@@ -628,7 +630,9 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
         val name = nameInput.value.trim()
         val phone = phoneInput.value.trim()
         val aadhaar = aadhaarInput.value.trim()
-        val desc = descriptionInput.value.trim()
+        val address = addressInput.value.trim()
+        val rawDesc = descriptionInput.value.trim()
+        val desc = if (address.isNotBlank()) "Address: $address\n$rawDesc" else rawDesc
         val dateInMillis = dateInMillisInput.value
         val itemsToProcess = transactionSubItems.value
         val photo = photoUriInput.value
@@ -699,6 +703,44 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                 val activeUser = _loggedInUser.value?.username ?: "admin"
                 var allSuccess = true
 
+                // PRE-VALIDATION: Ensure all items pass basic checks so it's all-or-nothing
+                for (item in itemsToProcess) {
+                    val sn = item.serialNumber.trim()
+                    when (typeId) {
+                        0 -> { // Purchase
+                            val existing = repository.getItemBySerialNumber(sn)
+                            if (existing != null && (existing.quantity > 0 || existing.isUnderRepair)) {
+                                _transactionError.value = "Failed at item: '$sn'. Cannot purchase back, already in inventory or repair."
+                                _isUploadingTransaction.value = false
+                                return@launch
+                            }
+                        }
+                        1 -> { // Sale
+                            val stockItem = repository.getItemBySerialNumber(sn)
+                            if (stockItem == null) {
+                                _transactionError.value = "Failed at item: '$sn'. Not found in stock."
+                                _isUploadingTransaction.value = false
+                                return@launch
+                            }
+                            if (stockItem.isUnderRepair) {
+                                _transactionError.value = "Failed at item: '$sn'. Cannot sell, out for repair."
+                                _isUploadingTransaction.value = false
+                                return@launch
+                            }
+                        }
+                        // Returns and Repair don't have strictly blocking conditions here since DB updates handle it, 
+                        // but you could add if you want to ensure the items exist.
+                        3 -> { // Repair
+                            val stockItem = repository.getItemBySerialNumber(sn)
+                            if (stockItem == null || stockItem.quantity <= 0) {
+                                _transactionError.value = "Failed at item: '$sn'. Not found in stock to send for repair."
+                                _isUploadingTransaction.value = false
+                                return@launch
+                            }
+                        }
+                    }
+                }
+
                 val timeoutResult = kotlinx.coroutines.withTimeoutOrNull(10000L) {
                     for (item in itemsToProcess) {
                         val serialNumber = item.serialNumber.trim()
@@ -706,13 +748,6 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                         var success = false
                         when (typeId) {
                             0 -> { // Purchase
-                                val existing = repository.getItemBySerialNumber(serialNumber)
-                                if (existing != null && (existing.quantity > 0 || existing.isUnderRepair)) {
-                                    _transactionError.value = "Cannot purchase back: Item with IMEI/Serial '$serialNumber' is already in inventory or repair."
-                                    allSuccess = false
-                                    break
-                                }
-
                                 success = repository.purchaseProduct(
                                     serialNumber = serialNumber,
                                     model = model,
@@ -728,18 +763,6 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                                 )
                             }
                             1 -> { // Sale
-                                val stockItem = repository.getItemBySerialNumber(serialNumber)
-                                if (stockItem == null) {
-                                    _transactionError.value = "Item with Serial Number/IMEI '$serialNumber' is not in stock!"
-                                    allSuccess = false
-                                    break
-                                }
-                                if (stockItem.isUnderRepair) {
-                                    _transactionError.value = "Cannot sell. Item '$serialNumber' is currently out for repair."
-                                    allSuccess = false
-                                    break
-                                }
-
                                 success = repository.saleProduct(
                                     serialNumber = serialNumber,
                                     model = model,

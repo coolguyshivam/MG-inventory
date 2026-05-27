@@ -26,6 +26,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.text.KeyboardOptions
@@ -60,6 +61,21 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                 val currentDescription = viewModel.descriptionInput.value
                 val separator = if (currentDescription.isNotBlank()) " " else ""
                 viewModel.descriptionInput.value = currentDescription + separator + spokenText
+            }
+        }
+    }
+
+    val speechLauncherAddress = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val data = result.data
+            val results = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            if (!results.isNullOrEmpty()) {
+                val spokenText = results[0]
+                val currentAddress = viewModel.addressInput.value
+                val separator = if (currentAddress.isNotBlank()) " " else ""
+                viewModel.addressInput.value = currentAddress + separator + spokenText
             }
         }
     }
@@ -130,6 +146,7 @@ fun TransactionsScreen(viewModel: StockViewModel) {
     val phone by viewModel.phoneInput.collectAsState()
     val aadhaar by viewModel.aadhaarInput.collectAsState()
     val amount by viewModel.amountInput.collectAsState()
+    val address by viewModel.addressInput.collectAsState()
     val description by viewModel.descriptionInput.collectAsState()
     val dateInMillis by viewModel.dateInMillisInput.collectAsState()
     val quantity by viewModel.quantityInput.collectAsState()
@@ -319,11 +336,11 @@ fun TransactionsScreen(viewModel: StockViewModel) {
             transactionSubItems.forEachIndexed { index, subItem ->
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.3f)),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(8.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text("Item ${index + 1}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Item ${index + 1}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
@@ -335,25 +352,21 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                                     viewModel.updateSubItem(index, it, subItem.amount)
                                     viewModel.clearFormErrorAndSuccess()
                                 },
-                                label = { Text("Serial Number *") },
+                                label = { Text("IMEI/Serial *") },
                                 singleLine = true,
                                 shape = RoundedCornerShape(10.dp),
                                 modifier = Modifier.weight(1.5f),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                trailingIcon = {
+                                    val iconAlpha = if (subItem.serialNumber.isNotEmpty()) 0.4f else 1f
+                                    IconButton(
+                                        onClick = { scannerIndex = index },
+                                        modifier = Modifier.alpha(iconAlpha)
+                                    ) {
+                                        Icon(Icons.Default.QrCodeScanner, "Scanner", tint = themeColorAndLabel.first)
+                                    }
+                                }
                             )
-
-                            IconButton(
-                                onClick = { scannerIndex = index },
-                                colors = IconButtonDefaults.iconButtonColors(
-                                    containerColor = themeColorAndLabel.first,
-                                    contentColor = Color.White
-                                ),
-                                modifier = Modifier
-                                    .size(56.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                            ) {
-                                Icon(Icons.Default.QrCodeScanner, "Scanner")
-                            }
 
                             OutlinedTextField(
                                 value = subItem.amount,
@@ -364,7 +377,7 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                                 label = { Text("Price *") },
                                 singleLine = true,
                                 shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.weight(1f).height(64.dp), // keep same height as default text field
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                             )
                         }
@@ -561,6 +574,35 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                     }
                 }
             }
+
+            // Address box (Optional)
+            OutlinedTextField(
+                value = address,
+                onValueChange = {
+                    viewModel.addressInput.value = it
+                    viewModel.clearFormErrorAndSuccess()
+                },
+                label = { Text("Address (Optional)") },
+                placeholder = { Text("Enter party or storage address...") },
+                shape = RoundedCornerShape(14.dp),
+                trailingIcon = {
+                    IconButton(onClick = {
+                        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "hi-IN")
+                            putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak now in Hindi or English")
+                        }
+                        try {
+                            speechLauncherAddress.launch(intent)
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Speech recognizer not available", Toast.LENGTH_SHORT).show()
+                        }
+                    }) {
+                        Icon(Icons.Default.Mic, contentDescription = "Dictate Address")
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
 
             // 8. Description box
             OutlinedTextField(

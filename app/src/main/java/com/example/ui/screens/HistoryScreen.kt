@@ -605,31 +605,20 @@ fun HistoryRowItem(
                         Text(event.description, style = MaterialTheme.typography.bodySmall, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
 
-                    if (!event.photoUri.isNullOrBlank()) {
-                        val photos = event.photoUri.split(",").filter { it.isNotBlank() && !it.startsWith("ic_") }
-                        if (photos.isNotEmpty()) {
-                            Button(
-                                onClick = { onPhotoClick?.invoke(photos) },
-                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Icon(Icons.Default.PhotoLibrary, contentDescription = "View Photos", modifier = Modifier.size(16.dp).padding(end=6.dp))
-                                Text("View ${photos.size} Photo(s)")
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        if (!event.photoUri.isNullOrBlank()) {
+                            val photos = event.photoUri.split(",").filter { it.isNotBlank() && !it.startsWith("ic_") }
+                            if (photos.isNotEmpty()) {
+                                IconButton(onClick = { onPhotoClick?.invoke(photos) }) {
+                                    Icon(Icons.Default.PhotoLibrary, contentDescription = "View Photos", tint = MaterialTheme.colorScheme.secondary)
+                                }
                             }
                         }
-                    }
 
-                    val context = androidx.compose.ui.platform.LocalContext.current
-                    Button(
-                        onClick = { printHistoryEvent(context, event) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = themeColor)
-                    ) {
-                        Icon(Icons.Default.Print, contentDescription = "Print", modifier = Modifier.size(18.dp).padding(end = 6.dp))
-                        Text("Print / Generate PDF")
+                        val context = androidx.compose.ui.platform.LocalContext.current
+                        IconButton(onClick = { printHistoryEvent(context, event) }) {
+                            Icon(Icons.Default.Print, contentDescription = "Print PDF", tint = themeColor)
+                        }
                     }
                 }
             }

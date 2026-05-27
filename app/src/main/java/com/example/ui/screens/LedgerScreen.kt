@@ -212,7 +212,7 @@ fun LedgerScreen(viewModel: StockViewModel) {
         )
     }
 
-    if (selectedEventForDialog != null) {
+    selectedEventForDialog?.let { event ->
         AlertDialog(
             onDismissRequest = { selectedEventForDialog = null },
             title = { Text("Transaction Details", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) },
@@ -220,7 +220,7 @@ fun LedgerScreen(viewModel: StockViewModel) {
                 // Keep it single list context style for HistoryRowItem
                 // that expects a column
                 HistoryRowItem(
-                    event = selectedEventForDialog!!,
+                    event = event,
                     isExpanded = true,
                     onExpandTapped = {},
                     onPhotoClick = { } 
