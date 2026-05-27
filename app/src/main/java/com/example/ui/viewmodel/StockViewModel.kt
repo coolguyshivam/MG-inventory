@@ -318,6 +318,20 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
         
         viewModelScope.launch {
             try {
+                combine(allUsers, allAttendanceRecords, allNotifications) { users, attendance, notifications ->
+                    Triple(users, attendance, notifications)
+                }.collect { (users, attendance, notifications) ->
+                    if (users.isNotEmpty() && attendance.isNotEmpty()) {
+                        checkAndTriggerAbsences(users, attendance, notifications)
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+        
+        viewModelScope.launch {
+            try {
                 nameInput.collect { typedName ->
                     val nameStr = typedName.trim()
                     if (nameStr.isNotEmpty()) {
@@ -1101,6 +1115,61 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
             } catch (e: Exception) {
                 e.printStackTrace()
             }
+        }
+    }
+
+    private fun checkAndTriggerAbsences(users: List<User>, attendance: List<AttendanceRecord>, notifications: List<NotificationLog>) {
+        try {
+            val calendar = java.util.Calendar.getInstance()
+            val year = calendar.get(java.util.Calendar.YEAR)
+            val month = calendar.get(java.util.Calendar.MONTH) // 0-indexed
+            val dayOfMonth = calendar.get(java.util.Calendar.DAY_OF_MONTH)
+            
+            val monthName = java.text.SimpleDateFormat("MMMM yyyy", java.util.Locale.getDefault()).format(java.util.Date())
+            
+            for (user in users) {
+                if (user.role == "Admin" || user.role == "Manager") {
+                    continue // Manager and Admin do not require to apply for leaves and do not trigger absence alerts
+                }
+                
+                var absentDaysCount = 0
+                val absentDaysDates = mutableListOf<String>()
+                for (day in 1 until dayOfMonth) {
+                    val dateStr = String.format("%04d-%02d-%02d", year, month + 1, day)
+                    val record = attendance.find { it.userId == user.username && it.dateString == dateStr }
+                    if (record == null) {
+                        absentDaysCount++
+                        absentDaysDates.add(dateStr)
+                    } else if (record.status == "Absent") {
+                        absentDaysCount++
+                        absentDaysDates.add(dateStr)
+                    }
+                }
+                
+                if (absentDaysCount > 4) {
+                    val alertId = "ABSENCE_ALERT_${user.username}_${year}_${month + 1}"
+                    val alreadyNotified = notifications.any { it.id == alertId }
+                    if (!alreadyNotified) {
+                        viewModelScope.launch {
+                            try {
+                                val alertMsg = "Employee ${user.username} has been absent for $absentDaysCount days in $monthName (Dates: ${absentDaysDates.take(5).joinToString(", ")}...). This warning has been shared with him, his manager, and admin."
+                                val notification = NotificationLog(
+                                    id = alertId,
+                                    title = "Excessive Absences alert: ${user.username}",
+                                    message = alertMsg,
+                                    timestamp = System.currentTimeMillis(),
+                                    type = "ABSENCE_ALERT"
+                                )
+                                repository.insertNotification(notification)
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 }

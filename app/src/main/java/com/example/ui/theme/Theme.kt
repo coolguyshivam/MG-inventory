@@ -66,8 +66,8 @@ fun MyApplicationTheme(
 ) {
     val baseScheme = if (darkTheme) DarkColorScheme else LightColorScheme
     val colorScheme = baseScheme.copy(
-        primary = getPrimaryColor(appIconStyle, darkTheme),
-        secondary = getSecondaryColor(appIconStyle, darkTheme)
+        primary = getPrimaryColor("Classic Slate", darkTheme),
+        secondary = getSecondaryColor("Classic Slate", darkTheme)
     )
 
     MaterialTheme(

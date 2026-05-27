@@ -66,6 +66,29 @@ fun AttendanceScreen(viewModel: StockViewModel) {
     val targetRecords = allAttendance.filter { it.userId == targetUser.username }
     val targetTodayRecord = targetRecords.find { it.dateString == todayStr }
 
+    val currentMonthAbsences = remember(allAttendance, targetUser) {
+        try {
+            val calendar = java.util.Calendar.getInstance()
+            val year = calendar.get(java.util.Calendar.YEAR)
+            val month = calendar.get(java.util.Calendar.MONTH) // 0-indexed
+            val dayOfMonth = calendar.get(java.util.Calendar.DAY_OF_MONTH)
+            
+            var count = 0
+            if (targetUser.role != "Admin" && targetUser.role != "Manager") {
+                for (day in 1 until dayOfMonth) {
+                    val dateStr = String.format("%04d-%02d-%02d", year, month + 1, day)
+                    val record = allAttendance.find { it.userId == targetUser.username && it.dateString == dateStr }
+                    if (record == null || record.status == "Absent") {
+                        count++
+                    }
+                }
+            }
+            count
+        } catch(e: Exception) {
+            0
+        }
+    }
+
     // Calendar UI variables
     val calendarInstance = remember { Calendar.getInstance() }
     var currentYear by remember { mutableStateOf(calendarInstance.get(Calendar.YEAR)) }
@@ -153,6 +176,44 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Excessive Absence warning card
+            if (currentMonthAbsences > 4 && subTabSelection == 0) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                        border = BorderStroke(1.2.dp, MaterialTheme.colorScheme.error)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = "Absence Warning",
+                                tint = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.size(28.dp)
+                            )
+                            Column {
+                                Text(
+                                    text = "Excessive Absences Detected!",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                                Text(
+                                    text = "${targetUser.username} has been absent for $currentMonthAbsences days this month. This has been reported to Manager and Admin.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.85f)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // Admin/Manager Selected Employee Banner
             if (isAdminOrManager && subTabSelection == 0) {
                 item {
@@ -474,6 +535,21 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                                             val queryRecord = targetRecords.find { it.dateString == dateStr }
                                             val isToday = dateStr == todayStr
                                             
+                                            val otherUsersOnLeave = allLeaves.filter { leave ->
+                                                leave.userId != targetUser.username &&
+                                                leave.status == "Approved" &&
+                                                dateStr >= leave.startDateString &&
+                                                dateStr <= leave.endDateString
+                                            }.map { it.userName }
+
+                                            val otherUsersOnLeaveFromAtt = allAttendance.filter { r ->
+                                                r.userId != targetUser.username &&
+                                                r.status == "On Leave" &&
+                                                r.dateString == dateStr
+                                            }.map { it.userName }
+
+                                            val othersLeaveList = (otherUsersOnLeave + otherUsersOnLeaveFromAtt).distinct()
+
                                             val (bgColor, textColor, borderStroke) = when {
                                                 queryRecord?.status == "On Leave" -> Triple(Color(0xFFFFF9C4), Color(0xFFF57F17), BorderStroke(1.dp, Color(0xFFFBC02D))) // leave soft yellow/gold
                                                 queryRecord?.status == "Present" -> Triple(Color(0xFFE8F5E9), Color(0xFF2E7D32), BorderStroke(1.dp, Color(0xFF81C784))) // present soft green
@@ -513,10 +589,19 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                                                         color = textColor
                                                     )
                                                     // Dot indicators
-                                                    if (queryRecord?.status == "Present") {
-                                                        Box(modifier = Modifier.size(4.dp).clip(CircleShape).background(Color(0xFF2E7D32)))
-                                                    } else if (queryRecord?.status == "On Leave") {
-                                                        Box(modifier = Modifier.size(4.dp).clip(CircleShape).background(Color(0xFFE65100)))
+                                                    Row(
+                                                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        if (queryRecord?.status == "Present") {
+                                                            Box(modifier = Modifier.size(4.dp).clip(CircleShape).background(Color(0xFF2E7D32)))
+                                                        } else if (queryRecord?.status == "On Leave") {
+                                                            Box(modifier = Modifier.size(4.dp).clip(CircleShape).background(Color(0xFFE65100)))
+                                                        }
+                                                        
+                                                        if (othersLeaveList.isNotEmpty()) {
+                                                            Box(modifier = Modifier.size(4.dp).clip(CircleShape).background(Color(0xFF2563EB)))
+                                                        }
                                                     }
                                                 }
                                             }
@@ -545,8 +630,12 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                                     Text("On Leave", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFF57F17))
                                 }
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Box(Modifier.size(10.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFF2563EB)))
+                                    Text("Others On Leave", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF2563EB))
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Box(Modifier.size(10.dp).clip(RoundedCornerShape(2.dp)).border(0.5.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(2.dp)))
-                                    Text("Unmarked / Off", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("Unmarked", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                         }
@@ -560,7 +649,13 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Button(
-                            onClick = { showLeaveDialog = true },
+                            onClick = {
+                                if (loggedInUser?.role in listOf("Admin", "Manager")) {
+                                    Toast.makeText(context, "Manager and Admin do not require to apply for leaves, all others do.", Toast.LENGTH_LONG).show()
+                                } else {
+                                    showLeaveDialog = true
+                                }
+                            },
                             modifier = Modifier.weight(1.0f),
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
@@ -778,7 +873,7 @@ fun AttendanceScreen(viewModel: StockViewModel) {
     if (showLeaveDialog) {
         var startLeaveSpec by remember { mutableStateOf("") }
         var endLeaveSpec by remember { mutableStateOf("") }
-        var leaveTypeSpec by remember { mutableStateOf("Casual Leave") }
+        var leaveTypeSpec by remember { mutableStateOf("Week-off") }
         var reasonSpec by remember { mutableStateOf("") }
         
         AlertDialog(
@@ -802,18 +897,10 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                         modifier = Modifier.fillMaxWidth()
                     )
 
-                    // Leave type
+                    // Leave type Description
                     Column {
-                        Text("Category:", style = MaterialTheme.typography.labelMedium)
-                        Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            listOf("Casual Leave", "Sick Leave", "Earned Leave").forEach { lType ->
-                                FilterChip(
-                                    selected = leaveTypeSpec == lType,
-                                    onClick = { leaveTypeSpec = lType },
-                                    label = { Text(lType) }
-                                )
-                            }
-                        }
+                        Text("Category: Week-off (Fixed)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        Text("This is the standard and only leave type supported.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
 
                     OutlinedTextField(
@@ -953,6 +1040,44 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                     }
 
                     Text("Employee: ${stamp.userName}")
+
+                    val otherUsersOnLeave = allLeaves.filter { leave ->
+                        leave.userId != stamp.userId &&
+                        leave.status == "Approved" &&
+                        stamp.dateString >= leave.startDateString &&
+                        stamp.dateString <= leave.endDateString
+                    }.map { it.userName }
+
+                    val otherUsersOnLeaveFromAtt = allAttendance.filter { r ->
+                        r.userId != stamp.userId &&
+                        r.status == "On Leave" &&
+                        r.dateString == stamp.dateString
+                    }.map { it.userName }
+
+                    val dialogOthersLeaveList = (otherUsersOnLeave + otherUsersOnLeaveFromAtt).distinct()
+
+                    if (dialogOthersLeaveList.isNotEmpty()) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFF2563EB)))
+                                    Text(
+                                        text = "Others on Leave today (View-Only):",
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                dialogOthersLeaveList.forEach { name ->
+                                    Text("• $name [Week-off]", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                                }
+                            }
+                        }
+                    }
 
                     if (stamp.checkInTime != 0L) {
                         Text("✓ Checked-In: " + SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(stamp.checkInTime)))

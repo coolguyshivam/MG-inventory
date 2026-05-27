@@ -174,7 +174,7 @@ fun MainAppContent(viewModel: StockViewModel) {
                         Text("Mark Attendance")
                     }
 
-                    // Theme Branded Icons header
+                    // Launcher Icon Selection Options
                     HorizontalDivider(modifier = Modifier.padding(16.dp))
                     Row(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
@@ -182,13 +182,13 @@ fun MainAppContent(viewModel: StockViewModel) {
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Palette,
+                            imageVector = Icons.Default.Filter,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(20.dp)
                         )
                         Text(
-                            text = "Customize App Style",
+                            text = "App Launcher Icon Options",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
@@ -196,7 +196,7 @@ fun MainAppContent(viewModel: StockViewModel) {
                     }
 
                     Text(
-                        text = "Customize the app aesthetic and preview unique modern icon collections below.",
+                        text = "Examine custom-designed options for the app's official launcher icon.",
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -204,25 +204,22 @@ fun MainAppContent(viewModel: StockViewModel) {
 
                     Spacer(Modifier.height(8.dp))
 
-                    // List of interactive styles
                     val appIconStyle by viewModel.appIconStyle.collectAsState()
-                    val styles = listOf(
-                        IconStyleItem("Classic Slate", Color(0xFF2563EB), Color(0xFF3B82F6)),
-                        IconStyleItem("Sunset Glow", Color(0xFFE11D48), Color(0xFFFB7185)),
-                        IconStyleItem("Emerald Mint", Color(0xFF0D9488), Color(0xFF10B981)),
-                        IconStyleItem("Golden Luxury", Color(0xFFD97706), Color(0xFFF59E0B)),
-                        IconStyleItem("Vibrant Indigo", Color(0xFF4F46E5), Color(0xFF6366F1))
+                    val iconOptions = listOf(
+                        IconStyleItem("Studio Lens Core", Color(0xFF0F172A), Color(0xFF10B981)),
+                        IconStyleItem("Celestial Dusk", Color(0xFF3B82F6), Color(0xFFFB7185)),
+                        IconStyleItem("Digital Stack", Color(0xFF0D9488), Color(0xFF4F46E5))
                     )
 
-                    styles.forEach { item ->
+                    iconOptions.forEach { item ->
                         AppIconPreviewCard(
                             styleName = item.name,
                             primaryColor = item.primary,
                             secondaryColor = item.secondary,
-                            isSelected = appIconStyle == item.name,
+                            isSelected = appIconStyle == item.name || (appIconStyle == "Classic Slate" && item.name == "Studio Lens Core"),
                             onClick = {
-                                viewModel.setAppIconStyle(context, item.name)
-                                android.widget.Toast.makeText(context, "${item.name} Style Applied!", android.widget.Toast.LENGTH_SHORT).show()
+                                viewModel.setAppIconStyle(context, if (item.name == "Studio Lens Core") "Classic Slate" else item.name)
+                                android.widget.Toast.makeText(context, "${item.name} set as preferred launcher icon!", android.widget.Toast.LENGTH_SHORT).show()
                             }
                         )
                     }
@@ -242,6 +239,7 @@ fun MainAppContent(viewModel: StockViewModel) {
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                val appIconStyle by viewModel.appIconStyle.collectAsState()
                                 // Rounded-xl icon badge
                                 IconButton(
                                     onClick = { coroutineScope.launch { drawerState.open() } },
@@ -251,7 +249,11 @@ fun MainAppContent(viewModel: StockViewModel) {
                                         .background(MaterialTheme.colorScheme.primary)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.Inventory,
+                                        imageVector = when (appIconStyle) {
+                                            "Celestial Dusk" -> Icons.Default.Landscape
+                                            "Digital Stack" -> Icons.Default.Collections
+                                            else -> Icons.Default.Camera
+                                        },
                                         contentDescription = "App Icon - Open Menu",
                                         tint = Color.White,
                                         modifier = Modifier.size(20.dp)
@@ -515,20 +517,14 @@ fun AppIconPreviewCard(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Default.PhoneAndroid,
+                    imageVector = when (styleName) {
+                        "Celestial Dusk" -> Icons.Default.Landscape
+                        "Digital Stack" -> Icons.Default.Collections
+                        else -> Icons.Default.Camera
+                    },
                     contentDescription = null,
                     tint = Color.White,
                     modifier = Modifier.size(24.dp)
-                )
-                
-                // Camera Lens Badge
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(4.dp)
-                        .size(6.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.8f))
                 )
             }
             
@@ -541,11 +537,9 @@ fun AppIconPreviewCard(
                 )
                 Text(
                     text = when (styleName) {
-                        "Classic Slate" -> "Professional clean blue theme."
-                        "Sunset Glow" -> "Warm artistic coral pink & gold dusk."
-                        "Emerald Mint" -> "Fresh mint & natural emerald."
-                        "Golden Luxury" -> "Premium executive polished gold."
-                        "Vibrant Indigo" -> "Bold cosmic star violet & indigo."
+                        "Studio Lens Core" -> "Premium high-contrast camera aperture iris (Default)."
+                        "Celestial Dusk" -> "Vibrant mountain backdrop under linear warm sun."
+                        "Digital Stack" -> "Overlapping photo layouts with geometric neon grids."
                         else -> ""
                     },
                     style = MaterialTheme.typography.bodySmall,
