@@ -9,6 +9,8 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -49,12 +51,6 @@ class MainActivity : FragmentActivity() {
 
         // Initialize Firebase dynamically if keys are configured
         com.example.data.repository.FirebaseSyncManager.initialize(applicationContext)
-        
-        try {
-            com.google.firebase.auth.FirebaseAuth.getInstance().signInAnonymously()
-        } catch (e: Exception) {
-            // Ignore if Firebase Auth is not available
-        }
 
         repository = InventoryRepository()
 
@@ -66,8 +62,13 @@ class MainActivity : FragmentActivity() {
 
             val isDarkTheme by stockViewModel.isDarkTheme.collectAsState()
             val isLoggedIn by stockViewModel.isLoggedIn.collectAsState()
+            val appIconStyle by stockViewModel.appIconStyle.collectAsState()
 
-            MyApplicationTheme(darkTheme = isDarkTheme) {
+            LaunchedEffect(Unit) {
+                stockViewModel.loadAppIconStyle(applicationContext)
+            }
+
+            MyApplicationTheme(darkTheme = isDarkTheme, appIconStyle = appIconStyle) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -124,30 +125,93 @@ fun MainAppContent(viewModel: StockViewModel) {
         drawerState = drawerState,
         drawerContent = {
             ModalDrawerSheet {
-                Spacer(Modifier.height(16.dp))
-                NavigationDrawerItem(
-                    label = { Text("App Attendance", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) },
-                    selected = false,
-                    onClick = { /* Handle click */ }
-                )
-                HorizontalDivider(modifier = Modifier.padding(16.dp))
-                
-                // Attendance section
-                Text(
-                    text = "Selfie/Location based check-in required.",
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Spacer(Modifier.height(8.dp))
-                Button(
-                    onClick = {
-                        android.widget.Toast.makeText(context, "Attendance Marked Successfully (Simulated)", android.widget.Toast.LENGTH_SHORT).show()
-                        coroutineScope.launch { drawerState.close() }
-                    },
-                    modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth()
+                Column(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .width(320.dp)
+                        .verticalScroll(rememberScrollState())
                 ) {
-                    Icon(Icons.Default.CameraAlt, contentDescription = "Take Selfie", modifier = Modifier.size(18.dp).padding(end = 4.dp))
-                    Text("Check In")
+                    Spacer(Modifier.height(16.dp))
+                    NavigationDrawerItem(
+                        label = { Text("App Attendance", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) },
+                        selected = false,
+                        onClick = { /* Handle click */ },
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(16.dp))
+                    
+                    // Attendance section
+                    Text(
+                        text = "Selfie/Location based check-in required.",
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Button(
+                        onClick = {
+                            android.widget.Toast.makeText(context, "Attendance Marked Successfully (Simulated)", android.widget.Toast.LENGTH_SHORT).show()
+                            coroutineScope.launch { drawerState.close() }
+                        },
+                        modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.CameraAlt, contentDescription = "Take Selfie", modifier = Modifier.size(18.dp).padding(end = 4.dp))
+                        Text("Check In")
+                    }
+
+                    // Theme Branded Icons header
+                    HorizontalDivider(modifier = Modifier.padding(16.dp))
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Palette,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            text = "Customize App Style",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    Text(
+                        text = "Customize the app aesthetic and preview unique modern icon collections below.",
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(Modifier.height(8.dp))
+
+                    // List of interactive styles
+                    val appIconStyle by viewModel.appIconStyle.collectAsState()
+                    val styles = listOf(
+                        IconStyleItem("Classic Slate", Color(0xFF2563EB), Color(0xFF3B82F6)),
+                        IconStyleItem("Sunset Glow", Color(0xFFE11D48), Color(0xFFFB7185)),
+                        IconStyleItem("Emerald Mint", Color(0xFF0D9488), Color(0xFF10B981)),
+                        IconStyleItem("Golden Luxury", Color(0xFFD97706), Color(0xFFF59E0B)),
+                        IconStyleItem("Vibrant Indigo", Color(0xFF4F46E5), Color(0xFF6366F1))
+                    )
+
+                    styles.forEach { item ->
+                        AppIconPreviewCard(
+                            styleName = item.name,
+                            primaryColor = item.primary,
+                            secondaryColor = item.secondary,
+                            isSelected = appIconStyle == item.name,
+                            onClick = {
+                                viewModel.setAppIconStyle(context, item.name)
+                                android.widget.Toast.makeText(context, "${item.name} Style Applied!", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        )
+                    }
+                    
+                    Spacer(Modifier.height(32.dp))
                 }
             }
         }
@@ -390,4 +454,94 @@ fun MainAppContent(viewModel: StockViewModel) {
         )
     }
     } // closes ModalNavigationDrawer
+}
+
+data class IconStyleItem(val name: String, val primary: Color, val secondary: Color)
+
+@Composable
+fun AppIconPreviewCard(
+    styleName: String,
+    primaryColor: Color,
+    secondaryColor: Color,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected) primaryColor.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+        ),
+        border = if (isSelected) androidx.compose.foundation.BorderStroke(1.5.dp, primaryColor) else null,
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // Miniature Mock Icon Canvas
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(
+                        Brush.linearGradient(
+                            colors = listOf(primaryColor, secondaryColor)
+                        )
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PhoneAndroid,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp)
+                )
+                
+                // Camera Lens Badge
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp)
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.8f))
+                )
+            }
+            
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = styleName,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isSelected) primaryColor else MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = when (styleName) {
+                        "Classic Slate" -> "Professional clean blue theme."
+                        "Sunset Glow" -> "Warm artistic coral pink & gold dusk."
+                        "Emerald Mint" -> "Fresh mint & natural emerald."
+                        "Golden Luxury" -> "Premium executive polished gold."
+                        "Vibrant Indigo" -> "Bold cosmic star violet & indigo."
+                        else -> ""
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    lineHeight = 14.sp
+                )
+            }
+            
+            if (isSelected) {
+                Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = "Selected",
+                    tint = primaryColor,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+    }
 }

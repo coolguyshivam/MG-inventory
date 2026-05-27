@@ -29,6 +29,21 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
         _isDarkTheme.value = !_isDarkTheme.value
     }
 
+    // --- App Icon & Theme Style ---
+    private val _appIconStyle = MutableStateFlow("Classic Slate")
+    val appIconStyle: StateFlow<String> = _appIconStyle.asStateFlow()
+
+    fun loadAppIconStyle(context: Context) {
+        val prefs = context.getSharedPreferences("mobile_gallery_prefs", Context.MODE_PRIVATE)
+        _appIconStyle.value = prefs.getString("app_icon_style", "Classic Slate") ?: "Classic Slate"
+    }
+
+    fun setAppIconStyle(context: Context, style: String) {
+        _appIconStyle.value = style
+        val prefs = context.getSharedPreferences("mobile_gallery_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putString("app_icon_style", style).apply()
+    }
+
     // --- Authentication & Biometric State ---
     private val _isLoggedIn = MutableStateFlow(false)
     val isLoggedIn: StateFlow<Boolean> = _isLoggedIn.asStateFlow()

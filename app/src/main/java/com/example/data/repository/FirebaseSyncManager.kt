@@ -48,20 +48,39 @@ object FirebaseSyncManager {
         synchronized(this) {
             if (isInitialized) return
             try {
-                if (isConfigured()) {
-                    val options = FirebaseOptions.Builder()
-                        .setApiKey(BuildConfig.FIREBASE_API_KEY)
-                        .setApplicationId(BuildConfig.FIREBASE_APPLICATION_ID)
-                        .setProjectId(BuildConfig.FIREBASE_PROJECT_ID)
-                        .setDatabaseUrl(BuildConfig.FIREBASE_DATABASE_URL.takeIf { it.isNotBlank() })
-                        .build()
+                val isAlreadyInitialized = try {
+                    FirebaseApp.getInstance()
+                    true
+                } catch (e: IllegalStateException) {
+                    false
+                }
 
+                if (!isAlreadyInitialized) {
+                    val options = if (isConfigured()) {
+                        Log.d("FirebaseSyncManager", "Firebase configured. Initializing real sync mode!")
+                        FirebaseOptions.Builder()
+                            .setApiKey(BuildConfig.FIREBASE_API_KEY)
+                            .setApplicationId(BuildConfig.FIREBASE_APPLICATION_ID)
+                            .setProjectId(BuildConfig.FIREBASE_PROJECT_ID)
+                            .setDatabaseUrl(BuildConfig.FIREBASE_DATABASE_URL.takeIf { it.isNotBlank() })
+                            .build()
+                    } else {
+                        Log.d("FirebaseSyncManager", "Firebase configurations missing/placeholder. Initializing crash-safe local offline-first mode.")
+                        FirebaseOptions.Builder()
+                            .setApiKey("AIzaSyDummyKeyForFirestoreOfflineWorking")
+                            .setApplicationId("1:123456789012:android:0123456789abcdef012345")
+                            .setProjectId("inventorymanagement-dummy")
+                            .build()
+                    }
                     FirebaseApp.initializeApp(context.applicationContext, options)
-                    firestoreInstance = FirebaseFirestore.getInstance()
-                    isInitialized = true
-                    Log.d("FirebaseSyncManager", "Firebase initialized successfully dynamic!")
-                    
-                    // Attempt Anonymous Sign-in for Firestore Auth rules
+                }
+
+                firestoreInstance = FirebaseFirestore.getInstance()
+                isInitialized = true
+                Log.d("FirebaseSyncManager", "Firebase initialized successfully!")
+                
+                // Attempt Anonymous Sign-in for Firestore Auth rules
+                try {
                     com.google.firebase.auth.FirebaseAuth.getInstance().signInAnonymously()
                         .addOnCompleteListener { task ->
                             if (task.isSuccessful) {
@@ -70,8 +89,8 @@ object FirebaseSyncManager {
                                 Log.w("FirebaseSyncManager", "signInAnonymously:failure", task.exception)
                             }
                         }
-                } else {
-                    Log.d("FirebaseSyncManager", "Firebase configurations missing/placeholders. Local mode.")
+                } catch (e: Exception) {
+                    Log.w("FirebaseSyncManager", "Auth sign in bypassed or failed under current context configuration", e)
                 }
             } catch (e: Exception) {
                 Log.e("FirebaseSyncManager", "Failed to initialize Firebase app dynamically", e)
