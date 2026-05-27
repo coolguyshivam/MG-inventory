@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.data.repository.InventoryRepository
 import com.example.ui.components.PullToRefreshContainer
@@ -92,6 +93,19 @@ fun MainAppContent(viewModel: StockViewModel) {
 
     var showLogoutDialog by remember { mutableStateOf(false) }
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var lastBackPress by remember { mutableStateOf(0L) }
+    val activity = context as? androidx.activity.ComponentActivity
+    androidx.activity.compose.BackHandler(enabled = true) {
+        val now = System.currentTimeMillis()
+        if (now - lastBackPress < 2000) {
+            activity?.finishAffinity()
+        } else {
+            lastBackPress = now
+            android.widget.Toast.makeText(context, "Press back again to exit", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
     // Sync pulse rotate animation
     val infiniteTransition = rememberInfiniteTransition(label = "Sync spin")
     val spinningAngle by infiniteTransition.animateFloat(
@@ -103,32 +117,67 @@ fun MainAppContent(viewModel: StockViewModel) {
         label = "Sync spin"
     )
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(end = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            // Rounded-xl icon badge
-                            Box(
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(MaterialTheme.colorScheme.primary),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Inventory,
-                                    contentDescription = "App Icon",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                            Column {
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val coroutineScope = rememberCoroutineScope()
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet {
+                Spacer(Modifier.height(16.dp))
+                NavigationDrawerItem(
+                    label = { Text("App Attendance", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) },
+                    selected = false,
+                    onClick = { /* Handle click */ }
+                )
+                HorizontalDivider(modifier = Modifier.padding(16.dp))
+                
+                // Attendance section
+                Text(
+                    text = "Selfie/Location based check-in required.",
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(Modifier.height(8.dp))
+                Button(
+                    onClick = {
+                        android.widget.Toast.makeText(context, "Attendance Marked Successfully (Simulated)", android.widget.Toast.LENGTH_SHORT).show()
+                        coroutineScope.launch { drawerState.close() }
+                    },
+                    modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.CameraAlt, contentDescription = "Take Selfie", modifier = Modifier.size(18.dp).padding(end = 4.dp))
+                    Text("Check In")
+                }
+            }
+        }
+    ) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(end = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                // Rounded-xl icon badge
+                                IconButton(
+                                    onClick = { coroutineScope.launch { drawerState.open() } },
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(MaterialTheme.colorScheme.primary)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Inventory,
+                                        contentDescription = "App Icon - Open Menu",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Column {
                                 Text(
                                     text = "Mobile Gallery",
                                     style = MaterialTheme.typography.titleLarge,
@@ -340,4 +389,5 @@ fun MainAppContent(viewModel: StockViewModel) {
             }
         )
     }
+    } // closes ModalNavigationDrawer
 }

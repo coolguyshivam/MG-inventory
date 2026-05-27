@@ -857,6 +857,26 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
         }
     }
 
+    fun editParty(partyId: String, name: String, phone: String, aadhaar: String) {
+        viewModelScope.launch {
+            try {
+                repository.editParty(partyId, name.trim(), phone.trim(), aadhaar.trim())
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun deleteParty(partyId: String) {
+        viewModelScope.launch {
+            try {
+                repository.deleteParty(partyId)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
     fun addLedgerPayment(partyId: String, amount: Double, type: String, description: String) {
         viewModelScope.launch {
             try {

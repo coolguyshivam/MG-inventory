@@ -15,6 +15,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
@@ -70,13 +72,39 @@ fun InventoryScreen(viewModel: StockViewModel) {
 
     var selectedPhotosForViewer by remember { mutableStateOf<List<String>?>(null) }
 
+    var activeDateFilter by remember { mutableStateOf("All Time") }
+    // time in millis
+    var customStartDate by remember { mutableStateOf<Long?>(null) }
+    var customEndDate by remember { mutableStateOf<Long?>(null) }
+    var showDatePickerDialog by remember { mutableStateOf(false) }
+
     // Filtering & Sorting math
-    val filteredItems = remember(rawItems, searchWord, activeSubTab, sortOption, sortAscending) {
+    val filteredItems = remember(rawItems, searchWord, activeSubTab, sortOption, sortAscending, activeDateFilter, customStartDate, customEndDate) {
         var resultList = rawItems.filter { item ->
-            // Filter by Sub Tab first:
-            // Sub tab 0 is standard active stock (isUnderRepair = false)
-            // Sub tab 1 is repair pool (isUnderRepair = true)
             item.isUnderRepair == (activeSubTab == 1)
+        }
+
+        // Date Filter
+        if (activeDateFilter != "All Time") {
+            val now = System.currentTimeMillis()
+            val startThreshold = when (activeDateFilter) {
+                "Today" -> now - 86400000L
+                "This Week" -> now - 86400000L * 7L
+                "This Month" -> now - 86400000L * 30L
+                "Custom" -> customStartDate ?: 0L
+                else -> 0L
+            }
+            val endThreshold = when (activeDateFilter) {
+                "Custom" -> customEndDate ?: Long.MAX_VALUE
+                else -> Long.MAX_VALUE
+            }
+            if (activeDateFilter == "Custom") {
+                if (customStartDate != null && customEndDate != null) {
+                    resultList = resultList.filter { it.dateInMillis in startThreshold..endThreshold }
+                }
+            } else if (startThreshold > 0) {
+                resultList = resultList.filter { it.dateInMillis >= startThreshold }
+            }
         }
 
         // Apply Search Term (IMEI check or Model check or description check)
@@ -248,6 +276,42 @@ fun InventoryScreen(viewModel: StockViewModel) {
                                 contentDescription = "Order Toggle"
                             )
                         }
+                    )
+                }
+            }
+        }
+
+        // Horizontal scrolling Date Filters list
+        LazyRow(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 0.dp),
+            contentPadding = PaddingValues(end = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            val filters = listOf("All Time", "Today", "This Week", "This Month", "Custom")
+            items(filters) { filter ->
+                FilterChip(
+                    selected = activeDateFilter == filter,
+                    onClick = {
+                        activeDateFilter = filter
+                        if (filter == "Custom") {
+                            showDatePickerDialog = true
+                        }
+                    },
+                    label = { Text(filter) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                    )
+                )
+            }
+            if (activeDateFilter == "Custom" && customStartDate != null && customEndDate != null) {
+                item {
+                    val sdf = java.text.SimpleDateFormat("dd MMM", java.util.Locale.getDefault())
+                    val formatted = "${sdf.format(java.util.Date(customStartDate!!))} - ${sdf.format(java.util.Date(customEndDate!!))}"
+                    AssistChip(
+                        onClick = { showDatePickerDialog = true },
+                        label = { Text(formatted) },
+                        leadingIcon = { Icon(Icons.Default.DateRange, contentDescription = "Custom Date Range", modifier = Modifier.size(16.dp)) }
                     )
                 }
             }
@@ -586,9 +650,48 @@ fun InventoryScreen(viewModel: StockViewModel) {
                 }
             }
         }
+        
+        if (showDatePickerDialog) {
+            val dateRangePickerState = rememberDateRangePickerState()
+            DatePickerDialog(
+                onDismissRequest = { 
+                    showDatePickerDialog = false 
+                    if (customStartDate == null) activeDateFilter = "All Time" // revert if no date picked
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val start = dateRangePickerState.selectedStartDateMillis
+                        val end = dateRangePickerState.selectedEndDateMillis
+                        if (start != null && end != null) {
+                            customStartDate = start
+                            // Set end date to end of day to include the entire day
+                            customEndDate = end + 86399999L 
+                            showDatePickerDialog = false
+                        } else if (start != null) {
+                            customStartDate = start
+                            customEndDate = start + 86399999L
+                            showDatePickerDialog = false
+                        }
+                    }) { Text("Confirm") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { 
+                        showDatePickerDialog = false 
+                        if (customStartDate == null) activeDateFilter = "All Time"
+                    }) { Text("Cancel") }
+                }
+            ) {
+                DateRangePicker(
+                    state = dateRangePickerState,
+                    modifier = Modifier.fillMaxWidth().height(400.dp),
+                    title = { Text(text = "Select Date Range", modifier = Modifier.padding(16.dp)) }
+                )
+            }
+        }
     }
 }
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun InventoryCardItem(
     item: InventoryItem,

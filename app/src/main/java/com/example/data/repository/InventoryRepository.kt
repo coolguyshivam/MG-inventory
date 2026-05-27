@@ -397,6 +397,19 @@ class InventoryRepository {
         db.collection("parties").document(party.id).set(party).await()
     }
 
+    suspend fun editParty(partyId: String, name: String, phone: String, aadhaar: String) {
+        val updates = mapOf(
+            "name" to name,
+            "phoneNumber" to phone,
+            "aadhaarNumber" to aadhaar
+        )
+        db.collection("parties").document(partyId).update(updates).await()
+    }
+
+    suspend fun deleteParty(partyId: String) {
+        db.collection("parties").document(partyId).delete().await()
+    }
+
     suspend fun updatePartyBalance(partyId: String, amountDelta: Double) {
         val snap = db.collection("parties").document(partyId).get().await()
         val party = snap.toObject(com.example.data.model.Party::class.java)

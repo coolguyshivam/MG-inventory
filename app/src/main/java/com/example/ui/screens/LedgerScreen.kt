@@ -30,6 +30,8 @@ fun LedgerScreen(viewModel: StockViewModel) {
     var selectedEventForDialog by remember { mutableStateOf<com.example.data.model.HistoryEvent?>(null) }
 
     var showAddPartyDialog by remember { mutableStateOf(false) }
+    var showEditPartyDialog by remember { mutableStateOf(false) }
+    var showDeletePartyDialog by remember { mutableStateOf(false) }
     var selectedParty by remember { mutableStateOf<Party?>(null) }
     var showPaymentDialog by remember { mutableStateOf(false) }
 
@@ -80,6 +82,12 @@ fun LedgerScreen(viewModel: StockViewModel) {
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showEditPartyDialog = true }) {
+                        Icon(Icons.Default.Edit, contentDescription = "Edit Party")
+                    }
+                    IconButton(onClick = { showDeletePartyDialog = true }) {
+                        Icon(Icons.Default.Delete, contentDescription = "Delete Party")
+                    }
                     Button(onClick = { showPaymentDialog = true }) {
                         Text("Add Payment")
                     }
@@ -228,6 +236,56 @@ fun LedgerScreen(viewModel: StockViewModel) {
             },
             confirmButton = {
                 TextButton(onClick = { selectedEventForDialog = null }) { Text("Close") }
+            }
+        )
+    }
+
+    if (showEditPartyDialog && selectedParty != null) {
+        var editName by remember { mutableStateOf(selectedParty!!.name) }
+        var editPhone by remember { mutableStateOf(selectedParty!!.phoneNumber) }
+        var editAadhaar by remember { mutableStateOf(selectedParty!!.aadhaarNumber ?: "") }
+        AlertDialog(
+            onDismissRequest = { showEditPartyDialog = false },
+            title = { Text("Edit Party") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(value = editName, onValueChange = { editName = it }, label = { Text("Name") }, singleLine = true)
+                    OutlinedTextField(value = editPhone, onValueChange = { editPhone = it }, label = { Text("Phone") }, singleLine = true)
+                    OutlinedTextField(value = editAadhaar, onValueChange = { editAadhaar = it }, label = { Text("Aadhaar") }, singleLine = true)
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (editName.isNotBlank()) {
+                        viewModel.editParty(selectedParty!!.id, editName, editPhone, editAadhaar)
+                        showEditPartyDialog = false
+                        selectedParty = selectedParty?.copy(name = editName, phoneNumber = editPhone, aadhaarNumber = editAadhaar)
+                    }
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditPartyDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (showDeletePartyDialog && selectedParty != null) {
+        AlertDialog(
+            onDismissRequest = { showDeletePartyDialog = false },
+            title = { Text("Delete Party") },
+            text = { Text("Are you sure you want to delete ${selectedParty!!.name}? This action cannot be undone.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteParty(selectedParty!!.id)
+                        showDeletePartyDialog = false
+                        selectedParty = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeletePartyDialog = false }) { Text("Cancel") }
             }
         )
     }

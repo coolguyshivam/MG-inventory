@@ -89,7 +89,24 @@ fun TransactionsScreen(viewModel: StockViewModel) {
         if (uris.isNotEmpty()) {
             val currentUris = viewModel.photoUriInput.value
             val urisArray = if (currentUris.isNullOrBlank()) emptyList() else currentUris.split(",")
-            val newUrisStr = uris.map { it.toString() }
+            
+            // Map the URIs to local cache so they persist
+            val newUrisStr = uris.mapNotNull { uri ->
+                try {
+                    val stream = context.contentResolver.openInputStream(uri)
+                    val file = File(context.cacheDir, "gallery_image_${System.currentTimeMillis()}_${java.util.UUID.randomUUID().toString().take(4)}.jpg")
+                    stream?.use { input ->
+                        java.io.FileOutputStream(file).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.provider", file).toString()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    null
+                }
+            }
+            
             if (urisArray.size + newUrisStr.size <= 10) {
                 viewModel.photoUriInput.value = (urisArray + newUrisStr).joinToString(",")
                 Toast.makeText(context, "Gallery Images Linked!", Toast.LENGTH_SHORT).show()
@@ -333,53 +350,55 @@ fun TransactionsScreen(viewModel: StockViewModel) {
             }
 
             // DYNAMIC ITEMS COLLECTION
-            transactionSubItems.forEachIndexed { index, subItem ->
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.3f)),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Item ${index + 1}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedTextField(
-                                value = subItem.serialNumber,
-                                onValueChange = { 
-                                    viewModel.updateSubItem(index, it, subItem.amount)
-                                    viewModel.clearFormErrorAndSuccess()
-                                },
-                                label = { Text("IMEI/Serial *") },
-                                singleLine = true,
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.weight(1.5f),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                trailingIcon = {
-                                    val iconAlpha = if (subItem.serialNumber.isNotEmpty()) 0.4f else 1f
-                                    IconButton(
-                                        onClick = { scannerIndex = index },
-                                        modifier = Modifier.alpha(iconAlpha)
-                                    ) {
-                                        Icon(Icons.Default.QrCodeScanner, "Scanner", tint = themeColorAndLabel.first)
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                transactionSubItems.forEachIndexed { index, subItem ->
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.3f)),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Item ${index + 1}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = subItem.serialNumber,
+                                    onValueChange = { 
+                                        viewModel.updateSubItem(index, it, subItem.amount)
+                                        viewModel.clearFormErrorAndSuccess()
+                                    },
+                                    label = { Text("IMEI/Serial *") },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.weight(1.5f),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    trailingIcon = {
+                                        val iconAlpha = if (subItem.serialNumber.isNotEmpty()) 0.4f else 1f
+                                        IconButton(
+                                            onClick = { scannerIndex = index },
+                                            modifier = Modifier.alpha(iconAlpha)
+                                        ) {
+                                            Icon(Icons.Default.QrCodeScanner, "Scanner", tint = themeColorAndLabel.first)
+                                        }
                                     }
-                                }
-                            )
+                                )
 
-                            OutlinedTextField(
-                                value = subItem.amount,
-                                onValueChange = { 
-                                    viewModel.updateSubItem(index, subItem.serialNumber, it)
-                                    viewModel.clearFormErrorAndSuccess()
-                                },
-                                label = { Text("Price *") },
-                                singleLine = true,
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.weight(1f).height(64.dp), // keep same height as default text field
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                            )
+                                OutlinedTextField(
+                                    value = subItem.amount,
+                                    onValueChange = { 
+                                        viewModel.updateSubItem(index, subItem.serialNumber, it) 
+                                        viewModel.clearFormErrorAndSuccess()
+                                    },
+                                    label = { Text("Price *") },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.weight(1f).height(64.dp), // keep same height as default text field
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                                )
+                            }
                         }
                     }
                 }
