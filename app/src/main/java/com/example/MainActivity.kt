@@ -145,86 +145,107 @@ fun MainAppContent(viewModel: StockViewModel) {
                     modifier = Modifier
                         .fillMaxHeight()
                         .width(320.dp)
-                        .verticalScroll(rememberScrollState())
                 ) {
-                    Spacer(Modifier.height(16.dp))
-                    NavigationDrawerItem(
-                        label = { Text("App Attendance", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) },
-                        selected = false,
-                        onClick = { /* Handle click */ },
-                        modifier = Modifier.padding(horizontal = 12.dp)
-                    )
-                    HorizontalDivider(modifier = Modifier.padding(16.dp))
-                    
-                    // Attendance section
+                    Spacer(Modifier.height(32.dp))
+
                     Text(
-                        text = "Selfie/Location based check-in required.",
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        style = MaterialTheme.typography.bodyMedium
+                        text = "Navigation Menu",
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
                     )
-                    Spacer(Modifier.height(8.dp))
-                    Button(
+
+                    val activeTab by viewModel.activeTab.collectAsState()
+                    val canManageUsers by viewModel.canManageUsers.collectAsState()
+                    val canViewLedger by viewModel.canViewLedger.collectAsState()
+
+                    // Gorgeous standard NavigationDrawerItem for Attendance
+                    NavigationDrawerItem(
+                        icon = { Icon(Icons.Default.Fingerprint, contentDescription = null, modifier = Modifier.size(22.dp)) },
+                        label = { 
+                            Column {
+                                Text("Check-In & Attendance", fontWeight = FontWeight.Bold)
+                                Text("Selfie & location base logs", style = MaterialTheme.typography.bodySmall, fontSize = 10.sp)
+                            }
+                        },
+                        selected = activeTab == 4,
                         onClick = {
                             viewModel.setTab(4)
                             coroutineScope.launch { drawerState.close() }
                         },
-                        modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth()
-                    ) {
-                        Icon(Icons.Default.CameraAlt, contentDescription = "Go to Attendance Tab", modifier = Modifier.size(18.dp).padding(end = 4.dp))
-                        Text("Mark Attendance")
-                    }
-
-                    // Launcher Icon Selection Options
-                    HorizontalDivider(modifier = Modifier.padding(16.dp))
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Filter,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Text(
-                            text = "App Launcher Icon Options",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-
-                    Text(
-                        text = "Examine custom-designed options for the app's official launcher icon.",
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                     )
 
-                    Spacer(Modifier.height(8.dp))
-
-                    val appIconStyle by viewModel.appIconStyle.collectAsState()
-                    val iconOptions = listOf(
-                        IconStyleItem("Studio Lens Core", Color(0xFF0F172A), Color(0xFF10B981)),
-                        IconStyleItem("Celestial Dusk", Color(0xFF3B82F6), Color(0xFFFB7185)),
-                        IconStyleItem("Digital Stack", Color(0xFF0D9488), Color(0xFF4F46E5))
-                    )
-
-                    iconOptions.forEach { item ->
-                        AppIconPreviewCard(
-                            styleName = item.name,
-                            primaryColor = item.primary,
-                            secondaryColor = item.secondary,
-                            isSelected = appIconStyle == item.name || (appIconStyle == "Classic Slate" && item.name == "Studio Lens Core"),
+                    if (canManageUsers) {
+                        NavigationDrawerItem(
+                            icon = { Icon(Icons.Default.Group, contentDescription = null, modifier = Modifier.size(22.dp)) },
+                            label = { 
+                                Column {
+                                    Text("Users & Staff Management", fontWeight = FontWeight.Bold)
+                                    Text("Manage logins and authorization roles", style = MaterialTheme.typography.bodySmall, fontSize = 10.sp)
+                                }
+                            },
+                            selected = activeTab == 5,
                             onClick = {
-                                viewModel.setAppIconStyle(context, if (item.name == "Studio Lens Core") "Classic Slate" else item.name)
-                                android.widget.Toast.makeText(context, "${item.name} set as preferred launcher icon!", android.widget.Toast.LENGTH_SHORT).show()
-                            }
+                                viewModel.setTab(5)
+                                coroutineScope.launch { drawerState.close() }
+                            },
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                         )
+                    }
+
+                    if (canViewLedger) {
+                        NavigationDrawerItem(
+                            icon = { Icon(Icons.Default.CompareArrows, contentDescription = null, modifier = Modifier.size(22.dp)) },
+                            label = { 
+                                Column {
+                                    Text("Unified Ledger Logs", fontWeight = FontWeight.Bold)
+                                    Text("Track employee salaries & payments", style = MaterialTheme.typography.bodySmall, fontSize = 10.sp)
+                                }
+                            },
+                            selected = activeTab == 6,
+                            onClick = {
+                                viewModel.setTab(6)
+                                coroutineScope.launch { drawerState.close() }
+                            },
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.weight(1f))
+                    
+                    if (loggedInUser != null) {
+                        val user = loggedInUser!!
+                        Card(
+                            modifier = Modifier
+                                .padding(16.dp)
+                                .fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(text = "Active Operator", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(text = user.username, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                                Text(text = "${user.role} Authorization", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                                
+                                Spacer(modifier = Modifier.height(12.dp))
+                                
+                                OutlinedButton(
+                                    onClick = { 
+                                        coroutineScope.launch { drawerState.close() }
+                                        showLogoutDialog = true 
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(imageVector = Icons.Default.ExitToApp, contentDescription = "Log Out")
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Logout Session")
+                                }
+                            }
+                        }
                     }
                     
-                    Spacer(Modifier.height(32.dp))
+                    Spacer(Modifier.height(16.dp))
                 }
             }
         }
@@ -239,7 +260,6 @@ fun MainAppContent(viewModel: StockViewModel) {
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                val appIconStyle by viewModel.appIconStyle.collectAsState()
                                 // Rounded-xl icon badge
                                 IconButton(
                                     onClick = { coroutineScope.launch { drawerState.open() } },
@@ -249,11 +269,7 @@ fun MainAppContent(viewModel: StockViewModel) {
                                         .background(MaterialTheme.colorScheme.primary)
                                 ) {
                                     Icon(
-                                        imageVector = when (appIconStyle) {
-                                            "Celestial Dusk" -> Icons.Default.Landscape
-                                            "Digital Stack" -> Icons.Default.Collections
-                                            else -> Icons.Default.Camera
-                                        },
+                                        imageVector = Icons.Default.Camera,
                                         contentDescription = "App Icon - Open Menu",
                                         tint = Color.White,
                                         modifier = Modifier.size(20.dp)
@@ -396,9 +412,6 @@ fun MainAppContent(viewModel: StockViewModel) {
                 
                 // Everyone can see history
                 tabsItems.add(Triple(3, "History", Icons.Default.History))
-                
-                // Track check-ins & checkouts with location coordinates
-                tabsItems.add(Triple(4, "Attendance", Icons.Default.Fingerprint))
                 
                 if (canManageUsers) {
                     tabsItems.add(Triple(5, "Users", Icons.Default.Group))

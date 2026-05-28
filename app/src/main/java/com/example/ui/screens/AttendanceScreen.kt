@@ -50,11 +50,23 @@ fun AttendanceScreen(viewModel: StockViewModel) {
 
     // Screen Sub-tab: 0 = My Attendance, 1 = Leaves List / Admin Panel
     var subTabSelection by remember { mutableStateOf(0) }
+    val monthsList = remember { listOf("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December") }
 
     // Admin/Manager selected employee details
     val isAdminOrManager = loggedInUser?.role in listOf("Admin", "Manager")
-    var selectedEmployeeScope by remember { mutableStateOf<User?>(loggedInUser) }
+    var selectedEmployeeScope by remember { mutableStateOf<User?>(null) }
     var employeeFilterExpanded by remember { mutableStateOf(false) }
+
+    LaunchedEffect(allUsers, loggedInUser) {
+        if (loggedInUser?.role in listOf("Admin", "Manager")) {
+            val nonAdminManagerUser = allUsers.find { it.role != "Admin" && it.role != "Manager" }
+            if (nonAdminManagerUser != null && (selectedEmployeeScope == null || selectedEmployeeScope?.role in listOf("Admin", "Manager"))) {
+                selectedEmployeeScope = nonAdminManagerUser
+            }
+        } else {
+            selectedEmployeeScope = loggedInUser
+        }
+    }
 
     // Synchronize current date
     val now = remember { System.currentTimeMillis() }
@@ -94,10 +106,51 @@ fun AttendanceScreen(viewModel: StockViewModel) {
     var currentYear by remember { mutableStateOf(calendarInstance.get(Calendar.YEAR)) }
     var currentMonth by remember { mutableStateOf(calendarInstance.get(Calendar.MONTH)) } // 0-indexed
 
+    val monthlyStats = remember(allAttendance, targetUser, currentYear, currentMonth) {
+        var presentCount = 0
+        var leaveCount = 0
+        var absentCount = 0
+        
+        if (targetUser.role != "Admin" && targetUser.role != "Manager") {
+            val dCal = Calendar.getInstance().apply {
+                set(Calendar.YEAR, currentYear)
+                set(Calendar.MONTH, currentMonth)
+                set(Calendar.DAY_OF_MONTH, 1)
+            }
+            val maxDays = dCal.getActualMaximum(Calendar.DAY_OF_MONTH)
+            
+            for (day in 1..maxDays) {
+                val dateStr = String.format("%04d-%02d-%02d", currentYear, currentMonth + 1, day)
+                val record = allAttendance.find { it.userId == targetUser.username && it.dateString == dateStr }
+                if (record != null) {
+                    if (record.status == "Present") {
+                        presentCount++
+                    } else if (record.status == "On Leave") {
+                        leaveCount++
+                    } else if (record.status == "Absent") {
+                        absentCount++
+                    }
+                } else {
+                    val todayC = Calendar.getInstance()
+                    val queryC = Calendar.getInstance().apply {
+                        set(Calendar.YEAR, currentYear)
+                        set(Calendar.MONTH, currentMonth)
+                        set(Calendar.DAY_OF_MONTH, day)
+                    }
+                    if (queryC.before(todayC)) {
+                        absentCount++
+                    }
+                }
+            }
+        }
+        Triple(presentCount, leaveCount, absentCount)
+    }
+
     // Dialog flags
     var showLeaveDialog by remember { mutableStateOf(false) }
     var showModifyAttendanceDialog by remember { mutableStateOf(false) }
     var clickedRecordDetailDialog by remember { mutableStateOf<AttendanceRecord?>(null) }
+    var dailyWageInput by remember { mutableStateOf("1500") }
 
     // Camera attachments
     val tempCameraUriState = remember { mutableStateOf<Uri?>(null) }
@@ -223,42 +276,63 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
                     ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.SupervisorAccount, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                                    Column {
-                                        Text("Employee Dashboard View", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                                        Text("Currently viewing: ${targetUser.username} (${targetUser.role})", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f))
-                                    }
+                                Icon(
+                                    imageVector = Icons.Default.SupervisorAccount,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Employee Dashboard View",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                    Text(
+                                        text = "Currently viewing: ${targetUser.username} (${targetUser.role})",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
+                                    )
                                 }
-                                Box {
-                                    Button(
-                                        onClick = { employeeFilterExpanded = true },
-                                        shape = RoundedCornerShape(8.dp),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                                    ) {
-                                        Text("Switch Team", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                        Icon(Icons.Default.ArrowDropDown, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    }
-                                    DropdownMenu(
-                                        expanded = employeeFilterExpanded,
-                                        onDismissRequest = { employeeFilterExpanded = false }
-                                    ) {
-                                        allUsers.forEach { user ->
-                                            DropdownMenuItem(
-                                                text = { Text(user.username + " (" + user.role + ")") },
-                                                onClick = {
-                                                    selectedEmployeeScope = user
-                                                    employeeFilterExpanded = false
-                                                }
-                                            )
-                                        }
+                            }
+                            
+                            Box(modifier = Modifier.fillMaxWidth()) {
+                                Button(
+                                    onClick = { employeeFilterExpanded = true },
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                    contentPadding = PaddingValues(vertical = 10.dp)
+                                ) {
+                                    Icon(Icons.Default.Group, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Switch Active Employee / Team", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold))
+                                    Spacer(Modifier.width(4.dp))
+                                    Icon(Icons.Default.ArrowDropDown, contentDescription = null, modifier = Modifier.size(18.dp))
+                                }
+                                DropdownMenu(
+                                    expanded = employeeFilterExpanded,
+                                    onDismissRequest = { employeeFilterExpanded = false },
+                                    modifier = Modifier.fillMaxWidth(0.9f)
+                                ) {
+                                    allUsers.filter { it.role != "Admin" && it.role != "Manager" }.forEach { user ->
+                                        DropdownMenuItem(
+                                            text = { Text(user.username + " (" + user.role + ")", fontWeight = FontWeight.Medium) },
+                                            onClick = {
+                                                selectedEmployeeScope = user
+                                                employeeFilterExpanded = false
+                                            }
+                                        )
                                     }
                                 }
                             }
@@ -267,7 +341,47 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                 }
             }
 
-            if (subTabSelection == 0) {
+            val isTargetAdminOrManager = targetUser.role == "Admin" || targetUser.role == "Manager"
+
+            if (isTargetAdminOrManager && subTabSelection == 0) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SupervisorAccount,
+                                contentDescription = null,
+                                modifier = Modifier.size(48.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                text = "Administrative Control View",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = "Admins & Managers do not register attendance logs. Please select an Employee from the 'Switch Team' menu above to monitor their attendance, check leave approvals, and run payroll smoothly.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                textAlign = TextAlign.Center,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (subTabSelection == 0 && !isTargetAdminOrManager) {
                 // TODAY CHECK-IN/OUT INTERACTIVE DECK
                 item {
                     val isSelfViewing = targetUser.username == loggedInUser?.username
@@ -439,7 +553,6 @@ fun AttendanceScreen(viewModel: StockViewModel) {
 
                 // INTEGRATED MONTHLY CALENDAR COMPOSABLE
                 item {
-                    val monthsList = listOf("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(20.dp),
@@ -636,6 +749,207 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Box(Modifier.size(10.dp).clip(RoundedCornerShape(2.dp)).border(0.5.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(2.dp)))
                                     Text("Unmarked", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // STAFF SALARY & PAYROLL CARD
+                item {
+                    val salary = (monthlyStats.first * (dailyWageInput.toDoubleOrNull() ?: 1500.0))
+                    
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                        shape = RoundedCornerShape(20.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.45f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(18.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Payments,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.tertiary
+                                    )
+                                    Text(
+                                        text = "Staff Salary & Payroll",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                                    )
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(MaterialTheme.colorScheme.tertiary.copy(alpha = 0.15f))
+                                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "Base Rate",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.tertiary
+                                    )
+                                }
+                            }
+                            
+                            Text(
+                                text = "Daily wages are dynamically combined with active presence logs for ${monthsList[currentMonth]} $currentYear.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.75f)
+                            )
+                            
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                OutlinedTextField(
+                                    value = dailyWageInput,
+                                    onValueChange = { dailyWageInput = it },
+                                    label = { Text("Daily Wage Rate (₹)") },
+                                    singleLine = true,
+                                    textStyle = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                                        focusedBorderColor = MaterialTheme.colorScheme.tertiary,
+                                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                                        focusedLabelColor = MaterialTheme.colorScheme.tertiary,
+                                        unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                    ),
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    horizontalAlignment = Alignment.End
+                                ) {
+                                    Text(
+                                        text = "Net Payout",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.6f)
+                                    )
+                                    Text(
+                                        text = String.format("₹%,.2f", salary),
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Black,
+                                        color = MaterialTheme.colorScheme.tertiary
+                                    )
+                                }
+                            }
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Formula: Present Days (${monthlyStats.first}) × Wage (₹${dailyWageInput})",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f)
+                                )
+                                Text(
+                                    text = "Leaves: ${monthlyStats.second} | Absences: ${monthlyStats.third}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f)
+                                )
+                            }
+                            
+                            if (isAdminOrManager) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            val wage = dailyWageInput.toDoubleOrNull() ?: 1500.0
+                                            val finalAmount = monthlyStats.first * wage
+                                            if (finalAmount > 0) {
+                                                viewModel.recordSalaryPayment(
+                                                    employeeName = targetUser.username,
+                                                    amount = finalAmount,
+                                                    description = "Paid attendance salary for ${monthsList[currentMonth]} $currentYear (${monthlyStats.first} present days @ ₹${wage}/day)"
+                                                )
+                                                Toast.makeText(context, "Salary Disbursed & Outflow recorded in Ledger under ${targetUser.username}!", Toast.LENGTH_LONG).show()
+                                            } else {
+                                                Toast.makeText(context, "Cannot disburse ₹0.00 salary. Verify present days count.", Toast.LENGTH_SHORT).show()
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary),
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.AccountBalanceWallet,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Disburse", fontWeight = FontWeight.Bold, maxLines = 1)
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = {
+                                            val wage = dailyWageInput.toDoubleOrNull() ?: 1500.0
+                                            val finalAmount = monthlyStats.first * wage
+                                            val shareMsg = """
+                                            💸 *STUDIO LENS SALARY DISBURSEMENT* 💸
+                                            ━━━━━━━━━━━━━━━━━━━━━━━━━━
+                                            • *Employee Username:* ${targetUser.username}
+                                            • *Month/Period:* ${monthsList[currentMonth]} $currentYear
+                                            • *Active Present Days:* ${monthlyStats.first}
+                                            • *Configured Daily Wage:* ₹$wage / day
+                                            • *Approved Leaves:* ${monthlyStats.second}
+                                            • *Total Payout Disbursed:* *₹${String.format("%,.2f", finalAmount)}*
+                                            ━━━━━━━━━━━━━━━━━━━━━━━━━━
+                                            _Voucher digitally processed & logged in Studio Lens ledger._
+                                            """.trimIndent()
+                                            
+                                            try {
+                                                val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                                    type = "text/plain"
+                                                    putExtra(android.content.Intent.EXTRA_TEXT, shareMsg)
+                                                    setPackage("com.whatsapp")
+                                                }
+                                                context.startActivity(intent)
+                                            } catch (e: Exception) {
+                                                try {
+                                                    val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                                        type = "text/plain"
+                                                        putExtra(android.content.Intent.EXTRA_TEXT, shareMsg)
+                                                    }
+                                                    context.startActivity(android.content.Intent.createChooser(intent, "Share Payslip"))
+                                                } catch (ex: Exception) {
+                                                    Toast.makeText(context, "No sharing app found", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                        },
+                                        shape = RoundedCornerShape(12.dp),
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.tertiary),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Share,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Share Payslip", fontWeight = FontWeight.Bold, maxLines = 1)
+                                    }
                                 }
                             }
                         }

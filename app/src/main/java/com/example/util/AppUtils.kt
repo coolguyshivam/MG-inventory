@@ -18,6 +18,7 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.security.MessageDigest
 import java.util.UUID
+import kotlinx.coroutines.tasks.await
 
 object AppUtils {
 
@@ -260,13 +261,93 @@ object AppUtils {
         if (modelStr.isNullOrBlank()) return "ic_placeholder" // Fallback placeholder
         val context = androidx.compose.ui.platform.LocalContext.current
         return androidx.compose.runtime.remember(modelStr) {
-            if (modelStr.length > 100 && !modelStr.startsWith("http") && !modelStr.startsWith("content://") && !modelStr.startsWith("file://")) {
-                val file = base64ToLocalFile(context, modelStr)
-                file ?: modelStr
+            val target = when (modelStr) {
+                "ic_phone_blue" -> "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=400&q=80"
+                "ic_phone_amber" -> "https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?auto=format&fit=crop&w=400&q=80"
+                "ic_watch" -> "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=400&q=80"
+                "ic_tablet" -> "https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?auto=format&fit=crop&w=400&q=80"
+                else -> modelStr
+            }
+            if (target.length > 100 && !target.startsWith("http") && !target.startsWith("content://") && !target.startsWith("file://")) {
+                val file = base64ToLocalFile(context, target)
+                file ?: target
             } else {
-                modelStr
+                target
             }
         }
+    }
+
+    suspend fun uploadPhotoToFirebaseStorage(base64Str: String): String {
+        if (base64Str.startsWith("http") || base64Str.startsWith("gs://") || base64Str.startsWith("ic_") || base64Str.isBlank()) {
+            return base64Str
+        }
+        
+        return try {
+            val pureBase64 = if (base64Str.startsWith("data:image")) {
+                val index = base64Str.indexOf(",")
+                if (index != -1) base64Str.substring(index + 1) else base64Str
+            } else {
+                base64Str
+            }
+            val bytes = android.util.Base64.decode(pureBase64, android.util.Base64.NO_WRAP)
+            
+            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            val compressedBytes = if (bitmap != null) {
+                val maxDimension = 800
+                val scaledBitmap = if (bitmap.width > maxDimension || bitmap.height > maxDimension) {
+                    val ratio = bitmap.width.toFloat() / bitmap.height.toFloat()
+                    val (w, h) = if (ratio > 1) {
+                        Pair(maxDimension, (maxDimension / ratio).toInt())
+                    } else {
+                        Pair((maxDimension * ratio).toInt(), maxDimension)
+                    }
+                    Bitmap.createScaledBitmap(bitmap, w, h, true)
+                } else {
+                    bitmap
+                }
+                val out = java.io.ByteArrayOutputStream()
+                scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 75, out)
+                out.toByteArray()
+            } else {
+                bytes
+            }
+
+            val bucket = try {
+                com.example.BuildConfig.FIREBASE_STORAGE_BUCKET
+            } catch (e: Exception) {
+                ""
+            }
+            val storage = if (bucket.isNotBlank() && !bucket.contains("your-app")) {
+                val cleanBucket = if (bucket.startsWith("gs://")) bucket else "gs://$bucket"
+                com.google.firebase.storage.FirebaseStorage.getInstance(cleanBucket)
+            } else {
+                com.google.firebase.storage.FirebaseStorage.getInstance()
+            }
+            val ref = storage.reference.child("photos/${UUID.randomUUID()}.jpg")
+            
+            // Upload bytes to Cloud Storage and await
+            ref.putBytes(compressedBytes).await()
+            
+            // Fetch download URI and await
+            ref.downloadUrl.await().toString()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            android.util.Log.e("UploadPhoto", "Error uploading photo content to storage: ${e.message}")
+            base64Str
+        }
+    }
+
+    suspend fun processAndUploadPhotos(photoUriString: String?): String? {
+        if (photoUriString.isNullOrBlank()) return photoUriString
+        val parts = photoUriString.split(",")
+        val uploadedParts = parts.map { part ->
+            if (part.isNotBlank() && !part.startsWith("http") && !part.startsWith("ic_")) {
+                uploadPhotoToFirebaseStorage(part)
+            } else {
+                part
+            }
+        }
+        return uploadedParts.filter { it.isNotBlank() }.joinToString(",")
     }
 }
 

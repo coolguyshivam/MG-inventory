@@ -1118,6 +1118,34 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
         }
     }
 
+    fun recordSalaryPayment(employeeName: String, amount: Double, description: String) {
+        viewModelScope.launch {
+            try {
+                val existingParties = repository.allParties.first()
+                var party = existingParties.find { it.name.trim().lowercase() == employeeName.trim().lowercase() }
+                if (party == null) {
+                    val newParty = com.example.data.model.Party(
+                        name = employeeName.trim(),
+                        phoneNumber = "Staff Salary",
+                        aadhaarNumber = ""
+                    )
+                    repository.addParty(newParty)
+                    party = newParty
+                }
+                
+                val ledgerEntry = com.example.data.model.LedgerEntry(
+                    partyId = party.id,
+                    amount = amount,
+                    type = "PAYMENT_OUT",
+                    description = description
+                )
+                repository.addLedgerEntry(ledgerEntry)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
     private fun checkAndTriggerAbsences(users: List<User>, attendance: List<AttendanceRecord>, notifications: List<NotificationLog>) {
         try {
             val calendar = java.util.Calendar.getInstance()

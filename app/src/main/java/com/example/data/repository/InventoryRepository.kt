@@ -14,7 +14,7 @@ import kotlinx.coroutines.tasks.await
 import java.util.UUID
 
 class InventoryRepository {
-    private val db = FirebaseFirestore.getInstance()
+    private val db by lazy { FirebaseFirestore.getInstance() }
 
     val allInventoryItems: Flow<List<InventoryItem>> = callbackFlow {
         val sub = db.collection("inventory_items").addSnapshotListener { snap, err ->
@@ -134,6 +134,7 @@ class InventoryRepository {
         photoUri: String?,
         userId: String
     ): Boolean {
+        val uploadedPhotoUri = com.example.util.AppUtils.processAndUploadPhotos(photoUri)
         val item = InventoryItem(
             id = UUID.randomUUID().toString(),
             serialNumber = serialNumber,
@@ -145,7 +146,7 @@ class InventoryRepository {
             description = description,
             dateInMillis = dateInMillis,
             quantity = quantity,
-            photoUri = photoUri,
+            photoUri = uploadedPhotoUri,
             isUnderRepair = false
         )
         db.collection("inventory_items").document(item.id).set(item).await()
@@ -162,7 +163,7 @@ class InventoryRepository {
             description = description,
             dateInMillis = dateInMillis,
             quantity = quantity,
-            photoUri = photoUri,
+            photoUri = uploadedPhotoUri,
             userId = userId
         )
         db.collection("history_events").document(history.id).set(history).await()
@@ -192,6 +193,7 @@ class InventoryRepository {
             }
         }
 
+        val uploadedPhotoUri = com.example.util.AppUtils.processAndUploadPhotos(photoUri ?: existing?.photoUri)
         val history = HistoryEvent(
             id = UUID.randomUUID().toString(),
             actionType = "SALE",
@@ -204,7 +206,7 @@ class InventoryRepository {
             description = description,
             dateInMillis = dateInMillis,
             quantity = quantity,
-            photoUri = photoUri ?: existing?.photoUri,
+            photoUri = uploadedPhotoUri,
             userId = userId
         )
         db.collection("history_events").document(history.id).set(history).await()
@@ -225,6 +227,7 @@ class InventoryRepository {
         photoUri: String?,
         userId: String
     ): Boolean {
+        val uploadedPhotoUri = com.example.util.AppUtils.processAndUploadPhotos(photoUri)
         val existing = getItemBySerialNumber(serialNumber)
         if (existing != null) {
             db.collection("inventory_items").document(existing.id).update("quantity", existing.quantity + quantity).await()
@@ -240,7 +243,7 @@ class InventoryRepository {
                 description = description,
                 dateInMillis = dateInMillis,
                 quantity = quantity,
-                photoUri = photoUri,
+                photoUri = uploadedPhotoUri,
                 isUnderRepair = false
             )
             db.collection("inventory_items").document(item.id).set(item).await()
@@ -258,7 +261,7 @@ class InventoryRepository {
             description = description,
             dateInMillis = dateInMillis,
             quantity = quantity,
-            photoUri = photoUri,
+            photoUri = uploadedPhotoUri,
             userId = userId
         )
         db.collection("history_events").document(history.id).set(history).await()
@@ -281,6 +284,7 @@ class InventoryRepository {
         technicianName: String,
         repairReason: String
     ): Boolean {
+        val uploadedPhotoUri = com.example.util.AppUtils.processAndUploadPhotos(photoUri)
         val item = InventoryItem(
             id = UUID.randomUUID().toString(),
             serialNumber = serialNumber,
@@ -292,7 +296,7 @@ class InventoryRepository {
             description = description,
             dateInMillis = dateInMillis,
             quantity = quantity,
-            photoUri = photoUri,
+            photoUri = uploadedPhotoUri,
             isUnderRepair = true,
             technicianName = technicianName,
             repairReason = repairReason
@@ -311,7 +315,7 @@ class InventoryRepository {
             description = description,
             dateInMillis = dateInMillis,
             quantity = quantity,
-            photoUri = photoUri,
+            photoUri = uploadedPhotoUri,
             userId = userId,
             extraDetails = "Technician: $technicianName, Reason: $repairReason"
         )
@@ -379,21 +383,23 @@ class InventoryRepository {
     }
 
     suspend fun updateInventoryItem(item: InventoryItem, userId: String): Boolean {
-        db.collection("inventory_items").document(item.id).set(item).await()
+        val uploadedPhotoUri = com.example.util.AppUtils.processAndUploadPhotos(item.photoUri)
+        val finalItem = item.copy(photoUri = uploadedPhotoUri)
+        db.collection("inventory_items").document(finalItem.id).set(finalItem).await()
 
         val history = HistoryEvent(
             id = UUID.randomUUID().toString(),
             actionType = "EDIT",
-            serialNumber = item.serialNumber,
-            model = item.model,
-            name = item.name,
-            phoneNumber = item.phoneNumber,
-            aadhaarNumber = item.aadhaarNumber,
-            amount = item.amount,
-            description = "Edited item details: " + item.description,
+            serialNumber = finalItem.serialNumber,
+            model = finalItem.model,
+            name = finalItem.name,
+            phoneNumber = finalItem.phoneNumber,
+            aadhaarNumber = finalItem.aadhaarNumber,
+            amount = finalItem.amount,
+            description = "Edited item details: " + finalItem.description,
             dateInMillis = System.currentTimeMillis(),
-            quantity = item.quantity,
-            photoUri = item.photoUri,
+            quantity = finalItem.quantity,
+            photoUri = finalItem.photoUri,
             userId = userId
         )
         db.collection("history_events").document(history.id).set(history).await()
@@ -497,11 +503,19 @@ class InventoryRepository {
 
     // --- Cloud-Synced Attendance Systems ---
     suspend fun insertAttendanceRecord(record: AttendanceRecord) {
-        db.collection("attendance_records").document(record.id).set(record).await()
+        val finalRecord = record.copy(
+            checkInSelfieBase64 = record.checkInSelfieBase64?.let { com.example.util.AppUtils.uploadPhotoToFirebaseStorage(it) },
+            checkOutSelfieBase64 = record.checkOutSelfieBase64?.let { com.example.util.AppUtils.uploadPhotoToFirebaseStorage(it) }
+        )
+        db.collection("attendance_records").document(finalRecord.id).set(finalRecord).await()
     }
 
     suspend fun updateAttendanceRecord(record: AttendanceRecord) {
-        db.collection("attendance_records").document(record.id).set(record).await()
+        val finalRecord = record.copy(
+            checkInSelfieBase64 = record.checkInSelfieBase64?.let { com.example.util.AppUtils.uploadPhotoToFirebaseStorage(it) },
+            checkOutSelfieBase64 = record.checkOutSelfieBase64?.let { com.example.util.AppUtils.uploadPhotoToFirebaseStorage(it) }
+        )
+        db.collection("attendance_records").document(finalRecord.id).set(finalRecord).await()
     }
 
     suspend fun insertLeaveApplication(leave: LeaveApplication) {

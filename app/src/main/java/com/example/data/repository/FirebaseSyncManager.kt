@@ -56,28 +56,60 @@ object FirebaseSyncManager {
                 }
 
                 if (!isAlreadyInitialized) {
-                    val options = if (isConfigured()) {
-                        Log.d("FirebaseSyncManager", "Firebase configured. Initializing real sync mode!")
-                        FirebaseOptions.Builder()
-                            .setApiKey(BuildConfig.FIREBASE_API_KEY)
-                            .setApplicationId(BuildConfig.FIREBASE_APPLICATION_ID)
-                            .setProjectId(BuildConfig.FIREBASE_PROJECT_ID)
-                            .setDatabaseUrl(BuildConfig.FIREBASE_DATABASE_URL.takeIf { it.isNotBlank() })
-                            .build()
-                    } else {
-                        Log.d("FirebaseSyncManager", "Firebase configurations missing/placeholder. Initializing crash-safe local offline-first mode.")
-                        FirebaseOptions.Builder()
+                    try {
+                        val options = if (isConfigured()) {
+                            Log.d("FirebaseSyncManager", "Firebase configured. Initializing real sync mode!")
+                            val builder = FirebaseOptions.Builder()
+                                .setApiKey(BuildConfig.FIREBASE_API_KEY)
+                                .setApplicationId(BuildConfig.FIREBASE_APPLICATION_ID)
+                                .setProjectId(BuildConfig.FIREBASE_PROJECT_ID)
+                                .setDatabaseUrl(BuildConfig.FIREBASE_DATABASE_URL.takeIf { it.isNotBlank() })
+                            
+                            try {
+                                val bucket = BuildConfig.FIREBASE_STORAGE_BUCKET
+                                if (bucket.isNotBlank() && !bucket.contains("your-app")) {
+                                    val cleanBucket = if (bucket.startsWith("gs://")) bucket else "gs://$bucket"
+                                    // Set custom storage bucket in FirebaseOptions for implicit initialization
+                                    val rawBucket = cleanBucket.removePrefix("gs://")
+                                    builder.setStorageBucket(rawBucket)
+                                }
+                            } catch (e: Exception) {
+                                Log.w("FirebaseSyncManager", "Could not set custom storage bucket in FirebaseOptions: ${e.message}")
+                            }
+                            
+                            builder.build()
+                        } else {
+                            Log.d("FirebaseSyncManager", "Firebase configurations missing/placeholder. Initializing crash-safe local offline-first mode.")
+                            FirebaseOptions.Builder()
+                                .setApiKey("AIzaSyDummyKeyForFirestoreOfflineWorking")
+                                .setApplicationId("1:123456789012:android:0123456789abcdef012345")
+                                .setProjectId("inventorymanagement-dummy")
+                                .build()
+                        }
+                        FirebaseApp.initializeApp(context.applicationContext, options)
+                    } catch (e: Exception) {
+                        Log.e("FirebaseSyncManager", "Failed to initialize Firebase with main options, trying dummy fallback", e)
+                        // Fallback to dummy
+                        val dummyOptions = FirebaseOptions.Builder()
                             .setApiKey("AIzaSyDummyKeyForFirestoreOfflineWorking")
                             .setApplicationId("1:123456789012:android:0123456789abcdef012345")
                             .setProjectId("inventorymanagement-dummy")
                             .build()
+                        try {
+                            FirebaseApp.initializeApp(context.applicationContext, dummyOptions)
+                        } catch (ex: Exception) {
+                            Log.e("FirebaseSyncManager", "Failed to initialize default dummy Firebase fallback", ex)
+                        }
                     }
-                    FirebaseApp.initializeApp(context.applicationContext, options)
                 }
 
-                firestoreInstance = FirebaseFirestore.getInstance()
-                isInitialized = true
-                Log.d("FirebaseSyncManager", "Firebase initialized successfully!")
+                try {
+                    firestoreInstance = FirebaseFirestore.getInstance()
+                    isInitialized = true
+                    Log.d("FirebaseSyncManager", "Firebase initialized successfully!")
+                } catch (e: Exception) {
+                    Log.e("FirebaseSyncManager", "Failed to get Firestore instance during initialization", e)
+                }
                 
                 // Attempt Anonymous Sign-in for Firestore Auth rules
                 try {

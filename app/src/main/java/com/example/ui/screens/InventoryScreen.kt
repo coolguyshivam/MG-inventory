@@ -750,7 +750,7 @@ fun InventoryCardItem(
                     contentAlignment = Alignment.Center
                 ) {
                     val firstPhoto = item.photoUri?.split(",")?.firstOrNull()
-                    if (firstPhoto != null && firstPhoto.isNotBlank() && !firstPhoto.startsWith("ic_")) {
+                    if (firstPhoto != null && firstPhoto.isNotBlank() && (!firstPhoto.startsWith("ic_") || firstPhoto in listOf("ic_phone_blue", "ic_phone_amber", "ic_watch", "ic_tablet"))) {
                         coil.compose.AsyncImage(
                             model = com.example.util.AppUtils.resolveImageModel(firstPhoto),
                             contentDescription = "Item Photo",
@@ -940,7 +940,7 @@ fun InventoryCardItem(
                     HorizontalDivider()
 
                     if (!item.photoUri.isNullOrBlank()) {
-                        val photos = item.photoUri.split(",").filter { it.isNotBlank() && !it.startsWith("ic_") }
+                        val photos = item.photoUri.split(",").filter { it.isNotBlank() && (!it.startsWith("ic_") || it in listOf("ic_phone_blue", "ic_phone_amber", "ic_watch", "ic_tablet")) }
                         if (photos.isNotEmpty()) {
                             Text("Photos (${photos.size}):", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
