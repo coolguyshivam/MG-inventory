@@ -181,20 +181,64 @@ fun AttendanceScreen(viewModel: StockViewModel) {
         }
     }
 
-    // Capture Trigger
-    fun triggerSelfieCapture(isCheckIn: Boolean) {
-        isCheckingInAction = isCheckIn
-        try {
-            val directory = File(context.cacheDir, "selfie_scans")
-            if (!directory.exists()) directory.mkdirs()
-            val tempFile = File.createTempFile("selfie_${System.currentTimeMillis()}", ".jpg", directory)
-            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", tempFile)
-            tempCameraUriState.value = uri
-            selfieLauncher.launch(uri)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Toast.makeText(context, "Security Camera Integration Error: ${e.message}", Toast.LENGTH_SHORT).show()
+    // Delegate state to break compile-time circular dependency loops in local Compose definitions
+    var triggerSelfieCaptureDelegate by remember { mutableStateOf<((Boolean) -> Unit)?>(null) }
+
+    // Permission launcher for Camera & Location
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val cameraGranted = permissions[android.Manifest.permission.CAMERA] ?: false
+        val locationCoarseGranted = permissions[android.Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
+        val locationFineGranted = permissions[android.Manifest.permission.ACCESS_FINE_LOCATION] ?: false
+
+        if (cameraGranted && (locationCoarseGranted || locationFineGranted)) {
+            triggerSelfieCaptureDelegate?.invoke(isCheckingInAction)
+        } else {
+            Toast.makeText(context, "Camera & Location permissions are required for secure check-in/out stamps.", Toast.LENGTH_LONG).show()
         }
+    }
+
+    // Capture Trigger
+    val triggerSelfieCapture = remember {
+        { isCheckIn: Boolean ->
+            isCheckingInAction = isCheckIn
+            val cameraPermission = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA)
+            val locationCoarsePermission = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_COARSE_LOCATION)
+            val locationFinePermission = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION)
+
+            val hasCamera = cameraPermission == android.content.pm.PackageManager.PERMISSION_GRANTED
+            val hasCoarseLoc = locationCoarsePermission == android.content.pm.PackageManager.PERMISSION_GRANTED
+            val hasFineLoc = locationFinePermission == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+            if (!hasCamera || (!hasCoarseLoc && !hasFineLoc)) {
+                permissionLauncher.launch(
+                    arrayOf(
+                        android.Manifest.permission.CAMERA,
+                        android.Manifest.permission.ACCESS_COARSE_LOCATION,
+                        android.Manifest.permission.ACCESS_FINE_LOCATION
+                    )
+                )
+                Toast.makeText(context, "Requesting Camera & location permissions...", Toast.LENGTH_SHORT).show()
+            } else {
+                try {
+                    val directory = File(context.cacheDir, "selfie_scans")
+                    if (!directory.exists()) directory.mkdirs()
+                    val tempFile = File.createTempFile("selfie_${System.currentTimeMillis()}", ".jpg", directory)
+                    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", tempFile)
+                    tempCameraUriState.value = uri
+                    selfieLauncher.launch(uri)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    Toast.makeText(context, "Security Camera Integration Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    // Assign delegate
+    SideEffect {
+        triggerSelfieCaptureDelegate = triggerSelfieCapture
     }
 
     Column(
@@ -509,7 +553,7 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                             if (isSelfViewing) {
                                 if (targetTodayRecord == null) {
                                     Button(
-                                        onClick = { triggerSelfieCapture(isCheckIn = true) },
+                                        onClick = { triggerSelfieCapture(true) },
                                         modifier = Modifier.fillMaxWidth(),
                                         shape = RoundedCornerShape(12.dp),
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
@@ -520,7 +564,7 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                                     }
                                 } else if (targetTodayRecord.checkOutTime == 0L) {
                                     Button(
-                                        onClick = { triggerSelfieCapture(isCheckIn = false) },
+                                        onClick = { triggerSelfieCapture(false) },
                                         modifier = Modifier.fillMaxWidth(),
                                         shape = RoundedCornerShape(12.dp),
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC62828))
