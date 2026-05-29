@@ -987,6 +987,23 @@ fun shareToWhatsApp(context: android.content.Context, message: String) {
     }
 }
 
+fun extractAddressAndDescription(desc: String?): Pair<String, String> {
+    if (desc == null) return Pair("", "")
+    val trimmed = desc.trim()
+    if (trimmed.startsWith("Address: ")) {
+        val newlineIdx = trimmed.indexOf("\n")
+        if (newlineIdx != -1) {
+            val addressVal = trimmed.substring(0, newlineIdx).replace("Address: ", "").trim()
+            val descVal = trimmed.substring(newlineIdx + 1).trim()
+            return Pair(addressVal, descVal)
+        } else {
+            val addressVal = trimmed.replace("Address: ", "").trim()
+            return Pair(addressVal, "")
+        }
+    }
+    return Pair("", trimmed)
+}
+
 fun printHistoryEventCustom(
     context: android.content.Context,
     event: HistoryEvent,
@@ -1021,24 +1038,32 @@ fun printHistoryEventCustom(
             }
         }
 
-        var photoBoxesHtml = ""
-        for (photo in loadedPhotos) {
-            photoBoxesHtml += """
-                <div class="photo-box">
-                    <img src="$photo" />
+        val declarationTitle = when (event.actionType) {
+            "PURCHASE" -> "Purchase Declaration"
+            "SALE" -> "Sale Declaration"
+            "REPAIR_SENT", "REPAIR_RETURNED" -> "Repair Declaration"
+            "RETURN" -> "Return Declaration"
+            else -> "${event.actionType.replace("_", " ")} Declaration"
+        }
+
+        val (addressVal, descVal) = extractAddressAndDescription(event.description)
+
+        var photosHtml = ""
+        if (loadedPhotos.isNotEmpty()) {
+            photosHtml += """
+                <div style="font-size: 11px; font-weight: bold; margin-top: 24px; text-transform: uppercase; color: #111; border-top: 1px solid #ddd; padding-top: 16px;">
+                    Attached Snapshots:
                 </div>
+                <div style="display: flex; gap: 16px; margin: 15px 0;">
             """.trimIndent()
-        }
-        val neededPlaceholders = if (loadedPhotos.size < 2) {
-            placeholderCount.coerceAtMost(2 - loadedPhotos.size)
-        } else {
-            0
-        }
-        for (i in 1..neededPlaceholders) {
-            photoBoxesHtml += """
-                <div class="photo-box" style="display: flex; flex-direction: column; justify-content: center; align-items: center; border: 1.5px dashed #444; background: #fafafa; font-size: 10px; color: #444; height: 100%;">
-                    <div style="font-weight: bold; margin-bottom: 4px;">Image / Stamp Frame ${if (neededPlaceholders > 1) i.toString() else ""}</div>
-                    <div>(Signature, Stamp, or Attached Photo area)</div>
+            for (photo in loadedPhotos) {
+                photosHtml += """
+                    <div style="flex: 1; text-align: center;">
+                        <img src="$photo" style="max-width: 100%; max-height: 420px; object-fit: contain; border-radius: 4px;" />
+                    </div>
+                """.trimIndent()
+            }
+            photosHtml += """
                 </div>
             """.trimIndent()
         }
@@ -1106,26 +1131,6 @@ fun printHistoryEventCustom(
                         color: #111;
                         width: 140px;
                     }
-                    .photos-container {
-                        display: flex;
-                        gap: 16px;
-                        margin: 15px 0;
-                        height: 320px;
-                    }
-                    .photo-box {
-                        flex: 1;
-                        height: 100%;
-                        border: 1.5px dashed #444;
-                        border-radius: 6px;
-                        overflow: hidden;
-                        text-align: center;
-                    }
-                    .photo-box img {
-                        width: 100%;
-                        height: 100%;
-                        object-fit: contain;
-                        background: #fafafa;
-                    }
                     .terms-block {
                         font-size: 10px;
                         background: #f7f7f7;
@@ -1145,7 +1150,7 @@ fun printHistoryEventCustom(
                 <div class="invoice-card">
                     <div class="header">
                         <div>
-                            <div class="header-title">Mobile Gallery Transaction Slip</div>
+                            <div class="header-title">$declarationTitle</div>
                             <div style="font-size: 10px; color: #555; font-style: italic;">Ledger verification sheet</div>
                         </div>
                         <div class="header-meta">
@@ -1179,23 +1184,19 @@ fun printHistoryEventCustom(
                             <div class="grid-cell label">Quantity / Qty:</div>
                             <div class="grid-cell">${event.quantity} unit(s)</div>
                         </div>
-                    </div>
-
-                    <div style="font-size: 11px; font-weight: bold; margin-top: 10px; text-transform: uppercase; color: #111;">
-                        Documentation Photos / Stamp Frames:
-                    </div>
-                    <div class="photos-container">
-                        ${if (photoBoxesHtml.isNotBlank()) photoBoxesHtml else """
-                            <div class="photo-box" style="display: flex; flex-direction: column; justify-content: center; align-items: center; border: 1.5px dashed #444; background: #fafafa; font-size: 10px; color: #777; height: 100%;">
-                                <div>No snapshot attached</div>
-                            </div>
-                        """.trimIndent()}
+                        <div class="grid-row">
+                            <div class="grid-cell label">Address:</div>
+                            <div class="grid-cell">${addressVal.ifBlank { "_____________________________" }}</div>
+                            <div class="grid-cell label">Description:</div>
+                            <div class="grid-cell">${descVal.ifBlank { "_____________________________" }}</div>
+                        </div>
                     </div>
 
                     <div class="terms-block">
-                        <strong>COMMON TRANSACTION DISCLOSURES & TERMS:</strong><br/>
                         $customText
                     </div>
+
+                    $photosHtml
                 </div>
             </body>
             </html>
@@ -1227,12 +1228,30 @@ fun CustomPrintDialog(
     event: HistoryEvent,
     onDismiss: () -> Unit
 ) {
-    var customTerms by remember { mutableStateOf(
-        "1. WARRANTY ASSISTANCE: All brand items are covered solely by manufacturer service centers. Retailer holds no liability for mechanical failure, screen damage, liquid ingress, or physical wear/breakage.\n" +
-        "2. DOCUMENTATION REQUIREMENT: Please retain original packaging box, complete inside accessories, and this physical printed voucher/bill to initiate claims, verification, or service assistance.\n" +
-        "3. REFUND POLICY: All processed sales are final. Absolutely no cash refunds. Unopened, untampered items may be considered for exchange or store ledger credit notes within 24 hours of receipt.\n" +
-        "4. OUT-FOR-REPAIR DEVICES: Repair hand-overs are registered entirely at client's risk. Please backup/clone personal user files. Retailer is not liable for data loss or software degradation during repair."
-    ) }
+    val defaultTerms = remember(event.actionType, event.timestamp) {
+        val sdfDate = SimpleDateFormat("dd MMMM yyyy", Locale.getDefault())
+        val formattedDateVal = sdfDate.format(Date(event.timestamp))
+        if (event.actionType == "SALE") {
+            "उपरोक्त सभी तथ्य बिल्कुल सही है।\n" +
+            "मैने ये मोबाइल आज पूरा चेक कर के मोबाइल गैलरी से लिया है और मैं इससे संतुष्ट हूँ।\n" +
+            "अब से इस मोबाइल की सारी जिम्मेदारी केवल मेरी है।\n\n\n" +
+            "Sign                                        Date: $formattedDateVal\n\n" +
+            "1. WARRANTY ASSISTANCE: No warranty/guarantee for the used phones. In case any phone is eligible, it will be told separately and shall be valid only if it is written on this paper.\n\n" +
+            "2. REFUND POLICY: All processed sales are final. Absolutely no cash refunds. Unopened, untampered items may be considered for exchange or store ledger credit notes within 24 hours of receipt at the sole discretion of the store.\n\n" +
+            "3. OUT-FOR-REPAIR DEVICES: Repair hand-overs are registered entirely at client's risk. Please backup/clone personal user files. Retailer is not liable for data loss or software degradation during repair."
+        } else {
+            "उपरोक्त सभी तथ्य बिल्कुल सही है।\n" +
+            "मैने आज ये मोबाइल जिसका मै खुद स्वामी हु, स्वेच्छा से मोबाइल गैलरी को दिया है।\n" +
+            "उपरोक्त फोन पर किसी भी प्रकार का ऋण, ब्याज या क्लेम बाकी नहीं है। इसका किसी भी लोन/फाइनेंस कंपनी से कोई संबंध नहीं है। यदि इसपे कोई लोन रिकवरी होती है तो उसकी सारी जिम्मेदारी मेरी होगी और किसी की नहीं होगी।\n" +
+            "आज से इस फोन का मालिक मै नहीं हू।\n\n\n" +
+            "Sign                                        Date: $formattedDateVal\n\n\n" +
+            "1. Seller/Customer is solely responsible for the all the previous repairs, finances and other tasks related to this phone. The buyer-store does not have any responsibility of any finance emi's or and any wrong doings in the past. Any EMIs due on this phone shall be paid by the seller-customer.\n\n" +
+            "2. REFUND POLICY: All processed sales are final. Absolutely no cash refunds. Unopened, untampered items may be considered for exchange or store ledger credit notes within 24 hours of receipt at the sole discretion of the store.\n\n" +
+            "3. OUT-FOR-REPAIR DEVICES: Repair hand-overs are registered entirely at client's risk. Please backup/clone personal user files. Retailer is not liable for data loss or software degradation during repair."
+        }
+    }
+
+    var customTerms by remember(defaultTerms) { mutableStateOf(defaultTerms) }
     
     val photos = remember(event.photoUri) {
         event.photoUri?.split(",")?.filter { it.isNotBlank() && (!it.startsWith("ic_") || it in listOf("ic_phone_blue", "ic_phone_amber", "ic_watch", "ic_tablet")) } ?: emptyList()
@@ -1241,8 +1260,6 @@ fun CustomPrintDialog(
     val selectedPhotos = remember { mutableStateListOf<String>().apply { 
         addAll(photos.take(2))
     } }
-    
-    var placeholderCount by remember { mutableStateOf(if (photos.isEmpty()) 2 else (2 - photos.size).coerceAtLeast(0)) }
 
     val context = androidx.compose.ui.platform.LocalContext.current
 
@@ -1282,7 +1299,7 @@ fun CustomPrintDialog(
 
                 if (photos.isNotEmpty()) {
                     Text(
-                        text = "Select up to 2 images to print on receipt:",
+                        text = "Select up to 2 images to print on receipt (displayed cleanly border-free at bottom of layout):",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -1292,15 +1309,15 @@ fun CustomPrintDialog(
                             val isSelected = selectedPhotos.contains(photo)
                             Surface(
                                 onClick = {
-                                        if (isSelected) {
-                                            selectedPhotos.remove(photo)
+                                    if (isSelected) {
+                                        selectedPhotos.remove(photo)
+                                    } else {
+                                        if (selectedPhotos.size < 2) {
+                                            selectedPhotos.add(photo)
                                         } else {
-                                            if (selectedPhotos.size < 2) {
-                                                selectedPhotos.add(photo)
-                                            } else {
-                                                android.widget.Toast.makeText(context, "Only up to 2 photos can be printed", android.widget.Toast.LENGTH_SHORT).show()
-                                            }
+                                            android.widget.Toast.makeText(context, "Only up to 2 photos can be printed", android.widget.Toast.LENGTH_SHORT).show()
                                         }
+                                    }
                                 },
                                 shape = RoundedCornerShape(8.dp),
                                 color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
@@ -1353,32 +1370,6 @@ fun CustomPrintDialog(
                         fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
                     )
                 }
-
-                if (selectedPhotos.size < 2) {
-                    val remainingLimit = 2 - selectedPhotos.size
-                    Column {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = "Include empty placeholder boxes (for physical signs/thumbs):",
-                                style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.weight(1f)
-                            )
-                            Row {
-                                (0..remainingLimit).forEach { i ->
-                                    FilterChip(
-                                        selected = placeholderCount == i,
-                                        onClick = { placeholderCount = i },
-                                        label = { Text("$i Box") },
-                                        modifier = Modifier.padding(horizontal = 2.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
             }
         },
         confirmButton = {
@@ -1388,9 +1379,9 @@ fun CustomPrintDialog(
                         context = context,
                         event = event,
                         customText = customTerms,
-                        includeBlanks = true,
+                        includeBlanks = false,
                         selectedPhotos = selectedPhotos.toList(),
-                        placeholderCount = placeholderCount
+                        placeholderCount = 0
                     )
                     onDismiss()
                 }

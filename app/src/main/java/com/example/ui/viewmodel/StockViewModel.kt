@@ -869,8 +869,8 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
         val photo = photoUriInput.value
 
         // Validation
-        if (model.isBlank() || name.isBlank()) {
-            _transactionError.value = "Model and Name fields are mandatory."
+        if (model.isBlank() || name.isBlank() || address.isBlank()) {
+            _transactionError.value = "Model, Name, and Address fields are mandatory."
             return
         }
 

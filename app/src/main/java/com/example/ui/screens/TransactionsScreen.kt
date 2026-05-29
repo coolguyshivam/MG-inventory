@@ -189,7 +189,7 @@ fun TransactionsScreen(viewModel: StockViewModel) {
     val aadhaarTouched = remember { mutableStateOf(false) }
     val techTouched = remember { mutableStateOf(false) }
     val repairReasonTouched = remember { mutableStateOf(false) }
-    val descTouched = remember { mutableStateOf(false) }
+    val addressTouched = remember { mutableStateOf(false) }
 
     // Aggregate error calculation helpers
     val inputImeis = remember(transactionSubItems) { transactionSubItems.map { it.serialNumber.trim() } }
@@ -219,12 +219,12 @@ fun TransactionsScreen(viewModel: StockViewModel) {
     val aadhaarError = if (aadhaarTouched.value && aadhaar.isNotEmpty() && !aadhaar.matches(Regex("^\\d{12}$"))) "Must be exactly 12 numeric digits" else null
     val techError = if (activeSelection == 3 && techTouched.value && technician.isBlank()) "Technician Assigned is mandatory" else null
     val repairReasonError = if (activeSelection == 3 && repairReasonTouched.value && repairReason.isBlank()) "Reason for Issue is mandatory" else null
-    val descError = if (descTouched.value && description.isBlank()) "Description is a mandatory field" else null
+    val addressError = if (addressTouched.value && address.isBlank()) "Address is a mandatory field" else null
 
     fun getRealtimeError(): String? {
         if (model.isBlank() && modelTouched.value) return "Model is mandatory"
         if (name.isBlank() && nameTouched.value) return "Name is mandatory"
-        if (description.isBlank() && descTouched.value) return "Description is mandatory"
+        if (address.isBlank() && addressTouched.value) return "Address is mandatory"
         if (activeSelection == 3) {
             if (technician.isBlank() && techTouched.value) return "Technician Assigned is mandatory"
             if (repairReason.isBlank() && repairReasonTouched.value) return "Reason for Issue is mandatory"
@@ -248,7 +248,7 @@ fun TransactionsScreen(viewModel: StockViewModel) {
     val triggerAllTouched = {
         modelTouched.value = true
         nameTouched.value = true
-        descTouched.value = true
+        addressTouched.value = true
         if (activeSelection == 3) {
             techTouched.value = true
             repairReasonTouched.value = true
@@ -683,16 +683,19 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                 }
             }
 
-            // Address box (Optional)
+            // Address box (Mandatory)
             OutlinedTextField(
                 value = address,
                 onValueChange = {
                     viewModel.addressInput.value = it
                     viewModel.clearFormErrorAndSuccess()
+                    addressTouched.value = true
                 },
-                label = { Text("Address (Optional)") },
+                label = { Text("Address *") },
                 placeholder = { Text("Enter party or storage address...") },
                 shape = RoundedCornerShape(14.dp),
+                isError = addressError != null,
+                supportingText = if (addressError != null) { { Text(addressError, color = MaterialTheme.colorScheme.error) } } else null,
                 trailingIcon = {
                     IconButton(onClick = {
                         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -712,19 +715,16 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // 8. Description box
+            // 8. Description box (Optional)
             OutlinedTextField(
                 value = description,
                 onValueChange = {
                     viewModel.descriptionInput.value = it
                     viewModel.clearFormErrorAndSuccess()
-                    descTouched.value = true
                 },
-                label = { Text("Description *") },
+                label = { Text("Description (Optional)") },
                 placeholder = { Text("Provide notes on condition, buyer/vender logs, serial updates...") },
                 shape = RoundedCornerShape(14.dp),
-                isError = descError != null,
-                supportingText = if (descError != null) { { Text(descError, color = MaterialTheme.colorScheme.error) } } else null,
                 trailingIcon = {
                     IconButton(onClick = {
                         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
