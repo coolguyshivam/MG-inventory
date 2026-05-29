@@ -28,6 +28,8 @@ fun LedgerScreen(viewModel: StockViewModel) {
     val allParties by viewModel.allParties.collectAsState()
     val allLedgerEntries by viewModel.allLedgerEntries.collectAsState()
     val historyEvents by viewModel.historyEvents.collectAsState()
+    val loggedInUser by viewModel.loggedInUser.collectAsState()
+    val isAdmin = loggedInUser?.role == "Admin"
     var selectedEventForDialog by remember { mutableStateOf<com.example.data.model.HistoryEvent?>(null) }
 
     var showAddPartyDialog by remember { mutableStateOf(false) }
@@ -89,8 +91,10 @@ fun LedgerScreen(viewModel: StockViewModel) {
                     IconButton(onClick = { showDeletePartyDialog = true }) {
                         Icon(Icons.Default.Delete, contentDescription = "Delete Party")
                     }
-                    Button(onClick = { showPaymentDialog = true }) {
-                        Text("Add Payment")
+                    if (isAdmin) {
+                        Button(onClick = { showPaymentDialog = true }) {
+                            Text("Add Payment")
+                        }
                     }
                 }
             )

@@ -820,6 +820,7 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
     fun addSubItem() {
         quantityInput.value += 1
         transactionSubItems.value = transactionSubItems.value + TransactionSubItem()
+        syncAggregatedFormState()
     }
 
     fun removeSubItem() {
@@ -928,6 +929,9 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                 delay(1500) // simulation latency so user sees loading flow
 
                 val activeUser = _loggedInUser.value?.username ?: "admin"
+                // Process and upload transaction-level photos exactly once before loop
+                val uploadedPhoto = com.example.util.AppUtils.processAndUploadPhotos(photo)
+
                 var allSuccess = true
 
                 // PRE-VALIDATION: Ensure all items pass basic checks so it's all-or-nothing
@@ -985,7 +989,7 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                                     description = desc,
                                     dateInMillis = dateInMillis,
                                     quantity = 1,
-                                    photoUri = photo,
+                                    photoUri = uploadedPhoto,
                                     userId = activeUser
                                 )
                             }
@@ -1000,7 +1004,7 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                                     description = desc,
                                     dateInMillis = dateInMillis,
                                     quantity = 1,
-                                    photoUri = photo,
+                                    photoUri = uploadedPhoto,
                                     userId = activeUser
                                 )
                             }
@@ -1015,7 +1019,7 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                                     description = desc,
                                     dateInMillis = dateInMillis,
                                     quantity = 1,
-                                    photoUri = photo,
+                                    photoUri = uploadedPhoto,
                                     userId = activeUser
                                 )
                             }
@@ -1030,7 +1034,7 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                                     description = desc,
                                     dateInMillis = dateInMillis,
                                     quantity = 1,
-                                    photoUri = photo,
+                                    photoUri = uploadedPhoto,
                                     userId = activeUser,
                                     technicianName = tech,
                                     repairReason = reason
@@ -1106,6 +1110,10 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
 
     fun addLedgerPayment(partyId: String, amount: Double, type: String, description: String) {
         viewModelScope.launch {
+            if (_loggedInUser.value?.role != "Admin") {
+                Log.e("StockViewModel", "Unauthorized ledger payment attempt blocked.")
+                return@launch
+            }
             try {
                 val entry = com.example.data.model.LedgerEntry(
                     partyId = partyId,

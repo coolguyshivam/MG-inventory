@@ -171,7 +171,7 @@ fun LoginScreen(viewModel: StockViewModel) {
                             viewModel.clearFormErrorAndSuccess()
                         },
                         label = { Text("Username") },
-                        placeholder = { Text("admin") },
+                        placeholder = { Text("Enter Username") },
                         leadingIcon = {
                             Icon(
                                 imageVector = Icons.Default.Person,
@@ -194,7 +194,7 @@ fun LoginScreen(viewModel: StockViewModel) {
                             viewModel.clearFormErrorAndSuccess()
                         },
                         label = { Text("Password") },
-                        placeholder = { Text("admin") },
+                        placeholder = { Text("Enter Password") },
                         leadingIcon = {
                             Icon(
                                 imageVector = Icons.Default.Lock,
@@ -315,29 +315,6 @@ fun LoginScreen(viewModel: StockViewModel) {
                     }
                 }
                 }
-            }
-
-            // Tip/Helper footnote
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = "💡 Default Administrator credentials: admin / admin",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center
-                )
-                Text(
-                    text = "Use the 'User Management' panel as Administrator to create customized accounts for Manager or Employee roles to test visual restriction flows.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = 8.dp)
-                )
             }
         }
 

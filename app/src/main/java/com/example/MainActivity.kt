@@ -412,13 +412,6 @@ fun MainAppContent(viewModel: StockViewModel) {
                 
                 // Everyone can see history
                 tabsItems.add(Triple(3, "History", Icons.Default.History))
-                
-                if (canManageUsers) {
-                    tabsItems.add(Triple(5, "Users", Icons.Default.Group))
-                }
-                if (canViewLedger) {
-                    tabsItems.add(Triple(6, "Ledger", Icons.AutoMirrored.Filled.CompareArrows))
-                }
 
                 tabsItems.forEach { (index, title, icon) ->
                     NavigationBarItem(

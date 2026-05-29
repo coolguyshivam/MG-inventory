@@ -773,26 +773,175 @@ fun printHistoryEvent(context: android.content.Context, event: HistoryEvent) {
             <html>
             <head>
                 <style>
-                    body { font-family: sans-serif; padding: 20px; color: #333; line-height: 1.5; }
-                    h1 { border-bottom: 2px solid #ccc; padding-bottom: 10px; }
-                    .label { font-weight: bold; width: 150px; display: inline-block; }
-                    .row { border-bottom: 1px solid #eee; padding: 8px 0; }
-                    .photos { margin-top: 20px; }
+                    body {
+                        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+                        padding: 20px;
+                        color: #111;
+                        line-height: 1.4;
+                        max-width: 750px;
+                        margin: 0 auto;
+                        box-sizing: border-box;
+                    }
+                    .invoice-card {
+                        border: 3px double #333;
+                        border-radius: 8px;
+                        padding: 24px;
+                        background: #fff;
+                        box-sizing: border-box;
+                    }
+                    .header {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        border-bottom: 3px solid #111;
+                        padding-bottom: 8px;
+                        margin-bottom: 16px;
+                    }
+                    .header-title {
+                        font-size: 20px;
+                        font-weight: 800;
+                        text-transform: uppercase;
+                        letter-spacing: 0.8px;
+                        color: #111;
+                    }
+                    .header-meta {
+                        font-size: 11px;
+                        text-align: right;
+                        color: #333;
+                    }
+                    .grid {
+                        display: table;
+                        width: 100%;
+                        margin-bottom: 16px;
+                        border-collapse: collapse;
+                    }
+                    .grid-row {
+                        display: table-row;
+                    }
+                    .grid-cell {
+                        display: table-cell;
+                        padding: 8px 10px;
+                        font-size: 11px;
+                        border-bottom: 1px dotted #ccc;
+                    }
+                    .label {
+                        font-weight: bold;
+                        color: #111;
+                        background: #fdfdfd;
+                        width: 130px;
+                    }
+                    .photos {
+                        margin-top: 16px;
+                        display: flex;
+                        gap: 12px;
+                        flex-wrap: wrap;
+                    }
+                    .photos img {
+                        max-height: 120px;
+                        border: 1px solid #ddd;
+                        padding: 4px;
+                        border-radius: 4px;
+                    }
+                    .terms-block {
+                        font-size: 9px;
+                        background: #f9f9f9;
+                        border: 1px solid #e0e0e0;
+                        padding: 10px;
+                        border-radius: 4px;
+                        margin-top: 16px;
+                        color: #333;
+                        white-space: pre-wrap;
+                    }
+                    .sign-row {
+                        margin-top: 30px;
+                        display: flex;
+                        justify-content: space-between;
+                        padding: 0 10px;
+                        font-size: 10px;
+                    }
+                    .sign-line {
+                        width: 180px;
+                        border-top: 1px solid #111;
+                        text-align: center;
+                        padding-top: 4px;
+                        margin-top: 25px;
+                        font-weight: bold;
+                    }
+                    .footer-note {
+                        font-size: 8px;
+                        text-align: center;
+                        margin-top: 16px;
+                        color: #888;
+                        font-style: italic;
+                    }
+                    @media print {
+                        body { padding: 0; margin: 0; }
+                    }
                 </style>
             </head>
             <body>
-                <h1>Transaction Receipt</h1>
-                <div class="row"><span class="label">Date:</span> $date</div>
-                <div class="row"><span class="label">Action Type:</span> ${event.actionType}</div>
-                <div class="row"><span class="label">IMEI/Serial:</span> ${event.serialNumber}</div>
-                <div class="row"><span class="label">Model:</span> ${event.model}</div>
-                <div class="row"><span class="label">Party Name:</span> ${event.name}</div>
-                <div class="row"><span class="label">Phone:</span> ${event.phoneNumber ?: "N/A"}</div>
-                <div class="row"><span class="label">Quantity:</span> ${event.quantity}</div>
-                <div class="row"><span class="label">Amount:</span> INR ${event.amount}</div>
-                <div class="row"><span class="label">Audited By:</span> ${event.userId}</div>
-                <div class="row"><span class="label">Description:</span> ${event.description}</div>
-                <div class="photos">$imgTags</div>
+                <div class="invoice-card">
+                    <div class="header">
+                        <div>
+                            <div class="header-title">Mobile Gallery</div>
+                            <div style="font-size: 10px; color: #555; font-style: italic;">Official Transaction & Safe-Custody Bill</div>
+                        </div>
+                        <div class="header-meta">
+                            <div>Date: $date</div>
+                            <div>Tx ID: ${event.id.take(8).uppercase()}</div>
+                        </div>
+                    </div>
+
+                    <div class="grid">
+                        <div class="grid-row">
+                            <div class="grid-cell label">Transaction Mode:</div>
+                            <div class="grid-cell" style="font-weight: bold; color: #111;">${event.actionType}</div>
+                            <div class="grid-cell label">Brand & Model:</div>
+                            <div class="grid-cell">${event.model.ifBlank { "________________" }}</div>
+                        </div>
+                        <div class="grid-row">
+                            <div class="grid-cell label">Customer Name:</div>
+                            <div class="grid-cell">${event.name.ifBlank { "_____________________________" }}</div>
+                            <div class="grid-cell label">Contact Phone:</div>
+                            <div class="grid-cell">${event.phoneNumber ?: "_____________________________"}</div>
+                        </div>
+                        <div class="grid-row">
+                            <div class="grid-cell label">IMEI/Serial Key:</div>
+                            <div class="grid-cell" style="font-family: monospace;">${event.serialNumber.ifBlank { "________________" }}</div>
+                            <div class="grid-cell label">Disbursed Amount:</div>
+                            <div class="grid-cell" style="font-weight: bold; color: #111;">INR ${String.format("%,.2f", event.amount)}</div>
+                        </div>
+                        <div class="grid-row">
+                            <div class="grid-cell label">Audited By:</div>
+                            <div class="grid-cell">${event.userId}</div>
+                            <div class="grid-cell label">Quantity Unit:</div>
+                            <div class="grid-cell">${event.quantity} Unit(s)</div>
+                        </div>
+                    </div>
+
+                    <div style="font-size: 11px; margin-top: 8px; padding-bottom: 8px; border-bottom: 1px dotted #ccc;">
+                        <strong>Log Remarks:</strong> ${event.description.ifBlank { "No additional remarks logged." }}
+                    </div>
+
+                    <div class="photos">$imgTags</div>
+
+                    <div class="terms-block">
+                        <strong>COMMON TRANSACTION DISCLOSURES & POLICY TERMS:</strong><br/>
+1. WARRANTY ASSISTANCE: All brand items are covered solely by manufacturer service centers. Retailer holds no liability for mechanical failure, screen damage, liquid ingress, or physical wear/breakage.
+2. DOCUMENTATION REQUIREMENT: Please retain original packaging box, complete inside accessories, and this physical printed voucher/bill to initiate claims, verification, or service assistance.
+3. REFUND POLICY: All processed sales are final. Absolutely no cash refunds. Unopened, untampered items may be considered for exchange or store ledger credit notes within 24 hours of receipt.
+4. OUT-FOR-REPAIR DEVICES: Repair hand-overs are registered entirely at client's risk. Please backup/clone personal user files. Retailer is not liable for data loss or software degradation during repair.
+                    </div>
+
+                    <div class="sign-row">
+                        <div class="sign-line">Operator / Auditor Signature</div>
+                        <div class="sign-line">Customer Accept Signature</div>
+                    </div>
+
+                    <div class="footer-note">
+                        Thank you for your business! | System generated via Mobile Gallery Suite.
+                    </div>
+                </div>
             </body>
             </html>
         """.trimIndent()
@@ -1073,9 +1222,10 @@ fun CustomPrintDialog(
     onDismiss: () -> Unit
 ) {
     var customTerms by remember { mutableStateOf(
-        "1. Goods once sold are subject to standard brand warranty conditions.\n" +
-        "2. Original box & bill are required for physical claims or support.\n" +
-        "3. No cash refunds. Store credit or replacement will be provided if applicable."
+        "1. WARRANTY ASSISTANCE: All brand items are covered solely by manufacturer service centers. Retailer holds no liability for mechanical failure, screen damage, liquid ingress, or physical wear/breakage.\n" +
+        "2. DOCUMENTATION REQUIREMENT: Please retain original packaging box, complete inside accessories, and this physical printed voucher/bill to initiate claims, verification, or service assistance.\n" +
+        "3. REFUND POLICY: All processed sales are final. Absolutely no cash refunds. Unopened, untampered items may be considered for exchange or store ledger credit notes within 24 hours of receipt.\n" +
+        "4. OUT-FOR-REPAIR DEVICES: Repair hand-overs are registered entirely at client's risk. Please backup/clone personal user files. Retailer is not liable for data loss or software degradation during repair."
     ) }
     
     val photos = remember(event.photoUri) {
