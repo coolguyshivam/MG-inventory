@@ -1036,9 +1036,9 @@ fun printHistoryEventCustom(
         }
         for (i in 1..neededPlaceholders) {
             photoBoxesHtml += """
-                <div class="photo-box" style="display: flex; flex-direction: column; justify-content: center; align-items: center; border: 1px dashed #777; background: #fafafa; font-size: 8px; color: #777; height: 100%;">
-                    <div style="font-weight: bold; margin-bottom: 2px;">Image / Stamp Frame ${if (neededPlaceholders > 1) i.toString() else ""}</div>
-                    <div>(Dashed box space)</div>
+                <div class="photo-box" style="display: flex; flex-direction: column; justify-content: center; align-items: center; border: 1.5px dashed #444; background: #fafafa; font-size: 10px; color: #444; height: 100%;">
+                    <div style="font-weight: bold; margin-bottom: 4px;">Image / Stamp Frame ${if (neededPlaceholders > 1) i.toString() else ""}</div>
+                    <div>(Signature, Stamp, or Attached Photo area)</div>
                 </div>
             """.trimIndent()
         }
@@ -1050,94 +1050,91 @@ fun printHistoryEventCustom(
                 <style>
                     body {
                         font-family: sans-serif;
-                        padding: 10px;
+                        padding: 20px;
                         color: #111;
-                        line-height: 1.3;
-                        max-width: 750px;
+                        line-height: 1.4;
+                        max-width: 800px;
                         margin: 0 auto;
                         box-sizing: border-box;
                     }
                     .invoice-card {
-                        border: 2.5px dashed #333;
-                        border-radius: 8px;
-                        padding: 16px;
+                        border: 2px solid #222;
+                        border-radius: 4px;
+                        padding: 24px;
                         background: #fff;
                         box-sizing: border-box;
+                        min-height: 95vh;
+                        display: flex;
+                        flex-direction: column;
                     }
                     .header {
                         display: flex;
                         justify-content: space-between;
                         align-items: center;
                         border-bottom: 2px solid #222;
-                        padding-bottom: 6px;
-                        margin-bottom: 12px;
+                        padding-bottom: 8px;
+                        margin-bottom: 16px;
                     }
                     .header-title {
-                        font-size: 16px;
+                        font-size: 18px;
                         font-weight: 800;
                         text-transform: uppercase;
                         letter-spacing: 0.5px;
                         color: #111;
                     }
                     .header-meta {
-                        font-size: 10px;
+                        font-size: 11px;
                         text-align: right;
                         color: #444;
                     }
                     .grid {
                         display: table;
                         width: 100%;
-                        margin-bottom: 12px;
+                        margin-bottom: 16px;
                     }
                     .grid-row {
                         display: table-row;
                     }
                     .grid-cell {
                         display: table-cell;
-                        padding: 4px 6px;
-                        font-size: 10px;
+                        padding: 6px 8px;
+                        font-size: 11px;
                         border-bottom: 1px dotted #ccc;
                     }
                     .label {
                         font-weight: bold;
                         color: #111;
-                        width: 120px;
+                        width: 140px;
                     }
                     .photos-container {
                         display: flex;
-                        gap: 12px;
-                        margin: 10px 0;
-                        height: 80px;
+                        gap: 16px;
+                        margin: 15px 0;
+                        height: 320px;
                     }
                     .photo-box {
                         flex: 1;
-                        height: 80px;
-                        border: 1px dashed #555;
-                        border-radius: 4px;
+                        height: 100%;
+                        border: 1.5px dashed #444;
+                        border-radius: 6px;
                         overflow: hidden;
                         text-align: center;
                     }
                     .photo-box img {
                         width: 100%;
                         height: 100%;
-                        object-fit: cover;
+                        object-fit: contain;
+                        background: #fafafa;
                     }
                     .terms-block {
-                        font-size: 8.5px;
+                        font-size: 10px;
                         background: #f7f7f7;
                         border: 1px solid #ddd;
-                        padding: 6px;
-                        border-radius: 4px;
-                        margin-top: 8px;
+                        padding: 10px;
+                        border-radius: 6px;
+                        margin-top: auto;
                         color: #333;
                         white-space: pre-wrap;
-                    }
-                    .footer-note {
-                        font-size: 8px;
-                        text-align: center;
-                        margin-top: 10px;
-                        color: #777;
-                        font-style: italic;
                     }
                     @media print {
                         body { padding: 0; margin: 0; }
@@ -1149,7 +1146,7 @@ fun printHistoryEventCustom(
                     <div class="header">
                         <div>
                             <div class="header-title">Mobile Gallery Transaction Slip</div>
-                            <div style="font-size: 9px; color: #555; font-style: italic;">Ledger verification sheet</div>
+                            <div style="font-size: 10px; color: #555; font-style: italic;">Ledger verification sheet</div>
                         </div>
                         <div class="header-meta">
                             <div>Date: $date</div>
@@ -1176,19 +1173,28 @@ fun printHistoryEventCustom(
                             <div class="grid-cell label">Disbursed Amount:</div>
                             <div class="grid-cell" style="font-weight: bold; color: #111;">INR ${String.format("%,.2f", event.amount)}</div>
                         </div>
+                        <div class="grid-row">
+                            <div class="grid-cell label">Aadhaar Number:</div>
+                            <div class="grid-cell" style="font-family: monospace;">${event.aadhaarNumber?.ifBlank { "_____________________________" } ?: "_____________________________"}</div>
+                            <div class="grid-cell label">Quantity / Qty:</div>
+                            <div class="grid-cell">${event.quantity} unit(s)</div>
+                        </div>
                     </div>
 
+                    <div style="font-size: 11px; font-weight: bold; margin-top: 10px; text-transform: uppercase; color: #111;">
+                        Documentation Photos / Stamp Frames:
+                    </div>
                     <div class="photos-container">
-                        $photoBoxesHtml
+                        ${if (photoBoxesHtml.isNotBlank()) photoBoxesHtml else """
+                            <div class="photo-box" style="display: flex; flex-direction: column; justify-content: center; align-items: center; border: 1.5px dashed #444; background: #fafafa; font-size: 10px; color: #777; height: 100%;">
+                                <div>No snapshot attached</div>
+                            </div>
+                        """.trimIndent()}
                     </div>
 
                     <div class="terms-block">
                         <strong>COMMON TRANSACTION DISCLOSURES & TERMS:</strong><br/>
                         $customText
-                    </div>
-                    
-                    <div class="footer-note">
-                        Voucher uses exactly ~1/3 space of page | Certified by Auditer (${event.userId})
                     </div>
                 </div>
             </body>
@@ -1256,7 +1262,7 @@ fun CustomPrintDialog(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Text(
-                    text = "Configure receipt styling for A4 / thermal roll paper layout. This compact format utilizes approx. 1/3 page.",
+                    text = "Configure receipt styling for A4 / thermal roll paper layout. The page will be fully utilized, with remaining space used to print selected photos.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

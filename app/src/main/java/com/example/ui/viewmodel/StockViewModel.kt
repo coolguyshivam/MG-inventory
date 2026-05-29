@@ -518,8 +518,8 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
     val allNotifications: StateFlow<List<NotificationLog>> = repository.allNotifications
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun markCheckIn(context: Context, selfieBase64: String, location: String) {
-        val currentUser = _loggedInUser.value ?: return
+    fun markCheckIn(context: Context, selfieBase64: String, location: String, targetUserId: String? = null) {
+        val currentUsername = targetUserId ?: _loggedInUser.value?.username ?: return
         viewModelScope.launch {
             try {
                 val now = System.currentTimeMillis()
@@ -528,8 +528,8 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
 
                 val record = AttendanceRecord(
                     id = java.util.UUID.randomUUID().toString(),
-                    userId = currentUser.username,
-                    userName = currentUser.username,
+                    userId = currentUsername,
+                    userName = currentUsername,
                     dateString = todayStr,
                     checkInTime = now,
                     checkInSelfieBase64 = selfieBase64,
@@ -538,7 +538,7 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                 )
                 repository.insertAttendanceRecord(record)
 
-                val message = "Employee ${currentUser.username} checked in at ${java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(now))} from $location."
+                val message = "Employee ${currentUsername} checked in at ${java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(now))} from $location."
                 val notification = NotificationLog(
                     id = java.util.UUID.randomUUID().toString(),
                     title = "New Check-In!",
@@ -553,15 +553,15 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
         }
     }
 
-    fun markCheckOut(context: Context, selfieBase64: String, location: String) {
-        val currentUser = _loggedInUser.value ?: return
+    fun markCheckOut(context: Context, selfieBase64: String, location: String, targetUserId: String? = null) {
+        val currentUsername = targetUserId ?: _loggedInUser.value?.username ?: return
         viewModelScope.launch {
             try {
                 val now = System.currentTimeMillis()
                 val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
                 val todayStr = sdf.format(java.util.Date(now))
 
-                val existing = allAttendanceRecords.value.find { it.userId == currentUser.username && it.dateString == todayStr }
+                val existing = allAttendanceRecords.value.find { it.userId == currentUsername && it.dateString == todayStr }
                 val updated = if (existing != null) {
                     existing.copy(
                         checkOutTime = now,
@@ -571,8 +571,8 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                 } else {
                     AttendanceRecord(
                         id = java.util.UUID.randomUUID().toString(),
-                        userId = currentUser.username,
-                        userName = currentUser.username,
+                        userId = currentUsername,
+                        userName = currentUsername,
                         dateString = todayStr,
                         checkInTime = now - 3600000,
                         checkOutTime = now,
@@ -583,7 +583,7 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                 }
                 repository.insertAttendanceRecord(updated)
 
-                val message = "Employee ${currentUser.username} checked out at ${java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(now))}."
+                val message = "Employee ${currentUsername} checked out at ${java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(now))}."
                 val notification = NotificationLog(
                     id = java.util.UUID.randomUUID().toString(),
                     title = "New Check-Out!",
@@ -600,6 +600,15 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
 
     fun applyForLeave(startDate: String, endDate: String, type: String, reason: String) {
         val currentUser = _loggedInUser.value ?: return
+        val hasOverlap = allLeaveApplications.value.any { leave ->
+            leave.userId == currentUser.username &&
+            (leave.status == "Approved" || leave.status == "Pending") &&
+            startDate <= leave.endDateString &&
+            leave.startDateString <= endDate
+        }
+        if (hasOverlap) {
+            return
+        }
         viewModelScope.launch {
             try {
                 val leave = LeaveApplication(
@@ -613,7 +622,7 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                     status = "Pending"
                 )
                 repository.insertLeaveApplication(leave)
-            } catch (e: Exception) {
+            } catch (e: java.lang.Exception) {
                 e.printStackTrace()
             }
         }

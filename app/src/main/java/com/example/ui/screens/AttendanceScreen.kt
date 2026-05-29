@@ -165,10 +165,10 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                 if (base64 != null) {
                     AppUtils.getCurrentLocation(context) { locSpec ->
                         if (isCheckingInAction) {
-                            viewModel.markCheckIn(context, base64, locSpec)
+                            viewModel.markCheckIn(context, base64, locSpec, targetUser.username)
                             Toast.makeText(context, "Checked In Successfully!", Toast.LENGTH_SHORT).show()
                         } else {
-                            viewModel.markCheckOut(context, base64, locSpec)
+                            viewModel.markCheckOut(context, base64, locSpec, targetUser.username)
                             Toast.makeText(context, "Checked Out Successfully!", Toast.LENGTH_SHORT).show()
                         }
                     }
@@ -421,10 +421,9 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                 }
             }
 
-            val isCurrentAdminOrManager = loggedInUser?.role == "Admin" || loggedInUser?.role == "Manager"
             if (subTabSelection == 0) {
                 // TODAY CHECK-IN/OUT INTERACTIVE DECK
-                if (!isTargetAdminOrManager && !isCurrentAdminOrManager) {
+                if (!isTargetAdminOrManager) {
                     item {
                         val isSelfViewing = targetUser.username == loggedInUser?.username
                     Card(
@@ -547,7 +546,7 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                                 }
                             }
 
-                            // Dynamic Buttons for Attendance checking (Only enabled for self!)
+                            // Dynamic Buttons for Attendance checking (Only enabled for self or Admin/Manager for others)
                             if (isSelfViewing) {
                                 if (targetTodayRecord == null) {
                                     Button(
@@ -578,6 +577,44 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                                     ) {
                                         Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF2E7D32))
                                         Text("Today's Shift Logged Perfectly", fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+                                    }
+                                }
+                            } else if (isAdminOrManager) {
+                                if (targetTodayRecord == null) {
+                                    Button(
+                                        onClick = {
+                                            viewModel.markCheckIn(context, "", "Authorized by ${loggedInUser?.role}: ${loggedInUser?.username}", targetUser.username)
+                                            Toast.makeText(context, "Checked In Employee ${targetUser.username}", Toast.LENGTH_SHORT).show()
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
+                                    ) {
+                                        Icon(Icons.Default.Check, contentDescription = null, Modifier.size(18.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("Mark Check-In for ${targetUser.username}", fontWeight = FontWeight.Bold)
+                                    }
+                                } else if (targetTodayRecord.checkOutTime == 0L) {
+                                    Button(
+                                        onClick = {
+                                            viewModel.markCheckOut(context, "", "Authorized by ${loggedInUser?.role}: ${loggedInUser?.username}", targetUser.username)
+                                            Toast.makeText(context, "Checked Out Employee ${targetUser.username}", Toast.LENGTH_SHORT).show()
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC62828))
+                                    ) {
+                                        Icon(Icons.Default.Check, contentDescription = null, Modifier.size(18.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("Mark Check-Out for ${targetUser.username}", fontWeight = FontWeight.Bold)
+                                    }
+                                } else {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF2E7D32))
+                                        Text("Attendance Marked Perfect for Today", fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
                                     }
                                 }
                             } else {
@@ -1164,9 +1201,20 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                 Button(
                     onClick = {
                         if (startLeaveSpec.isNotBlank() && endLeaveSpec.isNotBlank() && reasonSpec.isNotBlank()) {
-                            viewModel.applyForLeave(startLeaveSpec.trim(), endLeaveSpec.trim(), leaveTypeSpec, reasonSpec.trim())
-                            Toast.makeText(context, "Leave Request Submitted!", Toast.LENGTH_SHORT).show()
-                            showLeaveDialog = false
+                            val currentEmpName = loggedInUser?.username ?: ""
+                            val hasOverlap = allLeaves.any { leave ->
+                                leave.userId == currentEmpName &&
+                                (leave.status == "Approved" || leave.status == "Pending") &&
+                                startLeaveSpec.trim() <= leave.endDateString &&
+                                leave.startDateString <= endLeaveSpec.trim()
+                            }
+                            if (hasOverlap) {
+                                Toast.makeText(context, "An overlapping Pending or Approved leave exists for this period.", Toast.LENGTH_LONG).show()
+                            } else {
+                                viewModel.applyForLeave(startLeaveSpec.trim(), endLeaveSpec.trim(), leaveTypeSpec, reasonSpec.trim())
+                                Toast.makeText(context, "Leave Request Submitted!", Toast.LENGTH_SHORT).show()
+                                showLeaveDialog = false
+                            }
                         } else {
                             Toast.makeText(context, "Fill in all parameters.", Toast.LENGTH_SHORT).show()
                         }
@@ -1238,15 +1286,26 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                 Button(
                     onClick = {
                         if (empNameSpec.isNotBlank() && dSpec.isNotBlank()) {
-                            viewModel.modifyAttendance(
-                                userId = empNameSpec.trim(),
-                                userName = empNameSpec.trim(),
-                                dateString = dSpec.trim(),
-                                status = statusSpec,
-                                notes = remarkSpec.trim()
-                            )
-                            Toast.makeText(context, "Attendance database updated!", Toast.LENGTH_SHORT).show()
-                            showModifyAttendanceDialog = false
+                            val targetUserNameTrimmed = empNameSpec.trim()
+                            val targetUserObj = allUsers.find { it.username.trim().lowercase() == targetUserNameTrimmed.lowercase() }
+                            val isTargetActuallyAdminOrManager = targetUserObj?.role in listOf("Admin", "Manager") || 
+                                    targetUserNameTrimmed.equals("admin", ignoreCase = true) || 
+                                    targetUserNameTrimmed.equals("manager", ignoreCase = true) ||
+                                    targetUserNameTrimmed.equals(loggedInUser?.username, ignoreCase = true)
+                            
+                            if (isTargetActuallyAdminOrManager) {
+                                Toast.makeText(context, "Cannot mark/modify attendance for Admins or Managers.", Toast.LENGTH_SHORT).show()
+                            } else {
+                                viewModel.modifyAttendance(
+                                    userId = targetUserNameTrimmed,
+                                    userName = targetUserNameTrimmed,
+                                    dateString = dSpec.trim(),
+                                    status = statusSpec,
+                                    notes = remarkSpec.trim()
+                                )
+                                Toast.makeText(context, "Attendance database updated!", Toast.LENGTH_SHORT).show()
+                                showModifyAttendanceDialog = false
+                            }
                         } else {
                             Toast.makeText(context, "Scope values required.", Toast.LENGTH_SHORT).show()
                         }

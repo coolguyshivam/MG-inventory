@@ -180,6 +180,87 @@ fun TransactionsScreen(viewModel: StockViewModel) {
     
     val isActionAllowed = if (activeSelection == 3) canRepair else canSell
 
+    // Real-time validation touched trackers
+    val imeiTouched = remember { mutableStateMapOf<Int, Boolean>() }
+    val priceTouched = remember { mutableStateMapOf<Int, Boolean>() }
+    val modelTouched = remember { mutableStateOf(false) }
+    val nameTouched = remember { mutableStateOf(false) }
+    val phoneTouched = remember { mutableStateOf(false) }
+    val aadhaarTouched = remember { mutableStateOf(false) }
+    val techTouched = remember { mutableStateOf(false) }
+    val repairReasonTouched = remember { mutableStateOf(false) }
+    val descTouched = remember { mutableStateOf(false) }
+
+    // Aggregate error calculation helpers
+    val inputImeis = remember(transactionSubItems) { transactionSubItems.map { it.serialNumber.trim() } }
+    val serialsHaveDuplicates = remember(inputImeis) { inputImeis.size != inputImeis.distinct().size }
+
+    fun getImeiError(index: Int, valStr: String): String? {
+        if (imeiTouched[index] != true) return null
+        if (valStr.trim().isEmpty()) return "IMEI/Serial is mandatory"
+        if (!valStr.trim().matches(Regex("^\\d{15}$"))) return "IMEI must be exactly 15 numeric digits"
+        if (serialsHaveDuplicates && inputImeis.count { it == valStr.trim() } > 1) {
+            return "Duplicate IMEI number in transaction"
+        }
+        return null
+    }
+
+    fun getPriceError(index: Int, valStr: String): String? {
+        if (priceTouched[index] != true) return null
+        if (valStr.trim().isEmpty()) return "Price is mandatory"
+        val amt = valStr.trim().toDoubleOrNull()
+        if (amt == null || amt < 0) return "Must be a non-negative number"
+        return null
+    }
+
+    val modelError = if (modelTouched.value && model.isBlank()) "Model is a mandatory field" else null
+    val nameError = if (nameTouched.value && name.isBlank()) "Name is a mandatory field" else null
+    val phoneError = if (phoneTouched.value && phone.isNotEmpty() && !phone.matches(Regex("^[6-9]\\d{9}$"))) "Must start with 6-9 and be 10 digits" else null
+    val aadhaarError = if (aadhaarTouched.value && aadhaar.isNotEmpty() && !aadhaar.matches(Regex("^\\d{12}$"))) "Must be exactly 12 numeric digits" else null
+    val techError = if (activeSelection == 3 && techTouched.value && technician.isBlank()) "Technician Assigned is mandatory" else null
+    val repairReasonError = if (activeSelection == 3 && repairReasonTouched.value && repairReason.isBlank()) "Reason for Issue is mandatory" else null
+    val descError = if (descTouched.value && description.isBlank()) "Description is a mandatory field" else null
+
+    fun getRealtimeError(): String? {
+        if (model.isBlank() && modelTouched.value) return "Model is mandatory"
+        if (name.isBlank() && nameTouched.value) return "Name is mandatory"
+        if (description.isBlank() && descTouched.value) return "Description is mandatory"
+        if (activeSelection == 3) {
+            if (technician.isBlank() && techTouched.value) return "Technician Assigned is mandatory"
+            if (repairReason.isBlank() && repairReasonTouched.value) return "Reason for Issue is mandatory"
+        }
+        for (idx in transactionSubItems.indices) {
+            val sErr = getImeiError(idx, transactionSubItems[idx].serialNumber)
+            if (sErr != null) return sErr
+            val pErr = getPriceError(idx, transactionSubItems[idx].amount)
+            if (pErr != null) return pErr
+        }
+        if (serialsHaveDuplicates) return "Duplicate IMEI numbers are not allowed"
+        if (phoneError != null) return phoneError
+        if (aadhaarError != null) return aadhaarError
+        
+        val now = System.currentTimeMillis()
+        if (dateInMillis > now + 60_000) return "Selecting future dates is not allowed"
+        
+        return errMessage
+    }
+
+    val triggerAllTouched = {
+        modelTouched.value = true
+        nameTouched.value = true
+        descTouched.value = true
+        if (activeSelection == 3) {
+            techTouched.value = true
+            repairReasonTouched.value = true
+        }
+        transactionSubItems.forEachIndexed { index, _ ->
+            imeiTouched[index] = true
+            priceTouched[index] = true
+        }
+        phoneTouched.value = true
+        aadhaarTouched.value = true
+    }
+
     // Dynamic banner/style details based on tab modes
     val themeColorAndLabel = remember(activeSelection) {
         when (activeSelection) {
@@ -199,14 +280,15 @@ fun TransactionsScreen(viewModel: StockViewModel) {
         Pair("Network Modem Unit", "ic_router")
     )
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-            .verticalScroll(scrollState),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        // Tab selectors at the top representing Modes
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .verticalScroll(scrollState),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Tab selectors at the top representing Modes
         Card(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(
@@ -264,24 +346,7 @@ fun TransactionsScreen(viewModel: StockViewModel) {
             }
         }
 
-        AnimatedVisibility(visible = errMessage != null) {
-            errMessage?.let { msg ->
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Icon(Icons.Default.Error, "Error", tint = MaterialTheme.colorScheme.error)
-                        Text(msg, color = MaterialTheme.colorScheme.onErrorContainer, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
+
 
         // FORM FIELDS WRAPPER
         Column(
@@ -342,55 +407,61 @@ fun TransactionsScreen(viewModel: StockViewModel) {
             }
 
             // DYNAMIC ITEMS COLLECTION
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 transactionSubItems.forEachIndexed { index, subItem ->
+                    val imeiErr = getImeiError(index, subItem.serialNumber)
+                    val priceErr = getPriceError(index, subItem.amount)
                     Card(
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.3f)),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.fillMaxWidth()
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     ) {
-                        Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("Item ${index + 1}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                            Row(
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Item ${index + 1}", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                            
+                            OutlinedTextField(
+                                value = subItem.serialNumber,
+                                onValueChange = { 
+                                    viewModel.updateSubItem(index, it, subItem.amount)
+                                    viewModel.clearFormErrorAndSuccess()
+                                    imeiTouched[index] = true
+                                },
+                                label = { Text("IMEI/Serial Number *") },
+                                placeholder = { Text("Enter 15-digit IMEI") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(10.dp),
                                 modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                OutlinedTextField(
-                                    value = subItem.serialNumber,
-                                    onValueChange = { 
-                                        viewModel.updateSubItem(index, it, subItem.amount)
-                                        viewModel.clearFormErrorAndSuccess()
-                                    },
-                                    label = { Text("IMEI/Serial *") },
-                                    singleLine = true,
-                                    shape = RoundedCornerShape(10.dp),
-                                    modifier = Modifier.weight(1.5f),
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    trailingIcon = {
-                                        val iconAlpha = if (subItem.serialNumber.isNotEmpty()) 0.4f else 1f
-                                        IconButton(
-                                            onClick = { scannerIndex = index },
-                                            modifier = Modifier.alpha(iconAlpha)
-                                        ) {
-                                            Icon(Icons.Default.QrCodeScanner, "Scanner", tint = themeColorAndLabel.first)
-                                        }
+                                isError = imeiErr != null,
+                                supportingText = if (imeiErr != null) { { Text(imeiErr, color = MaterialTheme.colorScheme.error) } } else null,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                trailingIcon = {
+                                    val iconAlpha = if (subItem.serialNumber.isNotEmpty()) 0.4f else 1f
+                                    IconButton(
+                                        onClick = { scannerIndex = index },
+                                        modifier = Modifier.alpha(iconAlpha)
+                                    ) {
+                                        Icon(Icons.Default.QrCodeScanner, "Scanner", tint = themeColorAndLabel.first)
                                     }
-                                )
+                                }
+                            )
 
-                                OutlinedTextField(
-                                    value = subItem.amount,
-                                    onValueChange = { 
-                                        viewModel.updateSubItem(index, subItem.serialNumber, it) 
-                                        viewModel.clearFormErrorAndSuccess()
-                                    },
-                                    label = { Text("Price *") },
-                                    singleLine = true,
-                                    shape = RoundedCornerShape(10.dp),
-                                    modifier = Modifier.weight(1f).height(64.dp), // keep same height as default text field
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                                )
-                            }
+                            OutlinedTextField(
+                                value = subItem.amount,
+                                onValueChange = { 
+                                    viewModel.updateSubItem(index, subItem.serialNumber, it) 
+                                    viewModel.clearFormErrorAndSuccess()
+                                    priceTouched[index] = true
+                                },
+                                label = { Text("Price (₹) *") },
+                                placeholder = { Text("Enter item cost") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                                isError = priceErr != null,
+                                supportingText = if (priceErr != null) { { Text(priceErr, color = MaterialTheme.colorScheme.error) } } else null,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                            )
                         }
                     }
                 }
@@ -422,11 +493,14 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                     onValueChange = {
                         viewModel.modelInput.value = it
                         viewModel.clearFormErrorAndSuccess()
+                        modelTouched.value = true
                     },
                     label = { Text("Model *") },
                     singleLine = true,
                     shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    isError = modelError != null,
+                    supportingText = if (modelError != null) { { Text(modelError, color = MaterialTheme.colorScheme.error) } } else null
                 )
 
                 OutlinedTextField(
@@ -434,36 +508,49 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                     onValueChange = {
                         viewModel.nameInput.value = it
                         viewModel.clearFormErrorAndSuccess()
+                        nameTouched.value = true
                     },
                     label = { Text("Name *") },
                     singleLine = true,
                     shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    isError = nameError != null,
+                    supportingText = if (nameError != null) { { Text(nameError, color = MaterialTheme.colorScheme.error) } } else null
                 )
             }
 
-            // General Info Row 2: Phone & Aadhaar (Optional)
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(
-                    value = phone,
-                    onValueChange = { viewModel.phoneInput.value = it },
-                    label = { Text("Phone (opt)") },
-                    singleLine = true,
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.weight(1f),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                )
+            // General Info: Phone & Aadhaar (With Stack style for full visibility of numbers)
+            OutlinedTextField(
+                value = phone,
+                onValueChange = { 
+                    viewModel.phoneInput.value = it 
+                    phoneTouched.value = true
+                },
+                label = { Text("Phone Number (Optional)") },
+                placeholder = { Text("Enter 10-digit phone number") },
+                singleLine = true,
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.fillMaxWidth(),
+                isError = phoneError != null,
+                supportingText = if (phoneError != null) { { Text(phoneError, color = MaterialTheme.colorScheme.error) } } else null,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+            )
 
-                OutlinedTextField(
-                    value = aadhaar,
-                    onValueChange = { viewModel.aadhaarInput.value = it },
-                    label = { Text("Aadhaar (opt)") },
-                    singleLine = true,
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.weight(1f),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                )
-            }
+            OutlinedTextField(
+                value = aadhaar,
+                onValueChange = { 
+                    viewModel.aadhaarInput.value = it 
+                    aadhaarTouched.value = true
+                },
+                label = { Text("Aadhaar Number (Optional)") },
+                placeholder = { Text("Enter 12-digit Aadhaar") },
+                singleLine = true,
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.fillMaxWidth(),
+                isError = aadhaarError != null,
+                supportingText = if (aadhaarError != null) { { Text(aadhaarError, color = MaterialTheme.colorScheme.error) } } else null,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+            )
 
             // Total Summary & Photo Attacher Box
             Row(
@@ -567,20 +654,30 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                         )
                         OutlinedTextField(
                             value = technician,
-                            onValueChange = { viewModel.technicianNameInput.value = it },
+                            onValueChange = { 
+                                viewModel.technicianNameInput.value = it 
+                                techTouched.value = true
+                            },
                             label = { Text("Technician Assigned *") },
                             placeholder = { Text("E.g., John Miller") },
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            isError = techError != null,
+                            supportingText = if (techError != null) { { Text(techError, color = MaterialTheme.colorScheme.error) } } else null
                         )
                         OutlinedTextField(
                             value = repairReason,
-                            onValueChange = { viewModel.repairReasonInput.value = it },
+                            onValueChange = { 
+                                viewModel.repairReasonInput.value = it 
+                                repairReasonTouched.value = true
+                            },
                             label = { Text("Reason for Issue *") },
                             placeholder = { Text("E.g., Port faulty, key issue") },
                             shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            isError = repairReasonError != null,
+                            supportingText = if (repairReasonError != null) { { Text(repairReasonError, color = MaterialTheme.colorScheme.error) } } else null
                         )
                     }
                 }
@@ -621,10 +718,13 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                 onValueChange = {
                     viewModel.descriptionInput.value = it
                     viewModel.clearFormErrorAndSuccess()
+                    descTouched.value = true
                 },
                 label = { Text("Description *") },
                 placeholder = { Text("Provide notes on condition, buyer/vender logs, serial updates...") },
                 shape = RoundedCornerShape(14.dp),
+                isError = descError != null,
+                supportingText = if (descError != null) { { Text(descError, color = MaterialTheme.colorScheme.error) } } else null,
                 trailingIcon = {
                     IconButton(onClick = {
                         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -662,7 +762,15 @@ fun TransactionsScreen(viewModel: StockViewModel) {
 
             // Submitting CTA button with uploader feedback
             Button(
-                onClick = { viewModel.executeTransaction() },
+                onClick = { 
+                    triggerAllTouched()
+                    val validationErr = getRealtimeError()
+                    if (validationErr == null) {
+                        viewModel.executeTransaction()
+                    } else {
+                        Toast.makeText(context, "Please correct the highlighted validation errors.", Toast.LENGTH_SHORT).show()
+                    }
+                },
                 enabled = !isUploading && isActionAllowed,
                 colors = ButtonDefaults.buttonColors(containerColor = themeColorAndLabel.first),
                 shape = RoundedCornerShape(14.dp),
@@ -853,7 +961,72 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                 DatePicker(state = datePickerState)
             }
         }
+        
+        Spacer(modifier = Modifier.height(96.dp)) // ensure we can scroll past the bottom floating error banner!
     }
+
+    // Floating Validation Error Banner near the submit button
+    val activeError = getRealtimeError()
+    AnimatedVisibility(
+        visible = activeError != null,
+        enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+        exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .padding(16.dp)
+    ) {
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.errorContainer
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier.padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Warning,
+                        contentDescription = "Validation Alert",
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                    Column {
+                        Text(
+                            text = "Validation Issue Spotted",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                        Text(
+                            text = activeError ?: "",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    }
+                }
+                IconButton(
+                    onClick = { viewModel.clearFormErrorAndSuccess() },
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Close",
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+        }
+    }
+}
 }
 
 val ColorsAmber = Color(0xFFF59E0B)
