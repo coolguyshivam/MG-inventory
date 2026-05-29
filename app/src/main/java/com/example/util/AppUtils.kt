@@ -3,348 +3,385 @@ package com.example.util
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.location.Location
-import android.location.LocationManager
+import android.graphics.Matrix
+import android.media.ExifInterface
 import android.net.Uri
-import android.os.Build
-import android.os.Environment
-import android.content.ContentValues
-import android.provider.MediaStore
-import android.widget.Toast
-import java.io.ByteArrayOutputStream
-import java.io.File
-import java.io.FileOutputStream
-import java.io.InputStream
-import java.io.OutputStream
-import java.security.MessageDigest
-import java.util.UUID
+import android.util.Log
+import com.example.data.model.HistoryEvent
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.tasks.await
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
+import java.io.File
+import java.util.UUID
 
 object AppUtils {
+    private const val TAG = "AppUtils"
 
-    fun md5(s: String): String {
-        return try {
-            val digest = MessageDigest.getInstance("MD5")
-            digest.update(s.toByteArray())
-            val messageDigest = digest.digest()
-            val hexString = StringBuilder()
-            for (aMessageDigest in messageDigest) {
-                var h = Integer.toHexString(0xFF and aMessageDigest.toInt())
-                while (h.length < 2) h = "0$h"
-                hexString.append(h)
-            }
-            hexString.toString()
-        } catch (e: Exception) {
-            UUID.randomUUID().toString().take(8)
+    /**
+     * Compresses the selected photo and uploads it to Firebase Storage.
+     * Returns the remote HTTPS URL, or falls back to the local Uri string if failure occurs.
+     */
+    suspend fun compressAndUploadPhoto(context: Context, uriString: String): String {
+        if (uriString.isBlank()) return ""
+        if (uriString.startsWith("http://") || uriString.startsWith("https://")) {
+            return uriString // Already uploaded
         }
-    }
 
-    fun uriToBase64(context: Context, uri: Uri): String? {
-        return try {
-            val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
-            val bitmap = BitmapFactory.decodeStream(inputStream) ?: return null
+        val localUri = Uri.parse(uriString)
+        try {
+            // Read and compress
+            val bitmap = getBitmapFromUri(context, localUri) ?: return uriString
+            val rotatedBitmap = rotateImageIfRequired(context, bitmap, localUri)
             
-            // Resize to maximum dimension of 600px for lightning-fast uploads and minimal document footprint
-            val maxDimension = 600
-            val scaledBitmap = if (bitmap.width > maxDimension || bitmap.height > maxDimension) {
-                val ratio = bitmap.width.toFloat() / bitmap.height.toFloat()
-                val (w, h) = if (ratio > 1) {
-                    Pair(maxDimension, (maxDimension / ratio).toInt())
-                } else {
-                    Pair((maxDimension * ratio).toInt(), maxDimension)
-                }
-                Bitmap.createScaledBitmap(bitmap, w, h, true)
-            } else {
-                bitmap
-            }
+            // Scaled version to avoid huge memory & payload
+            val scaledBitmap = scaleBitmap(rotatedBitmap, 1200)
             
             val outputStream = ByteArrayOutputStream()
             scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 75, outputStream)
-            val bytes = outputStream.toByteArray()
-            android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        }
-    }
+            val compressedBytes = outputStream.toByteArray()
 
-    fun base64ToLocalFile(context: Context, base64Str: String): File? {
-        if (base64Str.isBlank()) return null
-        return try {
-            val pureBase64 = if (base64Str.startsWith("data:image")) {
-                val index = base64Str.indexOf(",")
-                if (index != -1) base64Str.substring(index + 1) else base64Str
-            } else {
-                base64Str
-            }
-            
-            val bytes = android.util.Base64.decode(pureBase64, android.util.Base64.NO_WRAP)
-            val dir = File(context.filesDir, "photos")
-            if (!dir.exists()) dir.mkdirs()
-            
-            val hash = md5(pureBase64)
-            val file = File(dir, "cache_pic_$hash.jpg")
-            if (!file.exists()) {
-                FileOutputStream(file).use { out ->
-                    out.write(bytes)
+            // Firebase Storage Upload
+            try {
+                // Pre-authenticate anonymously to satisfy Firebase Security Rules
+                val auth = FirebaseAuth.getInstance()
+                if (auth.currentUser == null) {
+                    Log.d(TAG, "Signing in anonymously to satisfy Firebase Storage rules...")
+                    auth.signInAnonymously().await()
                 }
-            }
-            file
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        }
-    }
 
-    fun saveImageToGallery(context: Context, imageSource: String) {
-        try {
-            val bitmap: Bitmap? = when {
-                imageSource.length > 100 && !imageSource.startsWith("http") && !imageSource.startsWith("content://") && !imageSource.startsWith("file://") -> {
-                    val pureBase64 = if (imageSource.startsWith("data:image")) {
-                        val index = imageSource.indexOf(",")
-                        if (index != -1) imageSource.substring(index + 1) else imageSource
-                    } else {
-                        imageSource
-                    }
-                    val bytes = android.util.Base64.decode(pureBase64, android.util.Base64.NO_WRAP)
-                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                }
-                imageSource.startsWith("content://") || imageSource.startsWith("file://") -> {
-                    val uri = Uri.parse(imageSource)
-                    val stream: InputStream? = context.contentResolver.openInputStream(uri)
-                    BitmapFactory.decodeStream(stream)
-                }
-                else -> {
-                    val file = File(imageSource)
-                    if (file.exists()) {
-                        BitmapFactory.decodeFile(file.absolutePath)
-                    } else {
-                        null
-                    }
-                }
-            }
-            
-            if (bitmap == null) {
-                Toast.makeText(context, "Error: Could not decode image to save.", Toast.LENGTH_SHORT).show()
-                return
-            }
-
-            val filename = "inventory_saved_${System.currentTimeMillis()}.jpg"
-            var fos: OutputStream? = null
-            var insertedUri: Uri? = null
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val resolver = context.contentResolver
-                val contentValues = ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
-                    put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Inventory")
-                    put(MediaStore.MediaColumns.IS_PENDING, 1)
-                }
-                insertedUri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
-                if (insertedUri != null) {
-                    fos = resolver.openOutputStream(insertedUri)
-                    if (fos != null) {
-                        fos.use {
-                            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, it)
-                        }
-                    }
-                    contentValues.clear()
-                    contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
-                    resolver.update(insertedUri, contentValues, null, null)
-                }
-            } else {
-                val imagesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
-                val appDir = File(imagesDir, "Inventory")
-                if (!appDir.exists()) appDir.mkdirs()
-                val image = File(appDir, filename)
-                fos = FileOutputStream(image)
-                insertedUri = Uri.fromFile(image)
-                fos.use {
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, 100, it)
-                }
-            }
-
-            if (insertedUri != null) {
-                Toast.makeText(context, "Saved directly to Pictures/Inventory Gallery!", Toast.LENGTH_LONG).show()
+                val filepath = "photos/${UUID.randomUUID()}.jpg"
+                val storageRef = FirebaseStorage.getInstance().reference.child(filepath)
                 
-                // Alert the system media scanner
-                val path = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).absolutePath + "/Inventory/" + filename
-                } else {
-                    File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "Inventory/$filename").absolutePath
-                }
-                android.media.MediaScannerConnection.scanFile(
-                    context,
-                    arrayOf(path),
-                    arrayOf("image/jpeg"),
-                    null
-                )
-            } else {
-                Toast.makeText(context, "Failed to capture media storage channel.", Toast.LENGTH_SHORT).show()
+                Log.d(TAG, "Uploading compressed image to Firebase Storage: $filepath")
+                storageRef.putBytes(compressedBytes).await()
+                
+                val downloadUrl = storageRef.downloadUrl.await().toString()
+                Log.d(TAG, "Upload success! URL: $downloadUrl")
+                return downloadUrl
+            } catch (firebaseEx: Throwable) {
+                Log.e(TAG, "Firebase upload failed, falling back to local URI", firebaseEx)
+                // If firebase fails (e.g. no internet or unconfigured), we return the local path
+                return uriString
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Toast.makeText(context, "Save Failed: ${e.message}", Toast.LENGTH_SHORT).show()
+        } catch (e: Throwable) {
+            Log.e(TAG, "Failed to compress or read bitmap from $uriString", e)
+            return uriString
         }
     }
 
-    fun getCurrentLocation(context: Context, callback: (String) -> Unit) {
-        val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
-            context,
-            android.Manifest.permission.ACCESS_COARSE_LOCATION
-        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    private fun getBitmapFromUri(context: Context, uri: Uri): Bitmap? {
+        return try {
+            // First decode with inJustDecodeBounds=true to check dimensions
+            val options = BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
+            }
+            context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                BitmapFactory.decodeStream(inputStream, null, options)
+            }
 
-        if (hasPermission) {
-            val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
-            if (locationManager != null) {
-                try {
-                    val providers = locationManager.getProviders(true)
-                    var bestLocation: Location? = null
-                    for (provider in providers) {
-                        val loc = locationManager.getLastKnownLocation(provider)
-                        if (loc != null) {
-                            if (bestLocation == null || loc.accuracy < bestLocation.accuracy) {
-                                bestLocation = loc
-                            }
+            val width = options.outWidth
+            val height = options.outHeight
+            if (width <= 0 || height <= 0) return null
+
+            // Target max dimension of 1200 px to preserve memory and network resources
+            val maxDim = 1200
+            var inSampleSize = 1
+            if (width > maxDim || height > maxDim) {
+                val halfWidth = width / 2
+                val halfHeight = height / 2
+                while ((halfWidth / inSampleSize) >= maxDim && (halfHeight / inSampleSize) >= maxDim) {
+                    inSampleSize *= 2
+                }
+            }
+
+            // Now decode with the calculated inSampleSize
+            val decodeOptions = BitmapFactory.Options().apply {
+                this.inSampleSize = inSampleSize
+            }
+            context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                BitmapFactory.decodeStream(inputStream, null, decodeOptions)
+            }
+        } catch (e: Throwable) {
+            Log.e(TAG, "getBitmapFromUri with downsampling failed", e)
+            null
+        }
+    }
+
+    private fun scaleBitmap(bitmap: Bitmap, maxDimension: Int): Bitmap {
+        val width = bitmap.width
+        val height = bitmap.height
+        if (width <= maxDimension && height <= maxDimension) return bitmap
+
+        val aspectRatio = width.toFloat() / height.toFloat()
+        val newWidth: Int
+        val newHeight: Int
+
+        if (width > height) {
+            newWidth = maxDimension
+            newHeight = (maxDimension / aspectRatio).toInt()
+        } else {
+            newHeight = maxDimension
+            newWidth = (maxDimension * aspectRatio).toInt()
+        }
+
+        return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
+    }
+
+    private fun rotateImageIfRequired(context: Context, img: Bitmap, selectedImage: Uri): Bitmap {
+        var input: InputStream? = null
+        try {
+            input = context.contentResolver.openInputStream(selectedImage)
+            if (input == null) return img
+            val ei = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                ExifInterface(input)
+            } else {
+                ExifInterface(selectedImage.path ?: "")
+            }
+            
+            val orientation = ei.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+            return when (orientation) {
+                ExifInterface.ORIENTATION_ROTATE_90 -> rotateImage(img, 90)
+                ExifInterface.ORIENTATION_ROTATE_180 -> rotateImage(img, 180)
+                ExifInterface.ORIENTATION_ROTATE_270 -> rotateImage(img, 270)
+                else -> img
+            }
+        } catch (e: Throwable) {
+            Log.e(TAG, "rotateImageIfRequired error", e)
+            return img
+        } finally {
+            try {
+                input?.close()
+            } catch (ignored: Exception) {}
+        }
+    }
+
+    private fun rotateImage(img: Bitmap, degree: Int): Bitmap {
+        val matrix = Matrix()
+        matrix.postRotate(degree.toFloat())
+        val rotatedImg = Bitmap.createBitmap(img, 0, 0, img.width, img.height, matrix, true)
+        img.recycle()
+        return rotatedImg
+    }
+
+    /**
+     * Builds and opens standard PDF invoice print previews from the custom inputs.
+     * Hindi text formats beautifully, details list matches, and photos load correctly.
+     */
+    fun printHistoryEventCustom(
+        context: Context,
+        event: HistoryEvent,
+        termsText: String,
+        photoList: List<String>
+    ) {
+        val mainExecutor = androidx.core.content.ContextCompat.getMainExecutor(context)
+        mainExecutor.execute {
+            try {
+                val webView = android.webkit.WebView(context)
+                
+                val htmlBuilder = StringBuilder()
+            htmlBuilder.append("""
+                <html>
+                <head>
+                <meta charset="utf-8">
+                <style>
+                    body {
+                        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+                        color: #1a1a1a;
+                        padding: 24px;
+                        font-size: 14px;
+                        line-height: 1.6;
+                    }
+                    .header {
+                        text-align: center;
+                        border-bottom: 2px dashed #475569;
+                        padding-bottom: 16px;
+                        margin-bottom: 24px;
+                    }
+                    .header h1 {
+                        margin: 0;
+                        font-size: 28px;
+                        font-weight: 900;
+                        color: #0f172a;
+                        letter-spacing: 1.5px;
+                    }
+                    .header p {
+                        margin: 4px 0 0 0;
+                        font-size: 11px;
+                        color: #64748b;
+                        text-transform: uppercase;
+                        font-weight: bold;
+                    }
+                    .details-table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin-bottom: 24px;
+                    }
+                    .details-table td {
+                        padding: 10px 14px;
+                        border: 1px solid #cbd5e1;
+                        font-size: 13px;
+                    }
+                    .details-table .label {
+                        font-weight: bold;
+                        background-color: #f8fafc;
+                        width: 32%;
+                        color: #334155;
+                    }
+                    .details-table .value {
+                        width: 68%;
+                        color: #0f172a;
+                    }
+                    .amount-row {
+                        font-weight: bold;
+                        font-size: 16px;
+                        color: #0f766e;
+                        background-color: #f0fdfa !important;
+                    }
+                    .terms-section {
+                        margin-top: 24px;
+                        padding: 16px;
+                        background-color: #f8fafc;
+                        border-left: 4px solid #475569;
+                        font-size: 14px;
+                        white-space: pre-line;
+                        color: #1e293b;
+                    }
+                    .photo-container {
+                        margin-top: 32px;
+                        page-break-inside: avoid;
+                        border-top: 1px dashed #94a3b8;
+                        padding-top: 16px;
+                    }
+                    .photo-title {
+                        font-size: 15px;
+                        font-weight: bold;
+                        color: #334155;
+                        margin-bottom: 12px;
+                    }
+                    .photo-grid {
+                        display: flex;
+                        flex-direction: row;
+                        flex-wrap: wrap;
+                        gap: 16px;
+                    }
+                    .photo-item {
+                        border: 1px solid #e2e8f0;
+                        padding: 4px;
+                        border-radius: 8px;
+                        background: #ffffff;
+                        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+                    }
+                    .photo-img {
+                        max-width: 260px;
+                        max-height: 200px;
+                        object-fit: contain;
+                        display: block;
+                        border-radius: 4px;
+                    }
+                    .footer {
+                        margin-top: 48px;
+                        text-align: center;
+                        font-size: 11px;
+                        color: #94a3b8;
+                        letter-spacing: 0.5px;
+                    }
+                </style>
+                </head>
+                <body>
+                    <div class="header">
+                        <h1>MOBILE GALLERY</h1>
+                        <p>Authorized Sales, Purchase & Ledger Slip</p>
+                    </div>
+                    
+                    <table class="details-table">
+                        <tr>
+                            <td class="label">Transaction ID</td>
+                            <td class="value">MG-TXN-${event.id}</td>
+                        </tr>
+                        <tr>
+                            <td class="label">Timestamp</td>
+                            <td class="value">${java.text.SimpleDateFormat("dd MMMM yyyy, hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(event.timestamp))}</td>
+                        </tr>
+                        <tr>
+                            <td class="label">Ledger Type</td>
+                            <td class="value"><strong>${event.actionType}</strong></td>
+                        </tr>
+                        <tr>
+                            <td class="label">Device Description</td>
+                            <td class="value"><strong>${event.model}</strong></td>
+                        </tr>
+                        <tr>
+                            <td class="label">IMEI / Serial Number</td>
+                            <td class="value" style="font-family: monospace; font-size: 14px;">${event.serialNumber}</td>
+                        </tr>
+                        <tr>
+                            <td class="label">Customer / Seller</td>
+                            <td class="value">${event.name}</td>
+                        </tr>
+                        ${if (!event.phoneNumber.isNullOrBlank()) """<tr><td class="label">Contact Phone</td><td class="value">${event.phoneNumber}</td></tr>""" else ""}
+                        ${if (!event.aadhaarNumber.isNullOrBlank()) """<tr><td class="label">Aadhaar Card Number</td><td class="value">${event.aadhaarNumber}</td></tr>""" else ""}
+                        <tr>
+                            <td class="label">Quantity</td>
+                            <td class="value">${event.quantity} units</td>
+                        </tr>
+                        <tr class="amount-row">
+                            <td class="label" style="color: #0f766e;">Total Transaction Cost</td>
+                            <td class="value" style="color: #0f766e;">INR ${String.format(java.util.Locale.getDefault(), "%,.2f", event.amount)}</td>
+                        </tr>
+                    </table>
+
+                    <div class="terms-section">${termsText}</div>
+            """.trimIndent())
+
+            if (photoList.isNotEmpty()) {
+                htmlBuilder.append("""
+                    <div class="photo-container">
+                        <div class="photo-title">Attached Device Verification Snapshots</div>
+                        <div class="photo-grid">
+                """.trimIndent())
+                photoList.forEach { p ->
+                    if (p.isNotBlank()) {
+                        htmlBuilder.append("""
+                            <div class="photo-item">
+                                <img class="photo-img" src="$p" alt="Snapshot"/>
+                            </div>
+                        """.trimIndent())
+                    }
+                }
+                htmlBuilder.append("""
+                        </div>
+                    </div>
+                """.trimIndent())
+            }
+
+            htmlBuilder.append("""
+                    <div class="footer">
+                        Authentic Slip Generated via Mobile Gallery ERP. All rights reserved.
+                    </div>
+                </body>
+                </html>
+            """.trimIndent())
+
+                webView.webViewClient = object : android.webkit.WebViewClient() {
+                    override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
+                        try {
+                            val printManager = context.getSystemService(Context.PRINT_SERVICE) as android.print.PrintManager
+                            val jobName = "Mobile_Gallery_Document_${event.id}"
+                            val printAdapter = webView.createPrintDocumentAdapter(jobName)
+                            printManager.print(jobName, printAdapter, android.print.PrintAttributes.Builder().build())
+                        } catch (pt: Throwable) {
+                            Log.e(TAG, "Printing failed", pt)
+                            android.widget.Toast.makeText(context, "Printing system not responding: ${pt.message}", android.widget.Toast.LENGTH_SHORT).show()
                         }
                     }
-                    if (bestLocation != null) {
-                        callback("Lat: ${String.format("%.4f", bestLocation.latitude)}, Lng: ${String.format("%.4f", bestLocation.longitude)}")
-                        return
-                    }
-                } catch (e: SecurityException) {
-                    e.printStackTrace()
                 }
+                webView.loadDataWithBaseURL(null, htmlBuilder.toString(), "text/html", "UTF-8", null)
+            } catch (t: Throwable) {
+                Log.e(TAG, "WebView print failed", t)
+                android.widget.Toast.makeText(context, "Failed to launch printing on this device: ${t.message}", android.widget.Toast.LENGTH_LONG).show()
             }
         }
-        
-        // Balanced fallback to showcase realistic outcomes smoothly
-        callback("Lat: 28.6139, Lng: 77.2090 (Connaught Place, Delhi)")
-    }
-
-    fun postSystemNotification(context: Context, title: String, message: String) {
-        try {
-            val nManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager ?: return
-            val channelId = "attendance_alerts"
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                val channel = android.app.NotificationChannel(
-                    channelId,
-                    "Attendance Check-In Alerts",
-                    android.app.NotificationManager.IMPORTANCE_HIGH
-                ).apply {
-                    description = "Real-time alerts for employee check-ins and check-outs"
-                    enableLights(true)
-                    lightColor = android.graphics.Color.BLUE
-                }
-                nManager.createNotificationChannel(channel)
-            }
-
-            val builder = androidx.core.app.NotificationCompat.Builder(context, channelId)
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setContentTitle(title)
-                .setContentText(message)
-                .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
-                .setAutoCancel(true)
-
-            nManager.notify(System.currentTimeMillis().toInt(), builder.build())
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    @androidx.compose.runtime.Composable
-    fun resolveImageModel(modelStr: String?): Any {
-        if (modelStr.isNullOrBlank()) return "ic_placeholder" // Fallback placeholder
-        val context = androidx.compose.ui.platform.LocalContext.current
-        return androidx.compose.runtime.remember(modelStr) {
-            val target = when (modelStr) {
-                "ic_phone_blue" -> "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=400&q=80"
-                "ic_phone_amber" -> "https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?auto=format&fit=crop&w=400&q=80"
-                "ic_watch" -> "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=400&q=80"
-                "ic_tablet" -> "https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?auto=format&fit=crop&w=400&q=80"
-                else -> modelStr
-            }
-            if (target.length > 100 && !target.startsWith("http") && !target.startsWith("content://") && !target.startsWith("file://")) {
-                val file = base64ToLocalFile(context, target)
-                file ?: target
-            } else {
-                target
-            }
-        }
-    }
-
-    suspend fun uploadPhotoToFirebaseStorage(base64Str: String): String {
-        if (base64Str.startsWith("http") || base64Str.startsWith("gs://") || base64Str.startsWith("ic_") || base64Str.isBlank()) {
-            return base64Str
-        }
-        
-        return try {
-            val pureBase64 = if (base64Str.startsWith("data:image")) {
-                val index = base64Str.indexOf(",")
-                if (index != -1) base64Str.substring(index + 1) else base64Str
-            } else {
-                base64Str
-            }
-            val bytes = android.util.Base64.decode(pureBase64, android.util.Base64.NO_WRAP)
-            
-            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-            val compressedBytes = if (bitmap != null) {
-                val maxDimension = 800
-                val scaledBitmap = if (bitmap.width > maxDimension || bitmap.height > maxDimension) {
-                    val ratio = bitmap.width.toFloat() / bitmap.height.toFloat()
-                    val (w, h) = if (ratio > 1) {
-                        Pair(maxDimension, (maxDimension / ratio).toInt())
-                    } else {
-                        Pair((maxDimension * ratio).toInt(), maxDimension)
-                    }
-                    Bitmap.createScaledBitmap(bitmap, w, h, true)
-                } else {
-                    bitmap
-                }
-                val out = java.io.ByteArrayOutputStream()
-                scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 75, out)
-                out.toByteArray()
-            } else {
-                bytes
-            }
-
-            val bucket = try {
-                com.example.BuildConfig.FIREBASE_STORAGE_BUCKET
-            } catch (e: Exception) {
-                ""
-            }
-            val storage = if (bucket.isNotBlank() && !bucket.contains("your-app")) {
-                val cleanBucket = if (bucket.startsWith("gs://")) bucket else "gs://$bucket"
-                com.google.firebase.storage.FirebaseStorage.getInstance(cleanBucket)
-            } else {
-                com.google.firebase.storage.FirebaseStorage.getInstance()
-            }
-            val ref = storage.reference.child("photos/${UUID.randomUUID()}.jpg")
-            
-            // Upload bytes to Cloud Storage and await
-            ref.putBytes(compressedBytes).await()
-            
-            // Fetch download URI and await
-            ref.downloadUrl.await().toString()
-        } catch (e: Exception) {
-            e.printStackTrace()
-            android.util.Log.e("UploadPhoto", "Error uploading photo content to storage: ${e.message}")
-            base64Str
-        }
-    }
-
-    suspend fun processAndUploadPhotos(photoUriString: String?): String? {
-        if (photoUriString.isNullOrBlank()) return photoUriString
-        val parts = photoUriString.split(",")
-        val uploadedParts = parts.map { part ->
-            if (part.isNotBlank() && !part.startsWith("http") && !part.startsWith("ic_")) {
-                uploadPhotoToFirebaseStorage(part)
-            } else {
-                part
-            }
-        }
-        return uploadedParts.filter { it.isNotBlank() }.joinToString(",")
     }
 }
-
