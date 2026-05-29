@@ -181,8 +181,8 @@ fun AttendanceScreen(viewModel: StockViewModel) {
         }
     }
 
-    // Delegate state to break compile-time circular dependency loops in local Compose definitions
-    var triggerSelfieCaptureDelegate by remember { mutableStateOf<((Boolean) -> Unit)?>(null) }
+    // Delegate state to break compile-time circular dependency loops in local Compose definitions without triggering infinite recomposition
+    val triggerSelfieCaptureRef = remember { arrayOfNulls<(Boolean) -> Unit>(1) }
 
     // Permission launcher for Camera & Location
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -193,7 +193,7 @@ fun AttendanceScreen(viewModel: StockViewModel) {
         val locationFineGranted = permissions[android.Manifest.permission.ACCESS_FINE_LOCATION] ?: false
 
         if (cameraGranted && (locationCoarseGranted || locationFineGranted)) {
-            triggerSelfieCaptureDelegate?.invoke(isCheckingInAction)
+            triggerSelfieCaptureRef[0]?.invoke(isCheckingInAction)
         } else {
             Toast.makeText(context, "Camera & Location permissions are required for secure check-in/out stamps.", Toast.LENGTH_LONG).show()
         }
@@ -236,10 +236,7 @@ fun AttendanceScreen(viewModel: StockViewModel) {
         }
     }
 
-    // Assign delegate
-    SideEffect {
-        triggerSelfieCaptureDelegate = triggerSelfieCapture
-    }
+    triggerSelfieCaptureRef[0] = triggerSelfieCapture
 
     Column(
         modifier = Modifier
@@ -424,9 +421,10 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                 }
             }
 
+            val isCurrentAdminOrManager = loggedInUser?.role == "Admin" || loggedInUser?.role == "Manager"
             if (subTabSelection == 0) {
                 // TODAY CHECK-IN/OUT INTERACTIVE DECK
-                if (!isTargetAdminOrManager) {
+                if (!isTargetAdminOrManager && !isCurrentAdminOrManager) {
                     item {
                         val isSelfViewing = targetUser.username == loggedInUser?.username
                     Card(
@@ -847,21 +845,19 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Button(
-                            onClick = {
-                                if (loggedInUser?.role in listOf("Admin", "Manager")) {
-                                    Toast.makeText(context, "Manager and Admin do not require to apply for leaves, all others do.", Toast.LENGTH_LONG).show()
-                                } else {
+                        if (loggedInUser?.role !in listOf("Admin", "Manager")) {
+                            Button(
+                                onClick = {
                                     showLeaveDialog = true
-                                }
-                            },
-                            modifier = Modifier.weight(1.0f),
-                            shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
-                        ) {
-                            Icon(Icons.Default.CardTravel, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Apply For Leave", fontWeight = FontWeight.Bold)
+                                },
+                                modifier = Modifier.weight(1.0f),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                            ) {
+                                Icon(Icons.Default.CardTravel, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Apply For Leave", fontWeight = FontWeight.Bold)
+                            }
                         }
 
                         if (isAdminOrManager) {
@@ -882,28 +878,30 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                 // LEAVE APPLICATIONS TRACKING PANEL
 
                 // section 0: Submit Leave banner
-                item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.25f)),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f))
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(16.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                if (loggedInUser?.role !in listOf("Admin", "Manager")) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.25f)),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f))
                         ) {
-                            Column(modifier = Modifier.weight(0.7f)) {
-                                Text("Apply For Outrage & Leave", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSecondaryContainer)
-                                Text("Request vacation, casual or medical leave directly to managers in past, present or future dates.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f))
-                            }
-                            Button(
-                                onClick = { showLeaveDialog = true },
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                            Row(
+                                modifier = Modifier.padding(16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("Apply Now", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Column(modifier = Modifier.weight(0.7f)) {
+                                    Text("Apply For Outrage & Leave", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                                    Text("Request vacation, casual or medical leave directly to managers in past, present or future dates.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f))
+                                }
+                                Button(
+                                    onClick = { showLeaveDialog = true },
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                                ) {
+                                    Text("Apply Now", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
@@ -1075,26 +1073,76 @@ fun AttendanceScreen(viewModel: StockViewModel) {
         var leaveTypeSpec by remember { mutableStateOf("Week-off") }
         var reasonSpec by remember { mutableStateOf("") }
         
+        val showDatePicker = { onDateSelected: (String) -> Unit ->
+            val calendar = Calendar.getInstance()
+            android.app.DatePickerDialog(
+                context,
+                { _, year, month, dayOfMonth ->
+                    val formattedDate = String.format("%04d-%02d-%02d", year, month + 1, dayOfMonth)
+                    onDateSelected(formattedDate)
+                },
+                calendar.get(Calendar.YEAR),
+                calendar.get(Calendar.MONTH),
+                calendar.get(Calendar.DAY_OF_MONTH)
+            ).show()
+        }
+        
         AlertDialog(
             onDismissRequest = { showLeaveDialog = false },
             title = { Text("Apply For Leave", fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(
-                        value = startLeaveSpec,
-                        onValueChange = { startLeaveSpec = it },
-                        label = { Text("Start Date (yyyy-MM-dd)") },
-                        placeholder = { Text("E.g., $todayStr") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showDatePicker { startLeaveSpec = it } }
+                    ) {
+                        OutlinedTextField(
+                            value = startLeaveSpec,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Start Date") },
+                            placeholder = { Text("Tap to select start date...") },
+                            trailingIcon = {
+                                Icon(Icons.Default.DateRange, contentDescription = "Choose Start Date")
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = false,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                                disabledBorderColor = MaterialTheme.colorScheme.outline,
+                                disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                disabledPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                disabledTrailingIconColor = MaterialTheme.colorScheme.primary
+                            )
+                        )
+                    }
 
-                    OutlinedTextField(
-                        value = endLeaveSpec,
-                        onValueChange = { endLeaveSpec = it },
-                        label = { Text("End Date (yyyy-MM-dd)") },
-                        placeholder = { Text("E.g., $todayStr") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showDatePicker { endLeaveSpec = it } }
+                    ) {
+                        OutlinedTextField(
+                            value = endLeaveSpec,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("End Date") },
+                            placeholder = { Text("Tap to select end date...") },
+                            trailingIcon = {
+                                Icon(Icons.Default.DateRange, contentDescription = "Choose End Date")
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = false,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                                disabledBorderColor = MaterialTheme.colorScheme.outline,
+                                disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                disabledPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                disabledTrailingIconColor = MaterialTheme.colorScheme.primary
+                            )
+                        )
+                    }
 
                     // Leave type Description
                     Column {
@@ -1216,115 +1264,320 @@ fun AttendanceScreen(viewModel: StockViewModel) {
     // 3. DIALOG: DETAILED DATE ATTENDANCE STAMP DIALOG VIEW
     if (clickedRecordDetailDialog != null) {
         val stamp = clickedRecordDetailDialog!!
+        var activeDialogTab by remember { mutableStateOf(0) } // 0 = Individual record, 1 = Team Board, 2 = Hourly Status
+        
         AlertDialog(
             onDismissRequest = { clickedRecordDetailDialog = null },
-            title = { Text("Attendance Frame: ${stamp.dateString}", fontWeight = FontWeight.Bold) },
-            text = {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.verticalScroll(rememberScrollState())
-                ) {
-                    // Overall Status indicator badge
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Staged Status:")
-                        val badgeClr = if (stamp.status == "Present") Color(0xFF2E7D32) else if (stamp.status == "On Leave") Color(0xFFF57F17) else Color(0xFFC62828)
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(badgeClr.copy(alpha = 0.15f))
-                                .padding(horizontal = 8.dp, vertical = 2.dp)
-                        ) {
-                            Text(stamp.status, color = badgeClr, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                        }
+            title = {
+                Column {
+                    Text("Attendance Hub: ${stamp.dateString}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(8.dp))
+                    TabRow(
+                        selectedTabIndex = activeDialogTab,
+                        containerColor = Color.Transparent,
+                        contentColor = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Tab(
+                            selected = activeDialogTab == 0,
+                            onClick = { activeDialogTab = 0 },
+                            text = { Text("Individual", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        )
+                        Tab(
+                            selected = activeDialogTab == 1,
+                            onClick = { activeDialogTab = 1 },
+                            text = { Text("Team List", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        )
+                        Tab(
+                            selected = activeDialogTab == 2,
+                            onClick = { activeDialogTab = 2 },
+                            text = { Text("Hourly", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        )
                     }
+                }
+            },
+            text = {
+                Box(modifier = Modifier.heightIn(max = 420.dp)) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                        modifier = Modifier.verticalScroll(rememberScrollState())
+                    ) {
+                        if (activeDialogTab == 0) {
+                            // TAB 0: INDIVIDUAL RECORD DETAILS (STAMP LOGS)
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text("Staged Status:", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+                                    val badgeClr = if (stamp.status == "Present") Color(0xFF2E7D32) else if (stamp.status == "On Leave") Color(0xFFF57F17) else Color(0xFFC62828)
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(badgeClr.copy(alpha = 0.15f))
+                                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(stamp.status, color = badgeClr, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    }
+                                }
 
-                    Text("Employee: ${stamp.userName}")
+                                Text("Employee: ${stamp.userName}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
 
-                    val otherUsersOnLeave = allLeaves.filter { leave ->
-                        leave.userId != stamp.userId &&
-                        leave.status == "Approved" &&
-                        stamp.dateString >= leave.startDateString &&
-                        stamp.dateString <= leave.endDateString
-                    }.map { it.userName }
-
-                    val otherUsersOnLeaveFromAtt = allAttendance.filter { r ->
-                        r.userId != stamp.userId &&
-                        r.status == "On Leave" &&
-                        r.dateString == stamp.dateString
-                    }.map { it.userName }
-
-                    val dialogOthersLeaveList = (otherUsersOnLeave + otherUsersOnLeaveFromAtt).distinct()
-
-                    if (dialogOthersLeaveList.isNotEmpty()) {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)),
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-                        ) {
-                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFF2563EB)))
-                                    Text(
-                                        text = "Others on Leave today (View-Only):",
-                                        fontWeight = FontWeight.Bold,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.primary
+                                if (stamp.checkInTime != 0L) {
+                                    ListItem(
+                                        headlineContent = { Text("Check-In Registered", fontWeight = FontWeight.Bold, fontSize = 13.sp) },
+                                        supportingContent = { 
+                                            Column {
+                                                Text(SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(stamp.checkInTime)) + " (Official)", fontSize = 12.sp)
+                                                stamp.checkInLocationSpec?.let { loc ->
+                                                    Text("📍 GPS: $loc", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                }
+                                            }
+                                        },
+                                        leadingContent = { Icon(Icons.Default.Login, contentDescription = null, tint = Color(0xFF2E7D32)) }
                                     )
                                 }
-                                dialogOthersLeaveList.forEach { name ->
-                                    Text("• $name [Week-off]", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+
+                                if (stamp.checkOutTime != 0L) {
+                                    ListItem(
+                                        headlineContent = { Text("Check-Out Registered", fontWeight = FontWeight.Bold, fontSize = 13.sp) },
+                                        supportingContent = { 
+                                            Column {
+                                                Text(SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(stamp.checkOutTime)) + " (Official)", fontSize = 12.sp)
+                                                stamp.checkOutLocationSpec?.let { loc ->
+                                                    Text("📍 GPS: $loc", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                }
+                                            }
+                                        },
+                                        leadingContent = { Icon(Icons.Default.Logout, contentDescription = null, tint = Color(0xFFC62828)) }
+                                    )
+                                }
+
+                                if (!stamp.notes.isNullOrBlank()) {
+                                    Card(
+                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(Modifier.padding(8.dp)) {
+                                            Text("Remarks / Notes:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                            Text(stamp.notes, style = MaterialTheme.typography.bodyMedium)
+                                        }
+                                    }
+                                }
+
+                                // Display selfies verification if present
+                                if (!stamp.checkInSelfieBase64.isNullOrBlank() || !stamp.checkOutSelfieBase64.isNullOrBlank()) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                        if (!stamp.checkInSelfieBase64.isNullOrBlank()) {
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
+                                                Text("Check-In Selfie", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                                Spacer(Modifier.height(4.dp))
+                                                AsyncImage(
+                                                    model = AppUtils.resolveImageModel(stamp.checkInSelfieBase64),
+                                                    contentDescription = null,
+                                                    modifier = Modifier
+                                                        .size(110.dp)
+                                                        .clip(RoundedCornerShape(8.dp))
+                                                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                                                    contentScale = ContentScale.Crop
+                                                )
+                                            }
+                                        }
+
+                                        if (!stamp.checkOutSelfieBase64.isNullOrBlank()) {
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
+                                                Text("Check-Out Selfie", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                                Spacer(Modifier.height(4.dp))
+                                                AsyncImage(
+                                                    model = AppUtils.resolveImageModel(stamp.checkOutSelfieBase64),
+                                                    contentDescription = null,
+                                                    modifier = Modifier
+                                                        .size(110.dp)
+                                                        .clip(RoundedCornerShape(8.dp))
+                                                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                                                    contentScale = ContentScale.Crop
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                             }
-                        }
-                    }
-
-                    if (stamp.checkInTime != 0L) {
-                        Text("✓ Checked-In: " + SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(stamp.checkInTime)))
-                        stamp.checkInLocationSpec?.let { loc ->
-                            Text("📍 Check-In GPS: $loc")
-                        }
-                    }
-
-                    if (stamp.checkOutTime != 0L) {
-                        Text("✓ Checked-Out: " + SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(stamp.checkOutTime)))
-                        stamp.checkOutLocationSpec?.let { loc ->
-                            Text("📍 Check-Out GPS: $loc")
-                        }
-                    }
-
-                    if (!stamp.notes.isNullOrBlank()) {
-                        Text("Remarks: " + stamp.notes, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-
-                    // Display selfies verification if present!
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                        if (!stamp.checkInSelfieBase64.isNullOrBlank()) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
-                                Text("Check-In Selfie", style = MaterialTheme.typography.labelSmall)
-                                AsyncImage(
-                                    model = AppUtils.resolveImageModel(stamp.checkInSelfieBase64),
-                                    contentDescription = null,
-                                    modifier = Modifier
-                                        .size(100.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                                    contentScale = ContentScale.Crop
-                                )
+                        } else if (activeDialogTab == 1) {
+                            // TAB 1: TEAM OVERVIEW (WHO IS PRESENT, ON LEAVE, OR ABSENT)
+                            val teamStaff = remember(allUsers) { allUsers.filter { it.role != "Admin" } }
+                            val totalTeamCount = teamStaff.size
+                            
+                            val presentRecords = remember(allAttendance, stamp.dateString) {
+                                allAttendance.filter { it.dateString == stamp.dateString && it.status == "Present" }
                             }
-                        }
+                            val presentUsernames = presentRecords.map { it.userId }.toSet()
+                            val presentTeam = teamStaff.filter { it.username in presentUsernames }
+                            
+                            val onLeaveRecords = remember(allLeaves, allAttendance, stamp.dateString) {
+                                allLeaves.filter { leave ->
+                                    leave.status == "Approved" && 
+                                    stamp.dateString >= leave.startDateString && 
+                                    stamp.dateString <= leave.endDateString
+                                }.map { it.userId }.toSet() + allAttendance.filter {
+                                    it.dateString == stamp.dateString && it.status == "On Leave"
+                                }.map { it.userId }.toSet()
+                            }
+                            val leaveTeam = teamStaff.filter { it.username in onLeaveRecords }
+                            
+                            val absentTeam = teamStaff.filter { it.username !in presentUsernames && it.username !in onLeaveRecords }
 
-                        if (!stamp.checkOutSelfieBase64.isNullOrBlank()) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
-                                Text("Check-Out Selfie", style = MaterialTheme.typography.labelSmall)
-                                AsyncImage(
-                                    model = AppUtils.resolveImageModel(stamp.checkOutSelfieBase64),
-                                    contentDescription = null,
-                                    modifier = Modifier
-                                        .size(100.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                                    contentScale = ContentScale.Crop
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                // Statistics Summary Cards Row
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Card(
+                                        modifier = Modifier.weight(1f),
+                                        colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E9))
+                                    ) {
+                                        Column(Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("${presentTeam.size}", fontWeight = FontWeight.Black, fontSize = 18.sp, color = Color(0xFF2E7D32))
+                                            Text("Present", fontSize = 10.sp, color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                    Card(
+                                        modifier = Modifier.weight(1f),
+                                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF9C4))
+                                    ) {
+                                        Column(Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("${leaveTeam.size}", fontWeight = FontWeight.Black, fontSize = 18.sp, color = Color(0xFFE65100))
+                                            Text("On Leave", fontSize = 10.sp, color = Color(0xFFE65100), fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                    Card(
+                                        modifier = Modifier.weight(1f),
+                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                    ) {
+                                        Column(Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("${absentTeam.size}", fontWeight = FontWeight.Black, fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            Text("Unmarked", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+
+                                Text("Present Team List:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall, color = Color(0xFF2E7D32))
+                                if (presentTeam.isEmpty()) {
+                                    Text("No employees present yet on this day.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                } else {
+                                    presentTeam.forEach { emp ->
+                                        val rec = presentRecords.find { it.userId == emp.username }
+                                        val timingInfo = if (rec != null && rec.checkInTime != 0L) {
+                                            val startT = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(rec.checkInTime))
+                                            val endT = if (rec.checkOutTime != 0L) SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(rec.checkOutTime)) else "Active"
+                                            " ($startT - $endT)"
+                                        } else ""
+                                        Text("✓ ${emp.username}$timingInfo", fontSize = 13.sp, color = Color(0xFF1B5E20), fontWeight = FontWeight.Medium)
+                                    }
+                                }
+
+                                Text("On Leave List:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall, color = Color(0xFFE65100))
+                                if (leaveTeam.isEmpty()) {
+                                    Text("No approved leave requests today.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                } else {
+                                    leaveTeam.forEach { emp ->
+                                        Text("🌴 ${emp.username} (Approved Leave)", fontSize = 13.sp, color = Color(0xFFE65100), fontWeight = FontWeight.Medium)
+                                    }
+                                }
+
+                                Text("Unmarked / Off-Duty List:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                if (absentTeam.isEmpty()) {
+                                    Text("All rostered staff accounted.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                } else {
+                                    absentTeam.forEach { emp ->
+                                        Text("• ${emp.username} (Roster Pending)", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                            }
+                        } else if (activeDialogTab == 2) {
+                            // TAB 2: HOURLY COVERAGE / DENSITY MATRIX
+                            val teamStaff = remember(allUsers) { allUsers.filter { it.role != "Admin" } }
+                            val totalTeamCount = teamStaff.size
+                            val presentRecords = remember(allAttendance, stamp.dateString) {
+                                allAttendance.filter { it.dateString == stamp.dateString && it.status == "Present" }
+                            }
+
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Text(
+                                    text = "Coverage estimates across standard business shifts based on real check-in/out timestamps.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+
+                                // Check each hour from 08:00 to 18:00
+                                for (hour in 8..18) {
+                                    val checkedInAtHour = presentRecords.filter { r ->
+                                        if (r.checkInTime == 0L) false
+                                        else {
+                                            val cIn = Calendar.getInstance().apply { timeInMillis = r.checkInTime }
+                                            val checkInHour = cIn.get(Calendar.HOUR_OF_DAY)
+                                            if (r.checkOutTime == 0L) {
+                                                checkInHour <= hour
+                                            } else {
+                                                val cOut = Calendar.getInstance().apply { timeInMillis = r.checkOutTime }
+                                                val checkOutHour = cOut.get(Calendar.HOUR_OF_DAY)
+                                                checkInHour <= hour && hour <= checkOutHour
+                                            }
+                                        }
+                                    }
+
+                                    val amPm = if (hour >= 12) "PM" else "AM"
+                                    val formattedHourNum = when {
+                                        hour == 0 -> 12
+                                        hour > 12 -> hour - 12
+                                        else -> hour
+                                    }
+                                    val hourLabel = String.format("%02d:00 %s", formattedHourNum, amPm)
+
+                                    val ratio = if (totalTeamCount > 0) checkedInAtHour.size.toFloat() / totalTeamCount else 0.0f
+                                    val densityBarColor = when {
+                                        checkedInAtHour.isEmpty() -> Color.LightGray.copy(alpha = 0.5f)
+                                        checkedInAtHour.size <= 1 -> MaterialTheme.colorScheme.error
+                                        else -> MaterialTheme.colorScheme.primary
+                                    }
+
+                                    Card(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(hourLabel, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                                                Text(
+                                                    text = "${checkedInAtHour.size} / $totalTeamCount available",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = if (checkedInAtHour.isNotEmpty()) Color(0xFF2E7D32) else Color.Gray
+                                                )
+                                            }
+                                            LinearProgressIndicator(
+                                                progress = { ratio },
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(6.dp)
+                                                    .clip(RoundedCornerShape(3.dp)),
+                                                color = densityBarColor,
+                                                trackColor = MaterialTheme.colorScheme.surfaceVariant
+                                            )
+                                            if (checkedInAtHour.isNotEmpty()) {
+                                                Text(
+                                                    text = "Present: " + checkedInAtHour.joinToString(", ") { it.userName },
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    fontSize = 11.sp,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
