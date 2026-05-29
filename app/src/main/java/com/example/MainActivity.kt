@@ -543,7 +543,7 @@ fun AppIconPreviewCard(
                 )
                 Text(
                     text = when (styleName) {
-                        "Studio Lens Core" -> "Premium high-contrast camera aperture iris (Default)."
+                        "Mobile Gallery Core" -> "Premium high-contrast camera aperture iris (Default)."
                         "Celestial Dusk" -> "Vibrant mountain backdrop under linear warm sun."
                         "Digital Stack" -> "Overlapping photo layouts with geometric neon grids."
                         else -> ""

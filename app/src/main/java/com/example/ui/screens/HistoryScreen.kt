@@ -697,17 +697,17 @@ fun HistoryRowItem(
                         IconButton(
                             onClick = {
                                 val shareMessage = """
-                                🚀 *STUDIO LENS LEDGER TRANSACTION* 📱
-                                ━━━━━━━━━━━━━━━━━━━━━━
-                                • *Category:* ${event.actionType}
-                                • *Device brand & model:* ${event.model}
-                                • *IMEI / Serial Key:* ${event.serialNumber}
-                                • *Customer Name:* ${event.name}
-                                ${if (!event.phoneNumber.isNullOrBlank()) "• *Contact Number:* ${event.phoneNumber}\n" else ""}• *Cost Value:* INR ${String.format("%,.2f", event.amount)}
-                                • *Audited By:* ${event.userId}
-                                ━━━━━━━━━━━━━━━━━━━━━━
-                                _Logged instantly under Studio Lens systems._
-                                """.trimIndent()
+📦 *MOBILE GALLERY TRANSACTION* 📱
+━━━━━━━━━━━━━━━━━━━━━━
+• *Category:* ${event.actionType}
+• *Model:* ${event.model}
+• *IMEI/Serial:* ${event.serialNumber}
+• *Customer:* ${event.name}
+${if (!event.phoneNumber.isNullOrBlank()) "• *Contact:* ${event.phoneNumber}\n" else ""}• *Amount:* INR ${String.format("%,.2f", event.amount)}
+• *Operator:* ${event.userId}
+━━━━━━━━━━━━━━━━━━━━━━
+_Logged under Mobile Gallery System_
+""".trimIndent()
                                 shareToWhatsApp(context, shareMessage)
                             }
                         ) {
@@ -1148,7 +1148,7 @@ fun printHistoryEventCustom(
                 <div class="invoice-card">
                     <div class="header">
                         <div>
-                            <div class="header-title">Studio Lens Transaction slip</div>
+                            <div class="header-title">Mobile Gallery Transaction Slip</div>
                             <div style="font-size: 9px; color: #555; font-style: italic;">Ledger verification sheet</div>
                         </div>
                         <div class="header-meta">

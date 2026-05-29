@@ -150,7 +150,6 @@ fun AttendanceScreen(viewModel: StockViewModel) {
     var showLeaveDialog by remember { mutableStateOf(false) }
     var showModifyAttendanceDialog by remember { mutableStateOf(false) }
     var clickedRecordDetailDialog by remember { mutableStateOf<AttendanceRecord?>(null) }
-    var dailyWageInput by remember { mutableStateOf("1500") }
 
     // Camera attachments
     val tempCameraUriState = remember { mutableStateOf<Uri?>(null) }
@@ -381,10 +380,11 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                 }
             }
 
-            if (subTabSelection == 0 && !isTargetAdminOrManager) {
+            if (subTabSelection == 0) {
                 // TODAY CHECK-IN/OUT INTERACTIVE DECK
-                item {
-                    val isSelfViewing = targetUser.username == loggedInUser?.username
+                if (!isTargetAdminOrManager) {
+                    item {
+                        val isSelfViewing = targetUser.username == loggedInUser?.username
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(20.dp),
@@ -549,6 +549,7 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                             }
                         }
                     }
+                }
                 }
 
                 // INTEGRATED MONTHLY CALENDAR COMPOSABLE
@@ -751,204 +752,44 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                                     Text("Unmarked", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
-                        }
-                    }
-                }
 
-                // STAFF SALARY & PAYROLL CARD
-                item {
-                    val salary = (monthlyStats.first * (dailyWageInput.toDoubleOrNull() ?: 1500.0))
-                    
-                    Card(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                        shape = RoundedCornerShape(20.dp),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.45f))
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(18.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.Payments,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.tertiary
-                                    )
-                                    Text(
-                                        text = "Staff Salary & Payroll",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onTertiaryContainer
-                                    )
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(MaterialTheme.colorScheme.tertiary.copy(alpha = 0.15f))
-                                        .padding(horizontal = 8.dp, vertical = 2.dp)
-                                ) {
-                                    Text(
-                                        text = "Base Rate",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.tertiary
+                            val currentMonthLeaves = remember(allLeaves, currentYear, currentMonth) {
+                                allLeaves.filter { leave ->
+                                    leave.status == "Approved" && (
+                                        leave.startDateString.startsWith(String.format("%04d-%02d", currentYear, currentMonth + 1)) ||
+                                        leave.endDateString.startsWith(String.format("%04d-%02d", currentYear, currentMonth + 1))
                                     )
                                 }
                             }
-                            
-                            Text(
-                                text = "Daily wages are dynamically combined with active presence logs for ${monthsList[currentMonth]} $currentYear.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.75f)
-                            )
-                            
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-                            
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                OutlinedTextField(
-                                    value = dailyWageInput,
-                                    onValueChange = { dailyWageInput = it },
-                                    label = { Text("Daily Wage Rate (₹)") },
-                                    singleLine = true,
-                                    textStyle = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedContainerColor = MaterialTheme.colorScheme.surface,
-                                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                                        focusedBorderColor = MaterialTheme.colorScheme.tertiary,
-                                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
-                                        focusedLabelColor = MaterialTheme.colorScheme.tertiary,
-                                        unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                    ),
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Column(
-                                    modifier = Modifier.weight(1f),
-                                    horizontalAlignment = Alignment.End
-                                ) {
-                                    Text(
-                                        text = "Net Payout",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.6f)
-                                    )
-                                    Text(
-                                        text = String.format("₹%,.2f", salary),
-                                        style = MaterialTheme.typography.titleLarge,
-                                        fontWeight = FontWeight.Black,
-                                        color = MaterialTheme.colorScheme.tertiary
-                                    )
-                                }
-                            }
-                            
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "Formula: Present Days (${monthlyStats.first}) × Wage (₹${dailyWageInput})",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f)
-                                )
-                                Text(
-                                    text = "Leaves: ${monthlyStats.second} | Absences: ${monthlyStats.third}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f)
-                                )
-                            }
-                            
-                            if (isAdminOrManager) {
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Button(
-                                        onClick = {
-                                            val wage = dailyWageInput.toDoubleOrNull() ?: 1500.0
-                                            val finalAmount = monthlyStats.first * wage
-                                            if (finalAmount > 0) {
-                                                viewModel.recordSalaryPayment(
-                                                    employeeName = targetUser.username,
-                                                    amount = finalAmount,
-                                                    description = "Paid attendance salary for ${monthsList[currentMonth]} $currentYear (${monthlyStats.first} present days @ ₹${wage}/day)"
-                                                )
-                                                Toast.makeText(context, "Salary Disbursed & Outflow recorded in Ledger under ${targetUser.username}!", Toast.LENGTH_LONG).show()
-                                            } else {
-                                                Toast.makeText(context, "Cannot disburse ₹0.00 salary. Verify present days count.", Toast.LENGTH_SHORT).show()
-                                            }
-                                        },
-                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary),
-                                        shape = RoundedCornerShape(12.dp),
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.AccountBalanceWallet,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Disburse", fontWeight = FontWeight.Bold, maxLines = 1)
-                                    }
 
-                                    OutlinedButton(
-                                        onClick = {
-                                            val wage = dailyWageInput.toDoubleOrNull() ?: 1500.0
-                                            val finalAmount = monthlyStats.first * wage
-                                            val shareMsg = """
-                                            💸 *STUDIO LENS SALARY DISBURSEMENT* 💸
-                                            ━━━━━━━━━━━━━━━━━━━━━━━━━━
-                                            • *Employee Username:* ${targetUser.username}
-                                            • *Month/Period:* ${monthsList[currentMonth]} $currentYear
-                                            • *Active Present Days:* ${monthlyStats.first}
-                                            • *Configured Daily Wage:* ₹$wage / day
-                                            • *Approved Leaves:* ${monthlyStats.second}
-                                            • *Total Payout Disbursed:* *₹${String.format("%,.2f", finalAmount)}*
-                                            ━━━━━━━━━━━━━━━━━━━━━━━━━━
-                                            _Voucher digitally processed & logged in Studio Lens ledger._
-                                            """.trimIndent()
-                                            
-                                            try {
-                                                val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                                    type = "text/plain"
-                                                    putExtra(android.content.Intent.EXTRA_TEXT, shareMsg)
-                                                    setPackage("com.whatsapp")
-                                                }
-                                                context.startActivity(intent)
-                                            } catch (e: Exception) {
-                                                try {
-                                                    val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                                        type = "text/plain"
-                                                        putExtra(android.content.Intent.EXTRA_TEXT, shareMsg)
-                                                    }
-                                                    context.startActivity(android.content.Intent.createChooser(intent, "Share Payslip"))
-                                                } catch (ex: Exception) {
-                                                    Toast.makeText(context, "No sharing app found", Toast.LENGTH_SHORT).show()
-                                                }
-                                            }
-                                        },
-                                        shape = RoundedCornerShape(12.dp),
-                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary),
-                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.tertiary),
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Share,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Share Payslip", fontWeight = FontWeight.Bold, maxLines = 1)
+                            if (currentMonthLeaves.isNotEmpty()) {
+                                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                Text(
+                                    text = "Approved Leaves in ${monthsList[currentMonth]} Status Desk",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    currentMonthLeaves.forEach { leave ->
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "• ${leave.userName} (${leave.leaveType})",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.Medium,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = "${leave.startDateString} to ${leave.endDateString}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -1027,7 +868,7 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                 // Leave approvals list header
                 item {
                     Text(
-                        text = if (isAdminOrManager) "Admin Leave Requests Queue" else "My Leave Status Desk",
+                        text = if (isAdminOrManager) "Admin Leave Requests Queue" else "My Leaves & Team Approved Leaves Desk",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground,
@@ -1038,7 +879,7 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                 val leavesToDisplay = if (isAdminOrManager) {
                     allLeaves
                 } else {
-                    allLeaves.filter { it.userId == loggedInUser?.username }
+                    allLeaves.filter { it.userId == loggedInUser?.username || it.status == "Approved" }
                 }.sortedByDescending { it.appliedOn }
 
                 if (leavesToDisplay.isEmpty()) {
