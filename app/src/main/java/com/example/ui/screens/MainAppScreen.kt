@@ -227,6 +227,13 @@ fun MainAppScreen(
                         label = { Text("Analytics") },
                         modifier = Modifier.testTag("nav_tab_analytics")
                     )
+                    NavigationBarItem(
+                        selected = currentTab == 4,
+                        onClick = { currentTab = 4 },
+                        icon = { Icon(Icons.Default.Person, contentDescription = "Staff") },
+                        label = { Text("Staff Hub") },
+                        modifier = Modifier.testTag("nav_tab_staff")
+                    )
                 }
             }
         ) { innerPadding ->
@@ -240,6 +247,7 @@ fun MainAppScreen(
                     1 -> InventoryTabScreen(viewModel)
                     2 -> HistoryTabScreen(viewModel)
                     3 -> AnalyticsTabScreen(viewModel)
+                    4 -> StaffScreen(viewModel)
                 }
             }
         }
@@ -626,19 +634,23 @@ fun FormTabScreen(viewModel: StockViewModel) {
                             address = address,
                             description = description,
                             localPhotoUris = attachedPhotos,
-                            onComplete = {
-                                Toast.makeText(context, "Transaction processed successfully!", Toast.LENGTH_LONG).show()
-                                // Reset fields
-                                model = ""
-                                name = ""
-                                phoneNumber = ""
-                                serialNumber = ""
-                                amountText = ""
-                                aadhaarNumber = ""
-                                quantity = 1
-                                address = ""
-                                description = ""
-                                attachedPhotos = emptyList()
+                            onComplete = { success, msg ->
+                                if (success) {
+                                    Toast.makeText(context, msg ?: "Transaction completed!", Toast.LENGTH_LONG).show()
+                                    // Reset fields
+                                    model = ""
+                                    name = ""
+                                    phoneNumber = ""
+                                    serialNumber = ""
+                                    amountText = ""
+                                    aadhaarNumber = ""
+                                    quantity = 1
+                                    address = ""
+                                    description = ""
+                                    attachedPhotos = emptyList()
+                                } else {
+                                    Toast.makeText(context, "Error: $msg", Toast.LENGTH_LONG).show()
+                                }
                             }
                         )
                     },

@@ -10,6 +10,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import com.example.data.repository.AppDatabase
 import com.example.data.repository.InventoryRepository
+import com.example.ui.theme.MobileGalleryTheme
 import com.example.ui.screens.MainAppScreen
 import com.example.ui.viewmodel.StockViewModel
 import com.example.ui.viewmodel.StockViewModelFactory
@@ -24,7 +25,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme {
+            MobileGalleryTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
