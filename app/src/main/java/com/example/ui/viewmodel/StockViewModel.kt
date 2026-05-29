@@ -9,8 +9,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.data.model.HistoryEvent
 import com.example.data.model.InventoryItem
-import com.example.data.model.Employee
-import com.example.data.model.AttendanceRecord
+
 import com.example.data.repository.InventoryRepository
 import com.example.util.AppUtils
 import kotlinx.coroutines.flow.*
@@ -43,11 +42,7 @@ class StockViewModel(
     val allInventory: StateFlow<List<InventoryItem>> = repository.getAllInventoryItems()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val allEmployees: StateFlow<List<Employee>> = repository.getAllEmployees()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val allAttendanceRecords: StateFlow<List<AttendanceRecord>> = repository.getAllAttendanceRecords()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Backwards compatibility stream names
     val allItems: StateFlow<List<InventoryItem>> = allInventory
@@ -268,99 +263,6 @@ class StockViewModel(
         }
     }
 
-    // Employee operations
-    fun addEmployee(name: String, phoneNumber: String, role: String) {
-        viewModelScope.launch {
-            try {
-                repository.insertEmployee(Employee(name = name, phoneNumber = phoneNumber, role = role))
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to add employee", e)
-            }
-        }
-    }
-
-    fun updateEmployee(employee: Employee) {
-        viewModelScope.launch {
-            try {
-                repository.updateEmployee(employee)
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to update employee", e)
-            }
-        }
-    }
-
-    fun deleteEmployee(employee: Employee) {
-        viewModelScope.launch {
-            try {
-                repository.deleteEmployee(employee)
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to delete employee", e)
-            }
-        }
-    }
-
-    // Attendance operations
-    fun markAttendance(
-        employeeId: Int,
-        employeeName: String,
-        date: String,
-        status: String,
-        checkInTime: String?,
-        checkOutTime: String?,
-        remarks: String?
-    ) {
-        viewModelScope.launch {
-            try {
-                val existingList = repository.getAttendanceForEmployee(employeeId).first()
-                val existingRecordForDate = existingList.find { it.date == date }
-
-                if (existingRecordForDate != null) {
-                    val updatedRecord = existingRecordForDate.copy(
-                        status = status,
-                        checkInTime = checkInTime,
-                        checkOutTime = checkOutTime,
-                        remarks = remarks,
-                        timestamp = System.currentTimeMillis()
-                    )
-                    repository.updateAttendanceRecord(updatedRecord)
-                } else {
-                    val record = AttendanceRecord(
-                        employeeId = employeeId,
-                        employeeName = employeeName,
-                        date = date,
-                        status = status,
-                        checkInTime = checkInTime,
-                        checkOutTime = checkOutTime,
-                        remarks = remarks,
-                        timestamp = System.currentTimeMillis()
-                    )
-                    repository.insertAttendanceRecord(record)
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to mark attendance", e)
-            }
-        }
-    }
-
-    fun deleteAttendanceRecord(record: AttendanceRecord) {
-        viewModelScope.launch {
-            try {
-                repository.deleteAttendanceRecord(record)
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to delete attendance record", e)
-            }
-        }
-    }
-
-    fun deleteAttendanceRecordById(id: Int) {
-        viewModelScope.launch {
-            try {
-                repository.deleteAttendanceRecordById(id)
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to delete attendance record", e)
-            }
-        }
-    }
 
     fun deleteItem(item: InventoryItem) {
         viewModelScope.launch {

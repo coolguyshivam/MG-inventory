@@ -227,13 +227,6 @@ fun MainAppScreen(
                         label = { Text("Analytics") },
                         modifier = Modifier.testTag("nav_tab_analytics")
                     )
-                    NavigationBarItem(
-                        selected = currentTab == 4,
-                        onClick = { currentTab = 4 },
-                        icon = { Icon(Icons.Default.Person, contentDescription = "Staff") },
-                        label = { Text("Staff Hub") },
-                        modifier = Modifier.testTag("nav_tab_staff")
-                    )
                 }
             }
         ) { innerPadding ->
@@ -247,7 +240,6 @@ fun MainAppScreen(
                     1 -> InventoryTabScreen(viewModel)
                     2 -> HistoryTabScreen(viewModel)
                     3 -> AnalyticsTabScreen(viewModel)
-                    4 -> StaffScreen(viewModel)
                 }
             }
         }
