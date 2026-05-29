@@ -1266,6 +1266,31 @@ fun AttendanceScreen(viewModel: StockViewModel) {
         val stamp = clickedRecordDetailDialog!!
         var activeDialogTab by remember { mutableStateOf(0) } // 0 = Individual record, 1 = Team Board, 2 = Hourly Status
         
+        // Lifted State Calculations
+        val teamStaff = remember(allUsers) { allUsers.filter { it.role != "Admin" } }
+        val totalTeamCount = teamStaff.size
+        
+        val presentRecords = remember(allAttendance, stamp.dateString) {
+            allAttendance.filter { it.dateString == stamp.dateString && it.status == "Present" }
+        }
+        val presentUsernames = remember(presentRecords) { presentRecords.map { it.userId }.toSet() }
+        val presentTeam = remember(teamStaff, presentUsernames) { teamStaff.filter { it.username in presentUsernames } }
+        
+        val onLeaveRecords = remember(allLeaves, allAttendance, stamp.dateString) {
+            allLeaves.filter { leave ->
+                leave.status == "Approved" && 
+                stamp.dateString >= leave.startDateString && 
+                stamp.dateString <= leave.endDateString
+            }.map { it.userId }.toSet() + allAttendance.filter {
+                it.dateString == stamp.dateString && it.status == "On Leave"
+            }.map { it.userId }.toSet()
+        }
+        val leaveTeam = remember(teamStaff, onLeaveRecords) { teamStaff.filter { it.username in onLeaveRecords } }
+        
+        val absentTeam = remember(teamStaff, presentUsernames, onLeaveRecords) {
+            teamStaff.filter { it.username !in presentUsernames && it.username !in onLeaveRecords }
+        }
+
         AlertDialog(
             onDismissRequest = { clickedRecordDetailDialog = null },
             title = {
@@ -1402,28 +1427,6 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                             }
                         } else if (activeDialogTab == 1) {
                             // TAB 1: TEAM OVERVIEW (WHO IS PRESENT, ON LEAVE, OR ABSENT)
-                            val teamStaff = remember(allUsers) { allUsers.filter { it.role != "Admin" } }
-                            val totalTeamCount = teamStaff.size
-                            
-                            val presentRecords = remember(allAttendance, stamp.dateString) {
-                                allAttendance.filter { it.dateString == stamp.dateString && it.status == "Present" }
-                            }
-                            val presentUsernames = presentRecords.map { it.userId }.toSet()
-                            val presentTeam = teamStaff.filter { it.username in presentUsernames }
-                            
-                            val onLeaveRecords = remember(allLeaves, allAttendance, stamp.dateString) {
-                                allLeaves.filter { leave ->
-                                    leave.status == "Approved" && 
-                                    stamp.dateString >= leave.startDateString && 
-                                    stamp.dateString <= leave.endDateString
-                                }.map { it.userId }.toSet() + allAttendance.filter {
-                                    it.dateString == stamp.dateString && it.status == "On Leave"
-                                }.map { it.userId }.toSet()
-                            }
-                            val leaveTeam = teamStaff.filter { it.username in onLeaveRecords }
-                            
-                            val absentTeam = teamStaff.filter { it.username !in presentUsernames && it.username !in onLeaveRecords }
-
                             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 // Statistics Summary Cards Row
                                 Row(
@@ -1494,12 +1497,6 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                             }
                         } else if (activeDialogTab == 2) {
                             // TAB 2: HOURLY COVERAGE / DENSITY MATRIX
-                            val teamStaff = remember(allUsers) { allUsers.filter { it.role != "Admin" } }
-                            val totalTeamCount = teamStaff.size
-                            val presentRecords = remember(allAttendance, stamp.dateString) {
-                                allAttendance.filter { it.dateString == stamp.dateString && it.status == "Present" }
-                            }
-
                             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 Text(
                                     text = "Coverage estimates across standard business shifts based on real check-in/out timestamps.",
