@@ -1,123 +1,319 @@
 package com.example.ui.screens
 
-import android.content.Context
-import android.print.PrintAttributes
-import android.print.PrintManager
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import android.widget.Toast
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.Image
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.*
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import coil.compose.rememberAsyncImagePainter
 import com.example.data.model.HistoryEvent
-import com.example.ui.theme.AccentBlue
-import com.example.ui.theme.EmeraldGreen
-import com.example.ui.theme.SunsetOrange
+import com.example.ui.components.BarcodeScannerMockDialog
+import com.example.ui.theme.TransactionColors
+import com.example.ui.viewmodel.StockViewModel
 import java.text.SimpleDateFormat
 import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HistoryScreen(
-    events: List<HistoryEvent>,
-    onDeleteEvent: (Int) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var searchQuery by remember { mutableStateOf("") }
-    var selectedActionFilter by remember { mutableStateOf("ALL") } // ALL, PURCHASE, SALE, RETURN, REPAIR_SENT, REPAIR_RETURNED
+fun HistoryScreen(viewModel: StockViewModel) {
+    val rawEvents by viewModel.historyEvents.collectAsState()
+    val suggestedImeis = remember(rawEvents) { rawEvents.map { it.serialNumber } }
+    var showScanner by remember { mutableStateOf(false) }
+    val searchWord by viewModel.historySearchTerm.collectAsState()
+    val typeFilter by viewModel.historyTypeFilter.collectAsState() // "All", "PURCHASE", "SALE", "REPAIR_SENT", "REPAIR_RETURNED", "RETURN", "EDIT", "DELETE"
+    val sortOption by viewModel.historySortOption.collectAsState()
 
-    var activeDetailEvent by remember { mutableStateOf<HistoryEvent?>(null) }
-    var activePrintEvent by remember { mutableStateOf<HistoryEvent?>(null) }
+    var showScannerDialog by remember { mutableStateOf(false) }
+    var expandedFilterMenu by remember { mutableStateOf(false) }
+    var selectedPhotosForViewer by remember { mutableStateOf<List<String>?>(null) }
+    var activeDateFilter by remember { mutableStateOf("All Time") }
+    var customStartDate by remember { mutableStateOf<Long?>(null) }
+    var customEndDate by remember { mutableStateOf<Long?>(null) }
+    var showDatePickerDialog by remember { mutableStateOf(false) }
+    var eventToPrintCustomly by remember { mutableStateOf<HistoryEvent?>(null) }
 
-    val filteredEvents = remember(events, searchQuery, selectedActionFilter) {
-        events.filter { event ->
-            val matchQuery = event.model.contains(searchQuery, ignoreCase = true) ||
-                    event.name.contains(searchQuery, ignoreCase = true) ||
-                    event.serialNumber.contains(searchQuery, ignoreCase = true) ||
-                    (event.phoneNumber?.contains(searchQuery) ?: false)
+    // Filtering & Sorting processes
+    val filteredEvents = remember(rawEvents, searchWord, typeFilter, sortOption, activeDateFilter, customStartDate, customEndDate) {
+        var list = rawEvents
 
-            val matchAction = selectedActionFilter == "ALL" || event.actionType == selectedActionFilter
-
-            matchQuery && matchAction
-        }
-    }
-
-    val context = LocalContext.current
-
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(16.dp)
-    ) {
-        // Search
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = { searchQuery = it },
-            placeholder = { Text("Search transactions...") },
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 12.dp)
-                .testTag("history_search_input"),
-            singleLine = true,
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                unfocusedBorderColor = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.2f)
-            )
-        )
-
-        // Filters row
-        val filters = listOf("ALL", "PURCHASE", "SALE", "RETURN", "REPAIR_SENT", "REPAIR_RETURNED")
-        LazyRow(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(filters) { filter ->
-                FilterChip(
-                    selected = selectedActionFilter == filter,
-                    onClick = { selectedActionFilter = filter },
-                    label = { Text(filter, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = MaterialTheme.colorScheme.primary,
-                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary
-                    ),
-                    modifier = Modifier.testTag("history_filter_chip_$filter")
-                )
+        // Date Filter
+        if (activeDateFilter != "All Time") {
+            val now = System.currentTimeMillis()
+            val startThreshold = when (activeDateFilter) {
+                "Today" -> now - 86400000L
+                "This Week" -> now - 86400000L * 7L
+                "This Month" -> now - 86400000L * 30L
+                "Custom" -> customStartDate ?: 0L
+                else -> 0L
+            }
+            val endThreshold = when (activeDateFilter) {
+                "Custom" -> customEndDate ?: Long.MAX_VALUE
+                else -> Long.MAX_VALUE
+            }
+            if (activeDateFilter == "Custom") {
+                if (customStartDate != null && customEndDate != null) {
+                    list = list.filter { it.timestamp in startThreshold..endThreshold }
+                }
+            } else if (startThreshold > 0) {
+                list = list.filter { it.timestamp >= startThreshold }
             }
         }
 
+        // Apply Search (IMEI matching)
+        if (searchWord.isNotBlank()) {
+            val key = searchWord.trim().lowercase()
+            list = list.filter { event ->
+                event.serialNumber.lowercase().contains(key) ||
+                event.model.lowercase().contains(key) ||
+                event.name.lowercase().contains(key) ||
+                event.userId.lowercase().contains(key)
+            }
+        }
+
+        // Apply Action Type filter selection
+        if (typeFilter != "All") {
+            list = list.filter { event ->
+                when (typeFilter) {
+                    "Purchase" -> event.actionType == "PURCHASE"
+                    "Sale" -> event.actionType == "SALE"
+                    "Repair" -> event.actionType == "REPAIR_SENT" || event.actionType == "REPAIR_RETURNED"
+                    "Return" -> event.actionType == "RETURN"
+                    "Edit" -> event.actionType == "EDIT"
+                    "Delete" -> event.actionType == "DELETE"
+                    else -> true
+                }
+            }
+        }
+
+        // Apply sorting (default is latest timestamp first)
+        list = when (sortOption) {
+            "Oldest First" -> list.sortedBy { it.timestamp }
+            "Value Out" -> list.sortedByDescending { it.amount }
+            else -> list.sortedByDescending { it.timestamp } // "Newest First"
+        }
+
+        list
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Safe Search input field for chronological works
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedTextField(
+                value = searchWord,
+                onValueChange = { viewModel.setHistorySearchTerm(it) },
+                placeholder = { Text("Search IMEI, Action...", fontSize = 13.sp) },
+                textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = "Search history stream",
+                        modifier = Modifier.size(18.dp)
+                    )
+                },
+                trailingIcon = {
+                    if (searchWord.isNotEmpty()) {
+                        IconButton(
+                            onClick = { viewModel.setHistorySearchTerm("") },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Clear entries",
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    focusedContainerColor = MaterialTheme.colorScheme.surface,
+                    unfocusedBorderColor = Color.Transparent,
+                    focusedBorderColor = MaterialTheme.colorScheme.primary
+                ),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(50.dp)
+                    .testTag("history_search_word")
+            )
+
+            // Tactile scanner button
+            IconButton(
+                onClick = { showScanner = true },
+                colors = IconButtonDefaults.iconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                ),
+                modifier = Modifier
+                    .size(50.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .testTag("history_scanner_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.QrCodeScanner,
+                    contentDescription = "Start scanning",
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+
+            // Dropdown filter and sorting trigger
+            Box {
+                IconButton(
+                    onClick = { expandedFilterMenu = true },
+                    modifier = Modifier
+                        .size(50.dp)
+                        .clip(RoundedCornerShape(12.dp)),
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Tune,
+                        contentDescription = "Expand filters dropdown",
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                DropdownMenu(
+                    expanded = expandedFilterMenu,
+                    onDismissRequest = { expandedFilterMenu = false }
+                ) {
+                    // Category Selection Filter Header
+                    DropdownMenuItem(
+                        text = { Text("FILTER BY ACTION", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary) },
+                        onClick = {},
+                        enabled = false
+                    )
+                    listOf("All", "Purchase", "Sale", "Repair", "Return", "Edit", "Delete").forEach { actionLabel ->
+                        DropdownMenuItem(
+                            text = { Text(actionLabel) },
+                            onClick = {
+                                viewModel.setHistoryTypeFilter(actionLabel)
+                                expandedFilterMenu = false
+                            },
+                            leadingIcon = {
+                                if (typeFilter == actionLabel) Icon(Icons.Default.Check, "Selected")
+                            }
+                        )
+                    }
+
+                    HorizontalDivider()
+
+                    // Sorting Category items
+                    DropdownMenuItem(
+                        text = { Text("SORT SEQUENCE", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary) },
+                        onClick = {},
+                        enabled = false
+                    )
+                    listOf("Newest First", "Oldest First", "Value Out").forEach { sortLabel ->
+                        DropdownMenuItem(
+                            text = { Text(sortLabel) },
+                            onClick = {
+                                viewModel.setHistorySortOption(sortLabel)
+                                expandedFilterMenu = false
+                            },
+                            leadingIcon = {
+                                if (sortOption == sortLabel) Icon(Icons.Default.Check, "Selected")
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+        // Date Filter Chips
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            val filters = listOf("All Time", "Today", "This Week", "This Month", "Custom")
+            items(filters) { filter ->
+                FilterChip(
+                    selected = activeDateFilter == filter,
+                    onClick = { 
+                        activeDateFilter = filter
+                        if (filter == "Custom") {
+                            showDatePickerDialog = true
+                        }
+                    },
+                    label = { Text(filter) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                    )
+                )
+            }
+            if (activeDateFilter == "Custom" && customStartDate != null && customEndDate != null) {
+                item {
+                    val sdf = java.text.SimpleDateFormat("dd MMM", java.util.Locale.getDefault())
+                    val formatted = "${sdf.format(java.util.Date(customStartDate!!))} - ${sdf.format(java.util.Date(customEndDate!!))}"
+                    AssistChip(
+                        onClick = { showDatePickerDialog = true },
+                        label = { Text(formatted) },
+                        leadingIcon = { Icon(Icons.Default.DateRange, contentDescription = "Custom Date Range", modifier = Modifier.size(16.dp)) }
+                    )
+                }
+            }
+        }
+
+        // Active filters notification pill
+        if (typeFilter != "All" || sortOption != "Newest First") {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (typeFilter != "All") {
+                    InputChip(
+                        selected = true,
+                        onClick = { viewModel.setHistoryTypeFilter("All") },
+                        label = { Text("Action: $typeFilter") },
+                        trailingIcon = { Icon(Icons.Default.Close, "Clear Filter", modifier = Modifier.size(12.dp)) }
+                    )
+                }
+                if (sortOption != "Newest First") {
+                    InputChip(
+                        selected = true,
+                        onClick = { viewModel.setHistorySortOption("Newest First") },
+                        label = { Text("Order: $sortOption") },
+                        trailingIcon = { Icon(Icons.Default.Close, "Clear Sort", modifier = Modifier.size(12.dp)) }
+                    )
+                }
+            }
+        }
+
+        // Continuous Audit Logs stream column listings
         if (filteredEvents.isEmpty()) {
             Box(
                 modifier = Modifier
@@ -125,342 +321,415 @@ fun HistoryScreen(
                     .weight(1f),
                 contentAlignment = Alignment.Center
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     Icon(
-                        imageVector = Icons.Default.List,
-                        contentDescription = "No Events",
-                        tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f),
-                        modifier = Modifier.size(64.dp)
+                        imageVector = Icons.Default.HistoryToggleOff,
+                        contentDescription = "Empty file log",
+                        modifier = Modifier.size(64.dp),
+                        tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f)
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "No transactions recorded yet.",
+                        text = "No recorded transactions match the criteria.",
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
                     )
                 }
             }
         } else {
             LazyColumn(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(filteredEvents, key = { it.id }) { event ->
-                    val sdf = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
-                    val dateFormatted = sdf.format(Date(event.timestamp))
-
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { activeDetailEvent = event }
-                            .testTag("history_event_card_${event.id}"),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surface
-                        ),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    val actionColor = when (event.actionType) {
-                                        "PURCHASE" -> EmeraldGreen
-                                        "SALE" -> SunsetOrange
-                                        "RETURN" -> AccentBlue
-                                        "REPAIR_SENT", "REPAIR_RETURNED" -> Color(0xFFF1C40F)
-                                        else -> Color.Gray
-                                    }
-
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(actionColor.copy(alpha = 0.15f))
-                                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                                    ) {
-                                        Text(
-                                            text = event.actionType,
-                                            color = actionColor,
-                                            fontSize = 9.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-
-                                    Text(
-                                        text = dateFormatted,
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(4.dp))
-
-                                Text(
-                                    text = event.model,
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-
-                                Text(
-                                    text = "To/From: ${event.name}",
-                                    fontSize = 13.sp,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text(
-                                    text = "INR ${String.format("%,.2f", event.amount)}",
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    IconButton(
-                                        onClick = { activePrintEvent = event },
-                                        modifier = Modifier
-                                            .size(32.dp)
-                                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), CircleShape)
-                                            .testTag("button_print_${event.id}")
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Share,
-                                            contentDescription = "Print Voucher",
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
-                                    
-                                    IconButton(
-                                        onClick = { onDeleteEvent(event.id) },
-                                        modifier = Modifier
-                                            .size(32.dp)
-                                            .background(Color.Red.copy(alpha = 0.1f), CircleShape)
-                                            .testTag("button_delete_${event.id}")
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Delete,
-                                            contentDescription = "Delete Event",
-                                            tint = Color.Red,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Detail Dialog
-    activeDetailEvent?.let { event ->
-        Dialog(onDismissRequest = { activeDetailEvent = null }) {
-            Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    .weight(1f)
+                    .testTag("history_events_stream"),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Column(
-                    modifier = Modifier
-                        .padding(24.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Text(
-                        text = "Transaction Details",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
+                items(filteredEvents, key = { it.id }) { event ->
+                    var isExpanded by remember { mutableStateOf(false) }
+                    HistoryRowItem(
+                        event = event,
+                        isExpanded = isExpanded,
+                        onExpandTapped = { isExpanded = !isExpanded },
+                        onPhotoClick = { selectedPhotosForViewer = it },
+                        onPrintClick = { eventToPrintCustomly = it }
                     )
-
-                    DetailRow(label = "Action Type", value = event.actionType)
-                    DetailRow(label = "Brand & Model", value = event.model)
-                    DetailRow(label = "Customer/Supplier", value = event.name)
-                    DetailRow(label = "Contact Phone", value = event.phoneNumber ?: "N/A")
-                    DetailRow(label = "IMEI / Serial", value = event.serialNumber)
-                    DetailRow(label = "Disbursed Amount", value = "INR ${String.format("%,.2f", event.amount)}")
-                    DetailRow(label = "Aadhaar Number", value = event.aadhaarNumber ?: "N/A")
-                    DetailRow(label = "Quantity", value = "${event.quantity} unit(s)")
-
-                    val (addressVal, descVal) = extractAddressAndDescription(event.description)
-                    DetailRow(label = "Address", value = addressVal.ifBlank { "N/A" })
-                    DetailRow(label = "Description", value = descVal.ifBlank { "N/A" })
-
-                    // Images render
-                    val photoUrls = remember(event.photoUri) {
-                        event.photoUri?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
-                    }
-
-                    if (photoUrls.isNotEmpty()) {
-                        Text(
-                            text = "Attached Photos (${photoUrls.size})",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp
-                        )
-
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth().height(120.dp)
-                        ) {
-                            items(photoUrls) { url ->
-                                Image(
-                                    painter = rememberAsyncImagePainter(url),
-                                    contentDescription = "Detail Photo",
-                                    modifier = Modifier
-                                        .size(120.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f), RoundedCornerShape(8.dp)),
-                                    contentScale = ContentScale.Crop
-                                )
-                            }
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        TextButton(onClick = { activeDetailEvent = null }) {
-                            Text("Close")
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Button(onClick = {
-                            activePrintEvent = event
-                            activeDetailEvent = null
-                        }) {
-                            Icon(Icons.Default.Share, contentDescription = "Print")
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Print Voucher")
-                        }
-                    }
                 }
             }
         }
     }
 
-    // Custom Print Dialog
-    activePrintEvent?.let { event ->
-        CustomPrintDialog(
-            event = event,
-            onDismiss = { activePrintEvent = null },
-            onPrint = { customText ->
-                printHistoryEventCustom(context, event, customText)
-                activePrintEvent = null
+    if (showScanner) {
+        BarcodeScannerMockDialog(
+            onDismissRequest = { showScanner = false },
+            onBarcodeScanned = { viewModel.setHistorySearchTerm(it) },
+            suggestedImeis = suggestedImeis
+        )
+    }
+
+    // FullScreen Photo Viewer
+    if (selectedPhotosForViewer != null) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { selectedPhotosForViewer = null },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            val photos = selectedPhotosForViewer!!
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black)
+            ) {
+                val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { photos.size })
+                androidx.compose.foundation.pager.HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize()
+                ) { page ->
+                    coil.compose.AsyncImage(
+                        model = com.example.util.AppUtils.resolveImageModel(photos[page]),
+                        contentDescription = "Full Screen Photo",
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 8.dp),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                        .align(Alignment.TopCenter),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    IconButton(
+                        onClick = { selectedPhotosForViewer = null },
+                        modifier = Modifier.background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                    }
+                    IconButton(
+                        onClick = {
+                            com.example.util.AppUtils.saveImageToGallery(ctx, photos[pagerState.currentPage])
+                        },
+                        modifier = Modifier.background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                    ) {
+                        Icon(Icons.Default.Download, contentDescription = "Download", tint = Color.White)
+                    }
+                }
+                if (photos.size > 1) {
+                    Text(
+                        text = "${pagerState.currentPage + 1} / ${photos.size}",
+                        color = Color.White,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(24.dp)
+                            .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
             }
+        }
+    }
+
+    if (showDatePickerDialog) {
+        val dateRangePickerState = rememberDateRangePickerState()
+        DatePickerDialog(
+            onDismissRequest = { 
+                showDatePickerDialog = false 
+                if (customStartDate == null) activeDateFilter = "All Time" // revert if no date picked
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val start = dateRangePickerState.selectedStartDateMillis
+                    val end = dateRangePickerState.selectedEndDateMillis
+                    if (start != null && end != null) {
+                        customStartDate = start
+                        // Set end date to end of day to include the entire day
+                        customEndDate = end + 86399999L 
+                        showDatePickerDialog = false
+                    } else if (start != null) {
+                        customStartDate = start
+                        customEndDate = start + 86399999L
+                        showDatePickerDialog = false
+                    }
+                }) { Text("Confirm") }
+            },
+            dismissButton = {
+                TextButton(onClick = { 
+                    showDatePickerDialog = false 
+                    if (customStartDate == null) activeDateFilter = "All Time"
+                }) { Text("Cancel") }
+            }
+        ) {
+            DateRangePicker(
+                state = dateRangePickerState,
+                modifier = Modifier.fillMaxWidth().height(400.dp),
+                title = { Text(text = "Select Date Range", modifier = Modifier.padding(16.dp)) }
+            )
+        }
+    }
+
+    if (eventToPrintCustomly != null) {
+        CustomPrintDialog(
+            event = eventToPrintCustomly!!,
+            onDismiss = { eventToPrintCustomly = null }
         )
     }
 }
 
 @Composable
-fun DetailRow(label: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(text = label, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-        Text(text = value, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun CustomPrintDialog(
+fun HistoryRowItem(
     event: HistoryEvent,
-    onDismiss: () -> Unit,
-    onPrint: (String) -> Unit
+    isExpanded: Boolean,
+    onExpandTapped: () -> Unit,
+    onPhotoClick: ((List<String>) -> Unit)? = null,
+    onPrintClick: (HistoryEvent) -> Unit = {}
 ) {
-    val defaultTerms = remember(event.actionType, event.timestamp) {
-        val sdfDate = SimpleDateFormat("dd MMMM yyyy", Locale.getDefault())
-        val formattedDateVal = sdfDate.format(Date(event.timestamp))
+    val formattedTimestamp = remember(event.timestamp) {
+        val sdf = SimpleDateFormat("dd MMM yyyy \n hh:mm a", Locale.getDefault())
+        sdf.format(Date(event.timestamp))
+    }
+
+    // Determine target color based on ACTION type:
+    // Purchase - blue, Sale - green, Repair - yellow, Return - light purple, Delete - red, Edit - pink
+    val actionPalette = remember(event.actionType) {
         when (event.actionType) {
-            "SALE" -> {
-                "उपरोक्त सभी तथ्य बिल्कुल सही है।\n" +
-                "मैने ये मोबाइल आज पूरा चेक कर के मोबाइल गैलरी से लिया है और मैं इससे संतुष्ट हूँ।\n" +
-                "अब से इस मोबाइल की सारी जिम्मेदारी केवल मेरी है।\n\n\n" +
-                "Sign                     Date: $formattedDateVal\n\n" +
-                "1. WARRANTY ASSISTANCE: No warranty/guarantee for the used phones. In case any phone is eligible, it will be told separately and shall be valid only if it is written on this paper.\n\n" +
-                "2. REFUND POLICY: All processed sales are final. Absolutely no cash refunds. Unopened, untampered items may be considered for exchange or store ledger credit notes within 24 hours of receipt at the sole discretion of the store."
-            }
-            "REPAIR_SENT", "REPAIR_RETURNED" -> {
-                "उपरोक्त सभी तथ्य बिल्कुल सही है।\n" +
-                "मैने आज ये मोबाइल जिसका मै खुद स्वामी हु, स्वेच्छा से मोबाइल गैलरी को दिया है।\n" +
-                "उपरोक्त फोन पर किसी भी प्रकार का ऋण, ब्याज या क्लेम बाकी नहीं है। इसका किसी भी लोन/फाइनेंस कंपनी से कोई संबंध नहीं है। यदि इसपे कोई लोन रिकवरी होती है तो उसकी सारी जिम्मेदारी मेरी होगी और किसी की नहीं होगी।\n" +
-                "आज से इस फोन का मालिक मै नहीं हू।\n\n\n" +
-                "Sign                     Date: $formattedDateVal\n\n" +
-                "1. Seller/Customer is solely responsible for the all the previous repairs, finances and other tasks related to this phone. The buyer-store does not have any responsibility of any finance emi's or and any wrong doings in the past. Any EMIs due on this phone shall be paid by the seller-customer. Buyer can independently format it now.\n\n" +
-                "2. REFUND POLICY: All processed sales are final. Absolutely no cash refunds. Unopened, untampered items may be considered for exchange or store ledger credit notes within 24 hours of receipt at the sole discretion of the store.\n\n" +
-                "3. OUT-FOR-REPAIR DEVICES: Repair hand-overs are registered entirely at client's risk. Please backup/clone personal user files. Retailer is not liable for data loss or software degradation during repair."
-            }
-            else -> { // PURCHASE or RETURN or fallback
-                "उपरोक्त सभी तथ्य बिल्कुल सही है।\n" +
-                "मैने आज ये मोबाइल जिसका मै खुद स्वामी हू, स्वेच्छा से मोबाइल गैलरी को दिया है।\n" +
-                "उपरोक्त फोन पर किसी भी प्रकार का ऋण, ब्याज या क्लेम बाकी नहीं है। इसका किसी भी लोन/फाइनेंस कंपनी से कोई संबंध नहीं है। यदि इसपे कोई लोन रिकवरी होती है तो उसकी सारी जिम्मेदारी मेरी होगी और किसी की नहीं होगी ।\n" +
-                "आज से इस फोन का मालिक मै नहीं हू।\n\n\n" +
-                "Sign                     Date: $formattedDateVal\n\n" +
-                "1. Seller/Customer is solely responsible for the all the previous repairs, finances and other tasks related to this phone. The buyer-store does not have any responsibility of any finance emi's or and any wrong doings in the past. Any EMIs due on this phone shall be paid by the seller-customer. Buyer can independently format it now.\n\n" +
-                "2. REFUND POLICY: All processed sales are final. Absolutely no cash refunds. Unopened, untampered items may be considered for exchange or store ledger credit notes within 24 hours of receipt at the sole discretion of the store."
-            }
+            "PURCHASE" -> Triple(TransactionColors.PurchaseBlue, "PURCHASED INBOUND", Icons.Default.AddShoppingCart)
+            "SALE" -> Triple(TransactionColors.SaleGreen, "SOLD OUTBOUND", Icons.AutoMirrored.Filled.OfflineShare)
+            "REPAIR_SENT" -> Triple(TransactionColors.RepairYellow, "SENT OUT TO REPAIR", Icons.Default.Build)
+            "REPAIR_RETURNED" -> Triple(TransactionColors.RepairYellow, "REPAIRED BACK", Icons.Default.BuildCircle)
+            "RETURN" -> Triple(TransactionColors.ReturnPurple, "PRODUCT RETURNED", Icons.AutoMirrored.Filled.KeyboardReturn)
+            "EDIT" -> Triple(TransactionColors.EditPink, "PRODUCT EDITED", Icons.Default.Edit)
+            "DELETE" -> Triple(TransactionColors.DeleteRed, "PRODUCT DELETED", Icons.Default.DeleteForever)
+            else -> Triple(Color.Gray, "SYSTEM LOG", Icons.Default.History)
         }
     }
 
-    var termsText by remember { mutableStateOf(defaultTerms) }
+    val (themeColor, subLabel, iconVector) = actionPalette
 
-    Dialog(onDismissRequest = onDismiss) {
-        Card(
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 2.dp)
+            .clickable { onExpandTapped() }
+            .testTag("history_event_item_${event.id}"),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Column(
-                modifier = Modifier
-                    .padding(24.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Text(
-                    text = "Edit Voucher Terms",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
+                .border(
+                    width = 1.dp,
+                    color = themeColor.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(16.dp)
                 )
+                .padding(10.dp)
+        ) {
+            // Header: Icon badge + Action type + Timestamp
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Left indicator Badge
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(themeColor.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = iconVector,
+                        contentDescription = "Event theme icon indicator",
+                        tint = themeColor,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
 
-                OutlinedTextField(
-                    value = termsText,
-                    onValueChange = { termsText = it },
+                // Title + user tag column
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = subLabel,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = themeColor,
+                        letterSpacing = 1.sp
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(Icons.Default.VerifiedUser, "User tag key", modifier = Modifier.size(10.dp), tint = MaterialTheme.colorScheme.primary)
+                        Text(
+                            text = "Audited: ${event.userId}",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+
+                // Chronological Timestamp right indicator
+                Text(
+                    text = formattedTimestamp,
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                    lineHeight = 12.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Short detail description of log item
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(bottom = 2.dp)
+                    ) {
+                        Text(
+                            text = "IMEI: ${event.serialNumber}",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        val clipboardContext = androidx.compose.ui.platform.LocalContext.current
+                        IconButton(
+                            onClick = {
+                                val clip = android.content.ClipData.newPlainText("IMEI", event.serialNumber)
+                                val clipboardManager = clipboardContext.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                clipboardManager.setPrimaryClip(clip)
+                                android.widget.Toast.makeText(clipboardContext, "IMEI Copied", android.widget.Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier
+                                .size(24.dp)
+                                .padding(start = 4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = "Copy IMEI",
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                    Text(
+                        text = "Qty: ${event.quantity} units",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                // Pricing label
+                Text(
+                    text = "₹${String.format("%,.2f", event.amount)}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Black,
+                    color = themeColor
+                )
+            }
+
+            // Expanded extra parameter block details
+            AnimatedVisibility(
+                visible = isExpanded,
+                enter = fadeIn() + expandVertically(),
+                exit = shrinkVertically()
+            ) {
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(240.dp)
-                        .testTag("print_terms_textarea"),
-                    label = { Text("Terms & Signature Block") },
-                    maxLines = 15
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+                        .padding(top = 12.dp)
+                        .background(themeColor.copy(alpha = 0.05f), RoundedCornerShape(10.dp))
+                        .padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    TextButton(onClick = onDismiss) {
-                        Text("Cancel")
+                    // removed Complete Transaction Footprint header
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Model Name:", style = MaterialTheme.typography.bodySmall, fontSize = 11.sp)
+                        Text(event.model, style = MaterialTheme.typography.bodySmall, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Button(onClick = { onPrint(termsText) }, modifier = Modifier.testTag("print_action_proceed")) {
-                        Text("Print Now")
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Customer Name:", style = MaterialTheme.typography.bodySmall, fontSize = 11.sp)
+                        Text(event.name, style = MaterialTheme.typography.bodySmall, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    if (!event.phoneNumber.isNullOrBlank()) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Registered Contact:", style = MaterialTheme.typography.bodySmall, fontSize = 11.sp)
+                            Text(event.phoneNumber, style = MaterialTheme.typography.bodySmall, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    if (!event.aadhaarNumber.isNullOrBlank()) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Aadhaar Verification ID:", style = MaterialTheme.typography.bodySmall, fontSize = 11.sp)
+                            Text(event.aadhaarNumber, style = MaterialTheme.typography.bodySmall, fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    if (event.description.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(event.description, style = MaterialTheme.typography.bodySmall, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val context = androidx.compose.ui.platform.LocalContext.current
+
+                        // WhatsApp Broadcast Button
+                        IconButton(
+                            onClick = {
+                                val shareMessage = """
+📦 *MOBILE GALLERY TRANSACTION* 📱
+━━━━━━━━━━━━━━━━━━━━━━
+• *Category:* ${event.actionType}
+• *Model:* ${event.model}
+• *IMEI/Serial:* ${event.serialNumber}
+• *Customer:* ${event.name}
+${if (!event.phoneNumber.isNullOrBlank()) "• *Contact:* ${event.phoneNumber}\n" else ""}• *Amount:* INR ${String.format("%,.2f", event.amount)}
+• *Operator:* ${event.userId}
+━━━━━━━━━━━━━━━━━━━━━━
+_Logged under Mobile Gallery System_
+""".trimIndent()
+                                shareToWhatsApp(context, shareMessage)
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Share,
+                                contentDescription = "Share to WhatsApp",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        if (!event.photoUri.isNullOrBlank()) {
+                            val photos = event.photoUri.split(",").filter { it.isNotBlank() && (!it.startsWith("ic_") || it in listOf("ic_phone_blue", "ic_phone_amber", "ic_watch", "ic_tablet")) }
+                            if (photos.isNotEmpty()) {
+                                IconButton(onClick = { onPhotoClick?.invoke(photos) }) {
+                                    Icon(Icons.Default.PhotoLibrary, contentDescription = "View Photos", tint = MaterialTheme.colorScheme.secondary)
+                                }
+                            }
+                        }
+
+                        IconButton(onClick = { onPrintClick(event) }) {
+                            Icon(Icons.Default.Print, contentDescription = "Customize & Print PDF", tint = themeColor)
+                        }
                     }
                 }
             }
@@ -468,161 +737,254 @@ fun CustomPrintDialog(
     }
 }
 
-fun printHistoryEventCustom(
-    context: Context,
-    event: HistoryEvent,
-    customText: String
-) {
-    val printManager = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
-    val jobName = "${event.actionType}_Voucher_${event.serialNumber}"
+private var activePrintWebView: android.webkit.WebView? = null // Retain webview to avoid GC crash during print
 
-    val webView = WebView(context)
-    val (addressVal, _) = extractAddressAndDescription(event.description)
-
-    // Format photo Html
-    val loadedPhotos = event.photoUri?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
-    var photosHtml = ""
-    if (loadedPhotos.isNotEmpty()) {
-        val imgElements = loadedPhotos.joinToString("") { url ->
-            "<img src=\"$url\" style=\"max-width: 250px; max-height: 250px; margin: 10px; border: 1.5px solid #eaeaea; border-radius: 6px; object-fit: cover;\" />"
+fun printHistoryEvent(context: android.content.Context, event: HistoryEvent) {
+    try {
+        val printManager = context.getSystemService(android.content.Context.PRINT_SERVICE) as? android.print.PrintManager
+        if (printManager == null) {
+            android.widget.Toast.makeText(context, "Print service not available", android.widget.Toast.LENGTH_SHORT).show()
+            return
         }
-        photosHtml = """
-            <div class="photos-section" style="margin-top: 40px; border-top: 1.5px solid #ddd; padding-top: 15px;">
-                <h3 style="font-size: 13px; color: #111; margin-bottom: 12px; font-weight: bold; text-align: left;">ATTACHED PHOTOS</h3>
-                <div style="display: flex; flex-wrap: wrap; justify-content: flex-start;">
-                    $imgElements
+        
+        val webView = android.webkit.WebView(context).apply {
+            settings.allowContentAccess = true
+            settings.allowFileAccess = true
+        }
+        activePrintWebView = webView
+        
+        val sdf = SimpleDateFormat("dd MMM yyyy hh:mm a", Locale.getDefault())
+        val date = sdf.format(Date(event.timestamp))
+        
+        val imgTags = event.photoUri?.split(",")?.filter { it.isNotBlank() && (!it.startsWith("ic_") || it in listOf("ic_phone_blue", "ic_phone_amber", "ic_watch", "ic_tablet")) }?.map {
+            when (it) {
+                "ic_phone_blue" -> "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=400&q=80"
+                "ic_phone_amber" -> "https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?auto=format&fit=crop&w=400&q=80"
+                "ic_watch" -> "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=400&q=80"
+                "ic_tablet" -> "https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?auto=format&fit=crop&w=400&q=80"
+                else -> it
+            }
+        }?.joinToString("") {
+            "<img src='$it' style='max-width: 100%; height: auto; margin-top: 10px; border: 1px solid #ddd; padding: 4px;'/>"
+        } ?: ""
+
+        val htmlDocument = """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <style>
+                    body {
+                        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+                        padding: 20px;
+                        color: #111;
+                        line-height: 1.4;
+                        max-width: 750px;
+                        margin: 0 auto;
+                        box-sizing: border-box;
+                    }
+                    .invoice-card {
+                        border: 3px double #333;
+                        border-radius: 8px;
+                        padding: 24px;
+                        background: #fff;
+                        box-sizing: border-box;
+                    }
+                    .header {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        border-bottom: 3px solid #111;
+                        padding-bottom: 8px;
+                        margin-bottom: 16px;
+                    }
+                    .header-title {
+                        font-size: 20px;
+                        font-weight: 800;
+                        text-transform: uppercase;
+                        letter-spacing: 0.8px;
+                        color: #111;
+                    }
+                    .header-meta {
+                        font-size: 11px;
+                        text-align: right;
+                        color: #333;
+                    }
+                    .grid {
+                        display: table;
+                        width: 100%;
+                        margin-bottom: 16px;
+                        border-collapse: collapse;
+                    }
+                    .grid-row {
+                        display: table-row;
+                    }
+                    .grid-cell {
+                        display: table-cell;
+                        padding: 8px 10px;
+                        font-size: 11px;
+                        border-bottom: 1px dotted #ccc;
+                    }
+                    .label {
+                        font-weight: bold;
+                        color: #111;
+                        background: #fdfdfd;
+                        width: 130px;
+                    }
+                    .photos {
+                        margin-top: 16px;
+                        display: flex;
+                        gap: 12px;
+                        flex-wrap: wrap;
+                    }
+                    .photos img {
+                        max-height: 120px;
+                        border: 1px solid #ddd;
+                        padding: 4px;
+                        border-radius: 4px;
+                    }
+                    .terms-block {
+                        font-size: 9px;
+                        background: #f9f9f9;
+                        border: 1px solid #e0e0e0;
+                        padding: 10px;
+                        border-radius: 4px;
+                        margin-top: 16px;
+                        color: #333;
+                        white-space: pre-wrap;
+                    }
+                    .sign-row {
+                        margin-top: 30px;
+                        display: flex;
+                        justify-content: space-between;
+                        padding: 0 10px;
+                        font-size: 10px;
+                    }
+                    .sign-line {
+                        width: 180px;
+                        border-top: 1px solid #111;
+                        text-align: center;
+                        padding-top: 4px;
+                        margin-top: 25px;
+                        font-weight: bold;
+                    }
+                    .footer-note {
+                        font-size: 8px;
+                        text-align: center;
+                        margin-top: 16px;
+                        color: #888;
+                        font-style: italic;
+                    }
+                    @media print {
+                        body { padding: 0; margin: 0; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="invoice-card">
+                    <div class="header">
+                        <div>
+                            <div class="header-title">Mobile Gallery</div>
+                            <div style="font-size: 10px; color: #555; font-style: italic;">Official Transaction & Safe-Custody Bill</div>
+                        </div>
+                        <div class="header-meta">
+                            <div>Date: $date</div>
+                            <div>Tx ID: ${event.id.take(8).uppercase()}</div>
+                        </div>
+                    </div>
+
+                    <div class="grid">
+                        <div class="grid-row">
+                            <div class="grid-cell label">Transaction Mode:</div>
+                            <div class="grid-cell" style="font-weight: bold; color: #111;">${event.actionType}</div>
+                            <div class="grid-cell label">Brand & Model:</div>
+                            <div class="grid-cell">${event.model.ifBlank { "________________" }}</div>
+                        </div>
+                        <div class="grid-row">
+                            <div class="grid-cell label">Customer Name:</div>
+                            <div class="grid-cell">${event.name.ifBlank { "_____________________________" }}</div>
+                            <div class="grid-cell label">Contact Phone:</div>
+                            <div class="grid-cell">${event.phoneNumber ?: "_____________________________"}</div>
+                        </div>
+                        <div class="grid-row">
+                            <div class="grid-cell label">IMEI/Serial Key:</div>
+                            <div class="grid-cell" style="font-family: monospace;">${event.serialNumber.ifBlank { "________________" }}</div>
+                            <div class="grid-cell label">Disbursed Amount:</div>
+                            <div class="grid-cell" style="font-weight: bold; color: #111;">INR ${String.format("%,.2f", event.amount)}</div>
+                        </div>
+                        <div class="grid-row">
+                            <div class="grid-cell label">Audited By:</div>
+                            <div class="grid-cell">${event.userId}</div>
+                            <div class="grid-cell label">Quantity Unit:</div>
+                            <div class="grid-cell">${event.quantity} Unit(s)</div>
+                        </div>
+                    </div>
+
+                    <div style="font-size: 11px; margin-top: 8px; padding-bottom: 8px; border-bottom: 1px dotted #ccc;">
+                        <strong>Log Remarks:</strong> ${event.description.ifBlank { "No additional remarks logged." }}
+                    </div>
+
+                    <div class="photos">$imgTags</div>
+
+                    <div class="terms-block">
+                        <strong>COMMON TRANSACTION DISCLOSURES & POLICY TERMS:</strong><br/>
+1. WARRANTY ASSISTANCE: All brand items are covered solely by manufacturer service centers. Retailer holds no liability for mechanical failure, screen damage, liquid ingress, or physical wear/breakage.
+2. DOCUMENTATION REQUIREMENT: Please retain original packaging box, complete inside accessories, and this physical printed voucher/bill to initiate claims, verification, or service assistance.
+3. REFUND POLICY: All processed sales are final. Absolutely no cash refunds. Unopened, untampered items may be considered for exchange or store ledger credit notes within 24 hours of receipt.
+4. OUT-FOR-REPAIR DEVICES: Repair hand-overs are registered entirely at client's risk. Please backup/clone personal user files. Retailer is not liable for data loss or software degradation during repair.
+                    </div>
+
+                    <div class="sign-row">
+                        <div class="sign-line">Operator / Auditor Signature</div>
+                        <div class="sign-line">Customer Accept Signature</div>
+                    </div>
+
+                    <div class="footer-note">
+                        Thank you for your business! | System generated via Mobile Gallery Suite.
+                    </div>
                 </div>
-            </div>
+            </body>
+            </html>
         """.trimIndent()
+
+        webView.webViewClient = object : android.webkit.WebViewClient() {
+            override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
+                try {
+                    view?.let {
+                        val printAdapter = it.createPrintDocumentAdapter("Transaction Receipt")
+                        val jobName = "Receipt_${event.serialNumber}"
+                        printManager.print(jobName, printAdapter, android.print.PrintAttributes.Builder().build())
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+        webView.loadDataWithBaseURL(null, htmlDocument, "text/HTML", "UTF-8", null)
+    } catch (e: Exception) {
+        e.printStackTrace()
+        android.widget.Toast.makeText(context, "Cannot generate PDF", android.widget.Toast.LENGTH_SHORT).show()
     }
+}
 
-    val actionLabel = when (event.actionType) {
-        "PURCHASE" -> "Product Purchase Voucher"
-        "SALE" -> "Sales Delivery Invoice"
-        "RETURN" -> "Returns / Ledger Declaration"
-        "REPAIR_SENT" -> "Repair Sent Intake"
-        "REPAIR_RETURNED" -> "Repair Returned To Client"
-        else -> "${event.actionType.replace("_", " ")} Declaration"
-    }
-
-    val htmlDocument = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="utf-8">
-            <style>
-                body {
-                    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-                    padding: 30px;
-                    background: #fff;
-                    color: #000;
-                    margin: 0;
-                    font-size: 12px;
-                }
-                .header {
-                    text-align: center;
-                    border-bottom: 2px solid #000;
-                    padding-bottom: 12px;
-                    margin-bottom: 24px;
-                }
-                .header h1 {
-                    font-size: 26px;
-                    margin: 0;
-                    font-weight: 800;
-                    letter-spacing: 1.5px;
-                }
-                .header h2 {
-                    font-size: 14px;
-                    margin: 4px 0 0 0;
-                    color: #444;
-                    font-weight: bold;
-                }
-                .voucher-title {
-                    text-align: right;
-                    color: #444;
-                }
-                table.meta-table {
-                    width: 100%;
-                    border-collapse: collapse;
-                    margin-bottom: 16px;
-                }
-                table.meta-table td {
-                    padding: 6px 8px;
-                    font-size: 11px;
-                    border-bottom: 1px dotted #ccc;
-                }
-                table.meta-table td.label {
-                    font-weight: bold;
-                    color: #111;
-                    width: 140px;
-                }
-                .terms-block {
-                    font-size: 11px;
-                    margin-top: 16px;
-                    margin-bottom: 24px;
-                    color: #111;
-                    white-space: pre-wrap;
-                    line-height: 1.5;
-                }
-                @media print {
-                    body { padding: 0; margin: 0; }
-                    .header h1 { font-size: 24px; }
-                }
-            </style>
-        </head>
-        <body>
-            <div class="header">
-                <h1>MOBILE GALLERY</h1>
-                <h2>$actionLabel</h2>
-            </div>
-            
-            <table class="meta-table">
-                <tr>
-                    <td class="label" style="width: 15%;">Action Mode:</td>
-                    <td style="font-weight: bold; color: #111; width: 35%;">${event.actionType}</td>
-                    <td class="label" style="width: 15%;">Brand & Model:</td>
-                    <td style="width: 35%;">${event.model.ifBlank { "________________" }}</td>
-                </tr>
-                <tr>
-                    <td class="label">Customer Name:</td>
-                    <td>${event.name.ifBlank { "_____________________________" }}</td>
-                    <td class="label">Contact Phone:</td>
-                    <td>${event.phoneNumber ?: "_____________________________"}</td>
-                </tr>
-                <tr>
-                    <td class="label">IMEI / Serial key:</td>
-                    <td style="font-family: monospace;">${event.serialNumber.ifBlank { "________________" }}</td>
-                    <td class="label">Disbursed Amount:</td>
-                    <td style="font-weight: bold; color: #111;">INR ${String.format("%,.2f", event.amount)}</td>
-                </tr>
-                <tr>
-                    <td class="label">Aadhaar Number:</td>
-                    <td style="font-family: monospace;">${event.aadhaarNumber?.ifBlank { "_____________________________" } ?: "_____________________________"}</td>
-                    <td class="label">Quantity / Qty:</td>
-                    <td>${event.quantity} unit(s)</td>
-                </tr>
-                <tr>
-                    <td class="label">Address:</td>
-                    <td colspan="3">${addressVal.ifBlank { "_____________________________" }}</td>
-                </tr>
-            </table>
-
-            <div class="terms-block">
-                $customText
-            </div>
-
-            $photosHtml
-        </body>
-        </html>
-    """.trimIndent()
-
-    webView.webViewClient = object : WebViewClient() {
-        override fun onPageFinished(view: WebView?, url: String?) {
-            val printAdapter = webView.createPrintDocumentAdapter(jobName)
-            printManager.print(jobName, printAdapter, PrintAttributes.Builder().build())
+fun shareToWhatsApp(context: android.content.Context, message: String) {
+    try {
+        val sendIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(android.content.Intent.EXTRA_TEXT, message)
+            setPackage("com.whatsapp")
+        }
+        context.startActivity(sendIntent)
+    } catch (e: Exception) {
+        try {
+            val sendIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(android.content.Intent.EXTRA_TEXT, message)
+            }
+            context.startActivity(android.content.Intent.createChooser(sendIntent, "Share Updates"))
+        } catch (ex: Exception) {
+            android.widget.Toast.makeText(context, "No sharing app installed", android.widget.Toast.LENGTH_SHORT).show()
         }
     }
-    webView.loadDataWithBaseURL("file:///android_asset/", htmlDocument, "text/html", "UTF-8", null)
 }
 
 fun extractAddressAndDescription(desc: String?): Pair<String, String> {
@@ -640,4 +1002,399 @@ fun extractAddressAndDescription(desc: String?): Pair<String, String> {
         }
     }
     return Pair("", trimmed)
+}
+
+fun printHistoryEventCustom(
+    context: android.content.Context,
+    event: HistoryEvent,
+    customText: String,
+    includeBlanks: Boolean,
+    selectedPhotos: List<String>,
+    placeholderCount: Int
+) {
+    try {
+        val printManager = context.getSystemService(android.content.Context.PRINT_SERVICE) as? android.print.PrintManager
+        if (printManager == null) {
+            android.widget.Toast.makeText(context, "Print service not available", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        val webView = android.webkit.WebView(context).apply {
+            settings.allowContentAccess = true
+            settings.allowFileAccess = true
+        }
+        activePrintWebView = webView
+        
+        val sdf = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
+        val date = sdf.format(Date(event.timestamp))
+        
+        val loadedPhotos = selectedPhotos.map {
+            when (it) {
+                "ic_phone_blue" -> "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=400&q=80"
+                "ic_phone_amber" -> "https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?auto=format&fit=crop&w=400&q=80"
+                "ic_watch" -> "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=400&q=80"
+                "ic_tablet" -> "https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?auto=format&fit=crop&w=400&q=80"
+                else -> it
+            }
+        }
+
+        val declarationTitle = when (event.actionType) {
+            "PURCHASE" -> "Purchase Declaration"
+            "SALE" -> "Sale Declaration"
+            "REPAIR_SENT", "REPAIR_RETURNED" -> "Repair Declaration"
+            "RETURN" -> "Return Declaration"
+            else -> "${event.actionType.replace("_", " ")} Declaration"
+        }
+
+        val (addressVal, descVal) = extractAddressAndDescription(event.description)
+
+        var photosHtml = ""
+        if (loadedPhotos.isNotEmpty()) {
+            photosHtml += """
+                <div style="font-size: 11px; font-weight: bold; margin-top: 24px; text-transform: uppercase; color: #111; border-top: 1px solid #ddd; padding-top: 16px;">
+                    Attached Snapshots:
+                </div>
+                <div style="display: flex; gap: 16px; margin: 15px 0;">
+            """.trimIndent()
+            for (photo in loadedPhotos) {
+                photosHtml += """
+                    <div style="flex: 1; text-align: center;">
+                        <img src="$photo" style="max-width: 100%; max-height: 420px; object-fit: contain; border-radius: 4px;" />
+                    </div>
+                """.trimIndent()
+            }
+            photosHtml += """
+                </div>
+            """.trimIndent()
+        }
+
+        val htmlDocument = """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <style>
+                    body {
+                        font-family: sans-serif;
+                        padding: 20px;
+                        color: #111;
+                        line-height: 1.4;
+                        max-width: 800px;
+                        margin: 0 auto;
+                        box-sizing: border-box;
+                    }
+                    .invoice-card {
+                        border: 2px solid #222;
+                        border-radius: 4px;
+                        padding: 24px;
+                        background: #fff;
+                        box-sizing: border-box;
+                        min-height: 95vh;
+                        display: flex;
+                        flex-direction: column;
+                    }
+                    .header {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        border-bottom: 2px solid #222;
+                        padding-bottom: 8px;
+                        margin-bottom: 16px;
+                    }
+                    .header-title {
+                        font-size: 18px;
+                        font-weight: 800;
+                        text-transform: uppercase;
+                        letter-spacing: 0.5px;
+                        color: #111;
+                    }
+                    .header-meta {
+                        font-size: 11px;
+                        text-align: right;
+                        color: #444;
+                    }
+                    .grid {
+                        display: table;
+                        width: 100%;
+                        margin-bottom: 16px;
+                    }
+                    .grid-row {
+                        display: table-row;
+                    }
+                    .grid-cell {
+                        display: table-cell;
+                        padding: 6px 8px;
+                        font-size: 11px;
+                        border-bottom: 1px dotted #ccc;
+                    }
+                    .label {
+                        font-weight: bold;
+                        color: #111;
+                        width: 140px;
+                    }
+                    .terms-block {
+                        font-size: 10px;
+                        background: #f7f7f7;
+                        border: 1px solid #ddd;
+                        padding: 10px;
+                        border-radius: 6px;
+                        margin-top: auto;
+                        color: #333;
+                        white-space: pre-wrap;
+                    }
+                    @media print {
+                        body { padding: 0; margin: 0; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="invoice-card">
+                    <div class="header">
+                        <div>
+                            <div class="header-title">$declarationTitle</div>
+                            <div style="font-size: 10px; color: #555; font-style: italic;">Ledger verification sheet</div>
+                        </div>
+                        <div class="header-meta">
+                            <div>Date: $date</div>
+                            <div>Tx ID: ${event.id.take(8).uppercase()}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="grid">
+                        <div class="grid-row">
+                            <div class="grid-cell label">Action Mode:</div>
+                            <div class="grid-cell" style="font-weight: bold; color: #111;">${event.actionType}</div>
+                            <div class="grid-cell label">Brand & Model:</div>
+                            <div class="grid-cell">${event.model.ifBlank { "________________" }}</div>
+                        </div>
+                        <div class="grid-row">
+                            <div class="grid-cell label">Customer Name:</div>
+                            <div class="grid-cell">${event.name.ifBlank { "_____________________________" }}</div>
+                            <div class="grid-cell label">Contact Phone:</div>
+                            <div class="grid-cell">${event.phoneNumber ?: "_____________________________"}</div>
+                        </div>
+                        <div class="grid-row">
+                            <div class="grid-cell label">IMEI / Serial key:</div>
+                            <div class="grid-cell" style="font-family: monospace;">${event.serialNumber.ifBlank { "________________" }}</div>
+                            <div class="grid-cell label">Disbursed Amount:</div>
+                            <div class="grid-cell" style="font-weight: bold; color: #111;">INR ${String.format("%,.2f", event.amount)}</div>
+                        </div>
+                        <div class="grid-row">
+                            <div class="grid-cell label">Aadhaar Number:</div>
+                            <div class="grid-cell" style="font-family: monospace;">${event.aadhaarNumber?.ifBlank { "_____________________________" } ?: "_____________________________"}</div>
+                            <div class="grid-cell label">Quantity / Qty:</div>
+                            <div class="grid-cell">${event.quantity} unit(s)</div>
+                        </div>
+                        <div class="grid-row">
+                            <div class="grid-cell label">Address:</div>
+                            <div class="grid-cell">${addressVal.ifBlank { "_____________________________" }}</div>
+                            <div class="grid-cell label">Description:</div>
+                            <div class="grid-cell">${descVal.ifBlank { "_____________________________" }}</div>
+                        </div>
+                    </div>
+
+                    <div class="terms-block">
+                        $customText
+                    </div>
+
+                    $photosHtml
+                </div>
+            </body>
+            </html>
+        """.trimIndent()
+
+        webView.webViewClient = object : android.webkit.WebViewClient() {
+            override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
+                try {
+                    view?.let {
+                        val printAdapter = it.createPrintDocumentAdapter("Custom Receipt")
+                        val jobName = "Custom_Receipt_${event.serialNumber}"
+                        printManager.print(jobName, printAdapter, android.print.PrintAttributes.Builder().build())
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+        webView.loadDataWithBaseURL(null, htmlDocument, "text/HTML", "UTF-8", null)
+    } catch (e: Exception) {
+        e.printStackTrace()
+        android.widget.Toast.makeText(context, "Cannot generate custom print doc", android.widget.Toast.LENGTH_SHORT).show()
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CustomPrintDialog(
+    event: HistoryEvent,
+    onDismiss: () -> Unit
+) {
+    val defaultTerms = remember(event.actionType, event.timestamp) {
+        val sdfDate = SimpleDateFormat("dd MMMM yyyy", Locale.getDefault())
+        val formattedDateVal = sdfDate.format(Date(event.timestamp))
+        if (event.actionType == "SALE") {
+            "उपरोक्त सभी तथ्य बिल्कुल सही है।\n" +
+            "मैने ये मोबाइल आज पूरा चेक कर के मोबाइल गैलरी से लिया है और मैं इससे संतुष्ट हूँ।\n" +
+            "अब से इस मोबाइल की सारी जिम्मेदारी केवल मेरी है।\n\n\n" +
+            "Sign                                        Date: $formattedDateVal\n\n" +
+            "1. WARRANTY ASSISTANCE: No warranty/guarantee for the used phones. In case any phone is eligible, it will be told separately and shall be valid only if it is written on this paper.\n\n" +
+            "2. REFUND POLICY: All processed sales are final. Absolutely no cash refunds. Unopened, untampered items may be considered for exchange or store ledger credit notes within 24 hours of receipt at the sole discretion of the store.\n\n" +
+            "3. OUT-FOR-REPAIR DEVICES: Repair hand-overs are registered entirely at client's risk. Please backup/clone personal user files. Retailer is not liable for data loss or software degradation during repair."
+        } else {
+            "उपरोक्त सभी तथ्य बिल्कुल सही है।\n" +
+            "मैने आज ये मोबाइल जिसका मै खुद स्वामी हु, स्वेच्छा से मोबाइल गैलरी को दिया है।\n" +
+            "उपरोक्त फोन पर किसी भी प्रकार का ऋण, ब्याज या क्लेम बाकी नहीं है। इसका किसी भी लोन/फाइनेंस कंपनी से कोई संबंध नहीं है। यदि इसपे कोई लोन रिकवरी होती है तो उसकी सारी जिम्मेदारी मेरी होगी और किसी की नहीं होगी।\n" +
+            "आज से इस फोन का मालिक मै नहीं हू।\n\n\n" +
+            "Sign                                        Date: $formattedDateVal\n\n\n" +
+            "1. Seller/Customer is solely responsible for the all the previous repairs, finances and other tasks related to this phone. The buyer-store does not have any responsibility of any finance emi's or and any wrong doings in the past. Any EMIs due on this phone shall be paid by the seller-customer.\n\n" +
+            "2. REFUND POLICY: All processed sales are final. Absolutely no cash refunds. Unopened, untampered items may be considered for exchange or store ledger credit notes within 24 hours of receipt at the sole discretion of the store.\n\n" +
+            "3. OUT-FOR-REPAIR DEVICES: Repair hand-overs are registered entirely at client's risk. Please backup/clone personal user files. Retailer is not liable for data loss or software degradation during repair."
+        }
+    }
+
+    var customTerms by remember(defaultTerms) { mutableStateOf(defaultTerms) }
+    
+    val photos = remember(event.photoUri) {
+        event.photoUri?.split(",")?.filter { it.isNotBlank() && (!it.startsWith("ic_") || it in listOf("ic_phone_blue", "ic_phone_amber", "ic_watch", "ic_tablet")) } ?: emptyList()
+    }
+    
+    val selectedPhotos = remember { mutableStateListOf<String>().apply { 
+        addAll(photos.take(2))
+    } }
+
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Default.Print, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Text("Customize & Print Voucher", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "Configure receipt styling for A4 / thermal roll paper layout. The page will be fully utilized, with remaining space used to print selected photos.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                
+                OutlinedTextField(
+                    value = customTerms,
+                    onValueChange = { customTerms = it },
+                    label = { Text("Common Text / Terms & Conditions") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 3,
+                    maxLines = 6,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                    )
+                )
+
+                if (photos.isNotEmpty()) {
+                    Text(
+                        text = "Select up to 2 images to print on receipt (displayed cleanly border-free at bottom of layout):",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        photos.forEach { photo ->
+                            val isSelected = selectedPhotos.contains(photo)
+                            Surface(
+                                onClick = {
+                                    if (isSelected) {
+                                        selectedPhotos.remove(photo)
+                                    } else {
+                                        if (selectedPhotos.size < 2) {
+                                            selectedPhotos.add(photo)
+                                        } else {
+                                            android.widget.Toast.makeText(context, "Only up to 2 photos can be printed", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                border = if (isSelected) androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(50.dp)
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(Color.Gray)
+                                    ) {
+                                        coil.compose.AsyncImage(
+                                            model = com.example.util.AppUtils.resolveImageModel(photo),
+                                            contentDescription = null,
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                                        )
+                                    }
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = if (photo.startsWith("http")) "Cloud Captured Photo" else "Sample Photo Asset",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = photo.takeLast(30),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Checkbox(
+                                        checked = isSelected,
+                                        onCheckedChange = null
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Text(
+                        text = "No snapshots attached to this transaction log.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    printHistoryEventCustom(
+                        context = context,
+                        event = event,
+                        customText = customTerms,
+                        includeBlanks = false,
+                        selectedPhotos = selectedPhotos.toList(),
+                        placeholderCount = 0
+                    )
+                    onDismiss()
+                }
+            ) {
+                Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Print Receipt")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }

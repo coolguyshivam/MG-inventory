@@ -1,0 +1,14 @@
+# Set the default behavior to have all text files normalized.
+* text=auto
+
+# Explicitly denote all binary files so Git never modifies their line endings.
+*.jar binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.apk binary
+*.aar binary
+*.so binary

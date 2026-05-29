@@ -6,6 +6,7 @@ import com.example.data.model.InventoryItem
 
 import kotlinx.coroutines.flow.Flow
 
+
 @Dao
 interface HistoryEventDao {
     @Query("SELECT * FROM history_events ORDER BY timestamp DESC")
@@ -29,7 +30,7 @@ interface HistoryEventDao {
 
 @Dao
 interface InventoryItemDao {
-    @Query("SELECT * FROM inventory_items ORDER BY updatedTimestamp DESC")
+    @Query("SELECT * FROM inventory_items ORDER BY dateInMillis DESC")
     fun getAllItems(): Flow<List<InventoryItem>>
 
     @Query("SELECT * FROM inventory_items WHERE serialNumber = :serialNumber LIMIT 1")
@@ -51,7 +52,7 @@ interface InventoryItemDao {
     suspend fun clearAll()
 }
 
-@Database(entities = [HistoryEvent::class, InventoryItem::class], version = 1, exportSchema = false)
+@Database(entities = [HistoryEvent::class, InventoryItem::class], version = 2, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract val historyEventDao: HistoryEventDao
     abstract val inventoryItemDao: InventoryItemDao
