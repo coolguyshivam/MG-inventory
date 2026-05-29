@@ -682,11 +682,13 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
             val startDate = sdf.parse(startStr)
             val endDate = sdf.parse(endStr)
             
-            val calendar = java.util.Calendar.getInstance()
-            calendar.time = startDate
-            while (!calendar.time.after(endDate)) {
-                result.add(sdf.format(calendar.time))
-                calendar.add(java.util.Calendar.DATE, 1)
+            if (startDate != null && endDate != null) {
+                val calendar = java.util.Calendar.getInstance()
+                calendar.time = startDate
+                while (!calendar.time.after(endDate)) {
+                    result.add(sdf.format(calendar.time))
+                    calendar.add(java.util.Calendar.DATE, 1)
+                }
             }
         } catch (e: Exception) {
             result.add(startStr)

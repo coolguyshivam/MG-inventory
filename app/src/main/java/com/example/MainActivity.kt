@@ -197,7 +197,7 @@ fun MainAppContent(viewModel: StockViewModel) {
 
                     if (canViewLedger) {
                         NavigationDrawerItem(
-                            icon = { Icon(Icons.Default.CompareArrows, contentDescription = null, modifier = Modifier.size(22.dp)) },
+                            icon = { Icon(Icons.AutoMirrored.Filled.CompareArrows, contentDescription = null, modifier = Modifier.size(22.dp)) },
                             label = { 
                                 Column {
                                     Text("Unified Ledger Logs", fontWeight = FontWeight.Bold)
@@ -237,7 +237,7 @@ fun MainAppContent(viewModel: StockViewModel) {
                                     },
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Icon(imageVector = Icons.Default.ExitToApp, contentDescription = "Log Out")
+                                    Icon(imageVector = Icons.AutoMirrored.Filled.ExitToApp, contentDescription = "Log Out")
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text("Logout Session")
                                 }
@@ -417,7 +417,7 @@ fun MainAppContent(viewModel: StockViewModel) {
                     tabsItems.add(Triple(5, "Users", Icons.Default.Group))
                 }
                 if (canViewLedger) {
-                    tabsItems.add(Triple(6, "Ledger", Icons.Default.CompareArrows))
+                    tabsItems.add(Triple(6, "Ledger", Icons.AutoMirrored.Filled.CompareArrows))
                 }
 
                 tabsItems.forEach { (index, title, icon) ->

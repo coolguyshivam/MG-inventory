@@ -160,10 +160,8 @@ object AppUtils {
                 val image = File(appDir, filename)
                 fos = FileOutputStream(image)
                 insertedUri = Uri.fromFile(image)
-                if (fos != null) {
-                    fos.use {
-                        bitmap.compress(Bitmap.CompressFormat.JPEG, 100, it)
-                    }
+                fos.use {
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 100, it)
                 }
             }
 
@@ -171,18 +169,17 @@ object AppUtils {
                 Toast.makeText(context, "Saved directly to Pictures/Inventory Gallery!", Toast.LENGTH_LONG).show()
                 
                 // Alert the system media scanner
-                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-                    val mediaScanIntent = android.content.Intent(android.content.Intent.ACTION_MEDIA_SCANNER_SCAN_FILE)
-                    mediaScanIntent.data = insertedUri
-                    context.sendBroadcast(mediaScanIntent)
+                val path = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).absolutePath + "/Inventory/" + filename
                 } else {
-                    android.media.MediaScannerConnection.scanFile(
-                        context,
-                        arrayOf(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).absolutePath + "/Inventory/" + filename),
-                        arrayOf("image/jpeg"),
-                        null
-                    )
+                    File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "Inventory/$filename").absolutePath
                 }
+                android.media.MediaScannerConnection.scanFile(
+                    context,
+                    arrayOf(path),
+                    arrayOf("image/jpeg"),
+                    null
+                )
             } else {
                 Toast.makeText(context, "Failed to capture media storage channel.", Toast.LENGTH_SHORT).show()
             }
