@@ -48,6 +48,20 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
+            }
+        }
+        
+        try {
+            val req = androidx.work.PeriodicWorkRequestBuilder<com.example.util.AttendanceAlarmWorker>(15, java.util.concurrent.TimeUnit.MINUTES).build()
+            androidx.work.WorkManager.getInstance(this).enqueueUniquePeriodicWork("attendance_alarm", androidx.work.ExistingPeriodicWorkPolicy.KEEP, req)
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "Failed to schedule work", e)
+        }
+
         enableEdgeToEdge()
 
         // Initialize Firebase dynamically if keys are configured

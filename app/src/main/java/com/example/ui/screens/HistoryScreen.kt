@@ -1053,15 +1053,12 @@ fun printHistoryEventCustom(
         var photosHtml = ""
         if (loadedPhotos.isNotEmpty()) {
             photosHtml += """
-                <div style="font-size: 11px; font-weight: bold; margin-top: 24px; text-transform: uppercase; color: #111; border-top: 1px solid #ddd; padding-top: 16px;">
-                    Attached Snapshots:
-                </div>
-                <div style="display: flex; gap: 16px; margin: 15px 0;">
+                <div style="display: flex; gap: 8px; margin: 8px 0; max-height: 500px; justify-content: center; align-items: center;">
             """.trimIndent()
             for (photo in loadedPhotos) {
                 photosHtml += """
-                    <div style="flex: 1; text-align: center;">
-                        <img src="$photo" style="max-width: 100%; max-height: 420px; object-fit: contain; border-radius: 4px;" />
+                    <div style="flex: 1; text-align: center; height: 100%;">
+                        <img src="$photo" style="max-width: 100%; max-height: 500px; object-fit: contain; border-radius: 4px;" />
                     </div>
                 """.trimIndent()
             }
@@ -1077,9 +1074,9 @@ fun printHistoryEventCustom(
                 <style>
                     body {
                         font-family: sans-serif;
-                        padding: 20px;
+                        padding: 10px;
                         color: #111;
-                        line-height: 1.4;
+                        line-height: 1.3;
                         max-width: 800px;
                         margin: 0 auto;
                         box-sizing: border-box;
@@ -1087,7 +1084,7 @@ fun printHistoryEventCustom(
                     .invoice-card {
                         border: 2px solid #222;
                         border-radius: 4px;
-                        padding: 24px;
+                        padding: 16px;
                         background: #fff;
                         box-sizing: border-box;
                         min-height: 95vh;
@@ -1099,11 +1096,11 @@ fun printHistoryEventCustom(
                         justify-content: space-between;
                         align-items: center;
                         border-bottom: 2px solid #222;
-                        padding-bottom: 8px;
-                        margin-bottom: 16px;
+                        padding-bottom: 4px;
+                        margin-bottom: 8px;
                     }
                     .header-title {
-                        font-size: 18px;
+                        font-size: 16px;
                         font-weight: 800;
                         text-transform: uppercase;
                         letter-spacing: 0.5px;
@@ -1117,14 +1114,14 @@ fun printHistoryEventCustom(
                     .grid {
                         display: table;
                         width: 100%;
-                        margin-bottom: 16px;
+                        margin-bottom: 8px;
                     }
                     .grid-row {
                         display: table-row;
                     }
                     .grid-cell {
                         display: table-cell;
-                        padding: 6px 8px;
+                        padding: 4px 6px;
                         font-size: 11px;
                         border-bottom: 1px dotted #ccc;
                     }
@@ -1134,8 +1131,8 @@ fun printHistoryEventCustom(
                         width: 140px;
                     }
                     .terms-block {
-                        font-size: 13px;
-                        margin-top: 40px;
+                        font-size: 12px;
+                        margin-top: 10px;
                         color: #111;
                         white-space: pre-wrap;
                     }
@@ -1149,7 +1146,6 @@ fun printHistoryEventCustom(
                     <div class="header">
                         <div>
                             <div class="header-title">$declarationTitle</div>
-                            <div style="font-size: 10px; color: #555; font-style: italic;">Ledger verification sheet</div>
                         </div>
                         <div class="header-meta">
                             <div>Date: $date</div>
@@ -1173,8 +1169,10 @@ fun printHistoryEventCustom(
                         <div class="grid-row">
                             <div class="grid-cell label">IMEI / Serial key:</div>
                             <div class="grid-cell" style="font-family: monospace;">${event.serialNumber.ifBlank { "________________" }}</div>
-                            <div class="grid-cell label">Disbursed Amount:</div>
-                            <div class="grid-cell" style="font-weight: bold; color: #111;">INR ${String.format("%,.2f", event.amount)}</div>
+                            <!-- <div class="grid-cell label">Disbursed Amount:</div> -->
+                            <!-- <div class="grid-cell" style="font-weight: bold; color: #111;">INR ${String.format("%,.2f", event.amount)}</div> -->
+                            <div class="grid-cell label"></div>
+                            <div class="grid-cell"></div>
                         </div>
                         <div class="grid-row">
                             <div class="grid-cell label">Aadhaar Number:</div>
