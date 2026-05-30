@@ -261,6 +261,24 @@ fun TransactionsScreen(viewModel: StockViewModel) {
         aadhaarTouched.value = true
     }
 
+    val resetAllTouched = {
+        modelTouched.value = false
+        nameTouched.value = false
+        addressTouched.value = false
+        phoneTouched.value = false
+        aadhaarTouched.value = false
+        techTouched.value = false
+        repairReasonTouched.value = false
+        imeiTouched.clear()
+        priceTouched.clear()
+    }
+
+    LaunchedEffect(successMessage) {
+        if (successMessage != null) {
+            resetAllTouched()
+        }
+    }
+
     // Dynamic banner/style details based on tab modes
     val themeColorAndLabel = remember(activeSelection) {
         when (activeSelection) {

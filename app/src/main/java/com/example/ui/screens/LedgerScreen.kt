@@ -191,7 +191,7 @@ fun LedgerScreen(viewModel: StockViewModel) {
 
     if (showPaymentDialog && selectedParty != null) {
         var amountStr by remember { mutableStateOf("") }
-        var type by remember { mutableStateOf("PAYMENT_IN") } // or PAYMENT_OUT
+        var type by remember { mutableStateOf("PAYMENT_OUT") } // or PAYMENT_IN
         var desc by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { showPaymentDialog = false },

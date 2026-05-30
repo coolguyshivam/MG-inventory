@@ -1,8 +1,14 @@
-// Top-level build file where you can add configuration options common to all sub-projects/modules.
-plugins {
-  alias(libs.plugins.android.application) apply false
-  alias(libs.plugins.kotlin.compose) apply false
-  alias(libs.plugins.google.devtools.ksp) apply false
-  alias(libs.plugins.roborazzi) apply false
-  alias(libs.plugins.secrets) apply false
+tasks.register("gitClone") {
+    doLast {
+        exec {
+            commandLine("git", "clone", "https://github.com/coolguyshivam/MG-inventory.git", "repo")
+        }
+        exec {
+            workingDir("repo")
+            commandLine("git", "checkout", "10df98b559867aa1b3be458f1383ab159e3f35ff")
+        }
+        exec {
+            commandLine("sh", "-c", "cp -a repo/. . && rm -rf repo")
+        }
+    }
 }

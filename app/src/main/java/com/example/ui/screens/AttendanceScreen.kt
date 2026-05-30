@@ -1251,28 +1251,37 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                         modifier = Modifier.fillMaxWidth()
                     )
 
-                    OutlinedTextField(
-                        value = dSpec,
-                        onValueChange = { dSpec = it },
-                        label = { Text("Target Date") },
-                        readOnly = true,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                val calendar = java.util.Calendar.getInstance()
-                                android.app.DatePickerDialog(
-                                    context,
-                                    { _, year, month, dayOfMonth ->
-                                        val cal = java.util.Calendar.getInstance()
-                                        cal.set(year, month, dayOfMonth)
-                                        dSpec = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(cal.time)
-                                    },
-                                    calendar.get(java.util.Calendar.YEAR),
-                                    calendar.get(java.util.Calendar.MONTH),
-                                    calendar.get(java.util.Calendar.DAY_OF_MONTH)
-                                ).show()
-                            }
-                    )
+                    Box(modifier = Modifier.fillMaxWidth().clickable {
+                        val calendar = java.util.Calendar.getInstance()
+                        android.app.DatePickerDialog(
+                            context,
+                            { _, year, month, dayOfMonth ->
+                                val cal = java.util.Calendar.getInstance()
+                                cal.set(year, month, dayOfMonth)
+                                dSpec = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(cal.time)
+                            },
+                            calendar.get(java.util.Calendar.YEAR),
+                            calendar.get(java.util.Calendar.MONTH),
+                            calendar.get(java.util.Calendar.DAY_OF_MONTH)
+                        ).show()
+                    }) {
+                        OutlinedTextField(
+                            value = dSpec,
+                            onValueChange = { },
+                            label = { Text("Target Date") },
+                            readOnly = true,
+                            enabled = false,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                                disabledBorderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                disabledLeadingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                disabledTrailingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                disabledPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        )
+                    }
 
                     // Status Choices
                     Column {

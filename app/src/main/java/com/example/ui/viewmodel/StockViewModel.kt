@@ -1065,28 +1065,6 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
 
                 _isUploadingTransaction.value = false
                 if (allSuccess && _transactionError.value == null) {
-                    val totalAmount = itemsToProcess.sumOf { it.amount.trim().toDoubleOrNull() ?: 0.0 }
-                    val matchedParty = allParties.value.find { it.name.trim().lowercase() == nameInput.value.trim().lowercase() }
-                    if (matchedParty != null) {
-                        val ledgerType = when (typeId) {
-                            0 -> "PURCHASE"
-                            1 -> "SALE"
-                            2 -> "RETURN"
-                            3 -> "REPAIR"
-                            else -> ""
-                        }
-                        if (ledgerType.isNotEmpty() && totalAmount > 0) {
-                            val ledgerEntry = com.example.data.model.LedgerEntry(
-                                partyId = matchedParty.id,
-                                amount = totalAmount,
-                                type = ledgerType,
-                                description = "System auto-generated for $ledgerType of ${itemsToProcess.size} item(s) (Models: ${modelInput.value.trim()})",
-                                timestamp = dateInMillisInput.value
-                            )
-                            repository.addLedgerEntry(ledgerEntry)
-                        }
-                    }
-
                     when (typeId) {
                         0 -> _transactionSuccessMessage.value = "Purchase logged successfully! Added ${itemsToProcess.size} item(s)."
                         1 -> _transactionSuccessMessage.value = "Sale logged successfully! Removed ${itemsToProcess.size} item(s)."
