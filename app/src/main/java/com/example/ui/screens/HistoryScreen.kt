@@ -1134,13 +1134,9 @@ fun printHistoryEventCustom(
                         width: 140px;
                     }
                     .terms-block {
-                        font-size: 10px;
-                        background: #f7f7f7;
-                        border: 1px solid #ddd;
-                        padding: 10px;
-                        border-radius: 6px;
-                        margin-top: auto;
-                        color: #333;
+                        font-size: 13px;
+                        margin-top: 40px;
+                        color: #111;
                         white-space: pre-wrap;
                     }
                     @media print {
@@ -1189,8 +1185,8 @@ fun printHistoryEventCustom(
                         <div class="grid-row">
                             <div class="grid-cell label">Address:</div>
                             <div class="grid-cell">${addressVal.ifBlank { "_____________________________" }}</div>
-                            <div class="grid-cell label">Description:</div>
-                            <div class="grid-cell">${descVal.ifBlank { "_____________________________" }}</div>
+                            <div class="grid-cell label"></div>
+                            <div class="grid-cell"></div>
                         </div>
                     </div>
 
@@ -1233,23 +1229,20 @@ fun CustomPrintDialog(
     val defaultTerms = remember(event.actionType, event.timestamp) {
         val sdfDate = SimpleDateFormat("dd MMMM yyyy", Locale.getDefault())
         val formattedDateVal = sdfDate.format(Date(event.timestamp))
-        if (event.actionType == "SALE") {
+        if (event.actionType == "PURCHASE") {
             "उपरोक्त सभी तथ्य बिल्कुल सही है।\n" +
-            "मैने ये मोबाइल आज पूरा चेक कर के मोबाइल गैलरी से लिया है और मैं इससे संतुष्ट हूँ।\n" +
-            "अब से इस मोबाइल की सारी जिम्मेदारी केवल मेरी है।\n\n\n" +
-            "Sign                                        Date: $formattedDateVal\n\n" +
-            "1. WARRANTY ASSISTANCE: No warranty/guarantee for the used phones. In case any phone is eligible, it will be told separately and shall be valid only if it is written on this paper.\n\n" +
-            "2. REFUND POLICY: All processed sales are final. Absolutely no cash refunds. Unopened, untampered items may be considered for exchange or store ledger credit notes within 24 hours of receipt at the sole discretion of the store.\n\n" +
-            "3. OUT-FOR-REPAIR DEVICES: Repair hand-overs are registered entirely at client's risk. Please backup/clone personal user files. Retailer is not liable for data loss or software degradation during repair."
+            "मैने आज ये मोबाइल जिसका मै खुद स्वामी हू, स्वेच्छा से मोबाइल गैलरी को दिया है।\n" +
+            "उपरोक्त फोन पर किसी भी प्रकार का ऋण, ब्याज या क्लेम बाकी नहीं है। इसका किसी भी लोन/फाइनेंस कंपनी से कोई संबंध नहीं है। यदि इसपे कोई लोन रिकवरी होती है तो उसकी सारी जिम्मेदारी मेरी होगी और किसी की नहीं होगी ।\n" +
+            "आज से इस फोन का मालिक मै नहीं हू।\n\n\n" +
+            "Sign                                                       Date: $formattedDateVal\n\n" +
+            "Seller/Customer is solely responsible for the all the previous repairs, finances and other tasks related to this phone. The buyer-store does not have any responsibility of any finance emi's or and any wrong doings in the past. Any EMIs due on this phone shall be paid by the seller-customer. Buyer can independently format it now.\n\n" +
+            "REFUND POLICY: All processed sales are final. Absolutely no cash refunds. Unopened, untampered items may be considered for exchange or store ledger credit notes within 24 hours of receipt at the sole discretion of the store."
         } else {
             "उपरोक्त सभी तथ्य बिल्कुल सही है।\n" +
-            "मैने आज ये मोबाइल जिसका मै खुद स्वामी हु, स्वेच्छा से मोबाइल गैलरी को दिया है।\n" +
-            "उपरोक्त फोन पर किसी भी प्रकार का ऋण, ब्याज या क्लेम बाकी नहीं है। इसका किसी भी लोन/फाइनेंस कंपनी से कोई संबंध नहीं है। यदि इसपे कोई लोन रिकवरी होती है तो उसकी सारी जिम्मेदारी मेरी होगी और किसी की नहीं होगी।\n" +
-            "आज से इस फोन का मालिक मै नहीं हू।\n\n\n" +
-            "Sign                                        Date: $formattedDateVal\n\n\n" +
-            "1. Seller/Customer is solely responsible for the all the previous repairs, finances and other tasks related to this phone. The buyer-store does not have any responsibility of any finance emi's or and any wrong doings in the past. Any EMIs due on this phone shall be paid by the seller-customer.\n\n" +
-            "2. REFUND POLICY: All processed sales are final. Absolutely no cash refunds. Unopened, untampered items may be considered for exchange or store ledger credit notes within 24 hours of receipt at the sole discretion of the store.\n\n" +
-            "3. OUT-FOR-REPAIR DEVICES: Repair hand-overs are registered entirely at client's risk. Please backup/clone personal user files. Retailer is not liable for data loss or software degradation during repair."
+            "मैने आज यह मोबाइल मोबाइल गैलरी से सब कुछ चेक करके अपनी मर्जी से लिया है। मै इस फोन एवं उसकी कंडीशन से संतुष्ट हू।  अबसे इसकी सारी जिम्मेदारी मेरी होगी।\n\n\n" +
+            "Sign                                                       Date: $formattedDateVal\n\n" +
+            "1. WARRANTY ASSISTANCE: No warranty/guarantee for the used phones. In case any phone is eligible, it will be told separately and shall be valid only if it is written on this paper.\n\n" +
+            "2. REFUND POLICY: All processed sales are final. Absolutely no cash refunds. Unopened, untampered items may be considered for exchange or store ledger credit notes within 24 hours of receipt at the sole discretion of the store."
         }
     }
 
