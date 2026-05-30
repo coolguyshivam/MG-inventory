@@ -340,6 +340,7 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                         if (party != null) {
                             if (phoneInput.value.isBlank()) phoneInput.value = party.phoneNumber
                             if (aadhaarInput.value.isBlank()) aadhaarInput.value = party.aadhaarNumber
+                            if (addressInput.value.isBlank() && party.address.isNotBlank()) addressInput.value = party.address
                         }
                     }
                 }
@@ -1064,6 +1065,28 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
 
                 _isUploadingTransaction.value = false
                 if (allSuccess && _transactionError.value == null) {
+                    val totalAmount = itemsToProcess.sumOf { it.amount.trim().toDoubleOrNull() ?: 0.0 }
+                    val matchedParty = allParties.value.find { it.name.trim().lowercase() == nameInput.value.trim().lowercase() }
+                    if (matchedParty != null) {
+                        val ledgerType = when (typeId) {
+                            0 -> "PURCHASE"
+                            1 -> "SALE"
+                            2 -> "RETURN"
+                            3 -> "REPAIR"
+                            else -> ""
+                        }
+                        if (ledgerType.isNotEmpty() && totalAmount > 0) {
+                            val ledgerEntry = com.example.data.model.LedgerEntry(
+                                partyId = matchedParty.id,
+                                amount = totalAmount,
+                                type = ledgerType,
+                                description = "System auto-generated for $ledgerType of ${itemsToProcess.size} item(s) (Models: ${modelInput.value.trim()})",
+                                timestamp = dateInMillisInput.value
+                            )
+                            repository.addLedgerEntry(ledgerEntry)
+                        }
+                    }
+
                     when (typeId) {
                         0 -> _transactionSuccessMessage.value = "Purchase logged successfully! Added ${itemsToProcess.size} item(s)."
                         1 -> _transactionSuccessMessage.value = "Sale logged successfully! Removed ${itemsToProcess.size} item(s)."
@@ -1086,10 +1109,10 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
         }
     }
 
-    fun addParty(name: String, phone: String, aadhaar: String) {
+    fun addParty(name: String, phone: String, aadhaar: String, address: String = "") {
         viewModelScope.launch {
             try {
-                val party = com.example.data.model.Party(name = name.trim(), phoneNumber = phone.trim(), aadhaarNumber = aadhaar.trim())
+                val party = com.example.data.model.Party(name = name.trim(), phoneNumber = phone.trim(), aadhaarNumber = aadhaar.trim(), address = address.trim())
                 repository.addParty(party)
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -1097,10 +1120,10 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
         }
     }
 
-    fun editParty(partyId: String, name: String, phone: String, aadhaar: String) {
+    fun editParty(partyId: String, name: String, phone: String, aadhaar: String, address: String = "") {
         viewModelScope.launch {
             try {
-                repository.editParty(partyId, name.trim(), phone.trim(), aadhaar.trim())
+                repository.editParty(partyId, name.trim(), phone.trim(), aadhaar.trim(), address.trim())
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -1140,7 +1163,7 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
     fun recordSalaryPayment(employeeName: String, amount: Double, description: String) {
         viewModelScope.launch {
             try {
-                val existingParties = repository.allParties.first()
+                val existingParties = allParties.value
                 var party = existingParties.find { it.name.trim().lowercase() == employeeName.trim().lowercase() }
                 if (party == null) {
                     val newParty = com.example.data.model.Party(

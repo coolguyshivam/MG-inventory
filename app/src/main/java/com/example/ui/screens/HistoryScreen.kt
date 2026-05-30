@@ -87,7 +87,9 @@ fun HistoryScreen(viewModel: StockViewModel) {
                 event.serialNumber.lowercase().contains(key) ||
                 event.model.lowercase().contains(key) ||
                 event.name.lowercase().contains(key) ||
-                event.userId.lowercase().contains(key)
+                event.userId.lowercase().contains(key) ||
+                event.phoneNumber?.lowercase()?.contains(key) == true ||
+                event.description.lowercase().contains(key)
             }
         }
 

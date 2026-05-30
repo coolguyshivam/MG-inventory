@@ -163,6 +163,7 @@ fun LedgerScreen(viewModel: StockViewModel) {
         var name by remember { mutableStateOf("") }
         var phone by remember { mutableStateOf("") }
         var aadhaar by remember { mutableStateOf("") }
+        var address by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { showAddPartyDialog = false },
             title = { Text("Add Party") },
@@ -171,12 +172,13 @@ fun LedgerScreen(viewModel: StockViewModel) {
                     OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, singleLine = true)
                     OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Phone") }, singleLine = true)
                     OutlinedTextField(value = aadhaar, onValueChange = { aadhaar = it }, label = { Text("Aadhaar") }, singleLine = true)
+                    OutlinedTextField(value = address, onValueChange = { address = it }, label = { Text("Address") }, singleLine = false)
                 }
             },
             confirmButton = {
                 Button(onClick = {
                     if (name.isNotBlank()) {
-                        viewModel.addParty(name, phone, aadhaar)
+                        viewModel.addParty(name, phone, aadhaar, address)
                         showAddPartyDialog = false
                     }
                 }) { Text("Save") }
@@ -249,6 +251,7 @@ fun LedgerScreen(viewModel: StockViewModel) {
         var editName by remember { mutableStateOf(selectedParty!!.name) }
         var editPhone by remember { mutableStateOf(selectedParty!!.phoneNumber) }
         var editAadhaar by remember { mutableStateOf(selectedParty!!.aadhaarNumber ?: "") }
+        var editAddress by remember { mutableStateOf(selectedParty!!.address) }
         AlertDialog(
             onDismissRequest = { showEditPartyDialog = false },
             title = { Text("Edit Party") },
@@ -257,14 +260,15 @@ fun LedgerScreen(viewModel: StockViewModel) {
                     OutlinedTextField(value = editName, onValueChange = { editName = it }, label = { Text("Name") }, singleLine = true)
                     OutlinedTextField(value = editPhone, onValueChange = { editPhone = it }, label = { Text("Phone") }, singleLine = true)
                     OutlinedTextField(value = editAadhaar, onValueChange = { editAadhaar = it }, label = { Text("Aadhaar") }, singleLine = true)
+                    OutlinedTextField(value = editAddress, onValueChange = { editAddress = it }, label = { Text("Address") }, singleLine = false)
                 }
             },
             confirmButton = {
                 Button(onClick = {
                     if (editName.isNotBlank()) {
-                        viewModel.editParty(selectedParty!!.id, editName, editPhone, editAadhaar)
+                        viewModel.editParty(selectedParty!!.id, editName, editPhone, editAadhaar, editAddress)
                         showEditPartyDialog = false
-                        selectedParty = selectedParty?.copy(name = editName, phoneNumber = editPhone, aadhaarNumber = editAadhaar)
+                        selectedParty = selectedParty?.copy(name = editName, phoneNumber = editPhone, aadhaarNumber = editAadhaar, address = editAddress)
                     }
                 }) { Text("Save") }
             },

@@ -446,7 +446,7 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                             verticalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
                             Text(
-                                text = "Today's Ledger Stamp",
+                                text = "Today's Attendance for ${targetUser.username}",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
@@ -929,8 +929,8 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(modifier = Modifier.weight(0.7f)) {
-                                    Text("Apply For Outrage & Leave", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSecondaryContainer)
-                                    Text("Request vacation, casual or medical leave directly to managers in past, present or future dates.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f))
+                                    Text("Apply For Leave", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                                    Text("Request casual, medical or vacation leave.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f))
                                 }
                                 Button(
                                     onClick = { showLeaveDialog = true },
@@ -1254,9 +1254,24 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                     OutlinedTextField(
                         value = dSpec,
                         onValueChange = { dSpec = it },
-                        label = { Text("Target Date (yyyy-MM-dd)") },
-                        placeholder = { Text("E.g., $todayStr") },
-                        modifier = Modifier.fillMaxWidth()
+                        label = { Text("Target Date") },
+                        readOnly = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                val calendar = java.util.Calendar.getInstance()
+                                android.app.DatePickerDialog(
+                                    context,
+                                    { _, year, month, dayOfMonth ->
+                                        val cal = java.util.Calendar.getInstance()
+                                        cal.set(year, month, dayOfMonth)
+                                        dSpec = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(cal.time)
+                                    },
+                                    calendar.get(java.util.Calendar.YEAR),
+                                    calendar.get(java.util.Calendar.MONTH),
+                                    calendar.get(java.util.Calendar.DAY_OF_MONTH)
+                                ).show()
+                            }
                     )
 
                     // Status Choices

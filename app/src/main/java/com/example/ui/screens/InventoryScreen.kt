@@ -113,7 +113,9 @@ fun InventoryScreen(viewModel: StockViewModel) {
             resultList = resultList.filter { item ->
                 item.serialNumber.lowercase().contains(key) ||
                 item.model.lowercase().contains(key) ||
-                item.name.lowercase().contains(key)
+                item.name.lowercase().contains(key) ||
+                item.phoneNumber?.lowercase()?.contains(key) == true ||
+                item.description.lowercase().contains(key)
             }
         }
 

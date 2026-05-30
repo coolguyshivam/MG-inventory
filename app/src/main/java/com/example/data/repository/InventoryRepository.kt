@@ -433,11 +433,12 @@ class InventoryRepository {
         db.collection("parties").document(party.id).set(party).await()
     }
 
-    suspend fun editParty(partyId: String, name: String, phone: String, aadhaar: String) {
+    suspend fun editParty(partyId: String, name: String, phone: String, aadhaar: String, address: String = "") {
         val updates = mapOf(
             "name" to name,
             "phoneNumber" to phone,
-            "aadhaarNumber" to aadhaar
+            "aadhaarNumber" to aadhaar,
+            "address" to address
         )
         db.collection("parties").document(partyId).update(updates).await()
     }

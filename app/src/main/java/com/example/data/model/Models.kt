@@ -46,6 +46,7 @@ data class Party(
     val name: String = "",
     val phoneNumber: String = "",
     val aadhaarNumber: String = "",
+    val address: String = "",
     val balance: Double = 0.0 // positive = they owe us, negative = we owe them
 )
 
