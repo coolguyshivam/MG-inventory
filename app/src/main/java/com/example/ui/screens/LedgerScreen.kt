@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.automirrored.filled.*
@@ -39,6 +40,7 @@ fun LedgerScreen(viewModel: StockViewModel) {
     val isAdmin = loggedInUser?.role == "Admin"
     var selectedEventForDialog by remember { mutableStateOf<com.example.data.model.HistoryEvent?>(null) }
     var eventToPrintCustomly by remember { mutableStateOf<com.example.data.model.HistoryEvent?>(null) }
+    var selectedPhotosForViewer by remember { mutableStateOf<List<String>?>(null) }
 
     var showAddPartyDialog by remember { mutableStateOf(false) }
     var showEditPartyDialog by remember { mutableStateOf(false) }
@@ -282,7 +284,7 @@ fun LedgerScreen(viewModel: StockViewModel) {
                     event = event,
                     isExpanded = true,
                     onExpandTapped = {},
-                    onPhotoClick = { },
+                    onPhotoClick = { selectedPhotosForViewer = it },
                     onPrintClick = { ev ->
                         eventToPrintCustomly = ev
                     }
@@ -299,6 +301,69 @@ fun LedgerScreen(viewModel: StockViewModel) {
             event = eventToPrintCustomly!!,
             onDismiss = { eventToPrintCustomly = null }
         )
+    }
+
+    if (selectedPhotosForViewer != null) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { selectedPhotosForViewer = null },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            val photos = selectedPhotosForViewer!!
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black)
+            ) {
+                val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { photos.size })
+                androidx.compose.foundation.pager.HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize()
+                ) { page ->
+                    coil.compose.AsyncImage(
+                        model = com.example.util.AppUtils.resolveImageModel(photos[page]),
+                        contentDescription = "Full Screen Photo",
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 8.dp),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                        .align(Alignment.TopCenter),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    IconButton(
+                        onClick = { selectedPhotosForViewer = null },
+                        modifier = Modifier.background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                    }
+                    IconButton(
+                        onClick = {
+                            com.example.util.AppUtils.saveImageToGallery(ctx, photos[pagerState.currentPage])
+                        },
+                        modifier = Modifier.background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                    ) {
+                        Icon(Icons.Default.Download, contentDescription = "Download", tint = Color.White)
+                    }
+                }
+                if (photos.size > 1) {
+                    Text(
+                        text = "${pagerState.currentPage + 1} / ${photos.size}",
+                        color = Color.White,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(24.dp)
+                            .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
+            }
+        }
     }
 
     if (showEditPartyDialog && selectedParty != null) {

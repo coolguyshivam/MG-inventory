@@ -166,24 +166,10 @@ fun TransactionsScreen(viewModel: StockViewModel) {
     val quantity by viewModel.quantityInput.collectAsStateWithLifecycle()
     val photoUri by viewModel.photoUriInput.collectAsStateWithLifecycle()
     val allParties by viewModel.allParties.collectAsStateWithLifecycle()
-    val combinedParties = remember(allParties) {
-        val list = allParties.toMutableList()
-        val hardcoded = viewModel.regularPartners.map {
-            com.example.data.model.Party(
-                name = it.name,
-                phoneNumber = it.phone,
-                aadhaarNumber = it.aadhaar,
-                address = ""
-            )
-        }
-        for (hp in hardcoded) {
-            if (list.none { it.name.trim().lowercase() == hp.name.trim().lowercase() }) {
-                list.add(hp)
-            }
-        }
-        list
-    }
+    val combinedParties = allParties
     var nameFocused by remember { mutableStateOf(false) }
+    var showPartySelectionDialog by remember { mutableStateOf(false) }
+    var partySearchQuery by remember { mutableStateOf("") }
 
     val technician by viewModel.technicianNameInput.collectAsStateWithLifecycle()
     val repairReason by viewModel.repairReasonInput.collectAsStateWithLifecycle()
@@ -556,6 +542,15 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                         label = { Text("Name *") },
                         singleLine = true,
                         shape = RoundedCornerShape(10.dp),
+                        trailingIcon = {
+                            IconButton(onClick = { showPartySelectionDialog = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.Group,
+                                    contentDescription = "Select Registered Party",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .onFocusChanged { nameFocused = it.isFocused },
@@ -1145,6 +1140,122 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                 }
             }
         }
+    }
+
+    if (showPartySelectionDialog) {
+        AlertDialog(
+            onDismissRequest = { showPartySelectionDialog = false },
+            title = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Group,
+                        contentDescription = "Parties",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Text("Select Ledger Party", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedTextField(
+                        value = partySearchQuery,
+                        onValueChange = { partySearchQuery = it },
+                        label = { Text("Search Party by Name...") },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    val filtered = remember(partySearchQuery, combinedParties) {
+                        if (partySearchQuery.isBlank()) {
+                            combinedParties
+                        } else {
+                            combinedParties.filter { it.name.contains(partySearchQuery, ignoreCase = true) }
+                        }
+                    }
+
+                    if (filtered.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "No ledger parties found.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 280.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            items(filtered) { party ->
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            viewModel.nameInput.value = party.name
+                                            viewModel.phoneInput.value = party.phoneNumber
+                                            viewModel.aadhaarInput.value = party.aadhaarNumber ?: ""
+                                            viewModel.addressInput.value = party.address
+                                            
+                                            // Reset touched states so we don't trigger validation warnings
+                                            nameTouched.value = false
+                                            phoneTouched.value = false
+                                            aadhaarTouched.value = false
+                                            addressTouched.value = false
+                                            
+                                            showPartySelectionDialog = false
+                                        },
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Text(
+                                            text = party.name,
+                                            fontWeight = FontWeight.Bold,
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                        if (party.phoneNumber.isNotBlank()) {
+                                            Text(
+                                                text = "📞 Phone: ${party.phoneNumber}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        if (party.address.isNotBlank()) {
+                                            Text(
+                                                text = "📍 Address: ${party.address}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showPartySelectionDialog = false }) {
+                    Text("Close")
+                }
+            }
+        )
     }
 }
 }

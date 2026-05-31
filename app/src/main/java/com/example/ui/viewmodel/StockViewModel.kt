@@ -895,7 +895,6 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
         technicianNameInput.value = ""
         repairReasonInput.value = ""
         _transactionError.value = null
-        _transactionSuccessMessage.value = null
     }
 
     fun addSubItem() {
