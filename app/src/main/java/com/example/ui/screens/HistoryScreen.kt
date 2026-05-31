@@ -34,6 +34,10 @@ import com.example.ui.viewmodel.StockViewModel
 import java.text.SimpleDateFormat
 import java.util.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -743,225 +747,211 @@ _Logged under Mobile Gallery System_
 private var activePrintWebView: android.webkit.WebView? = null // Retain webview to avoid GC crash during print
 
 fun printHistoryEvent(context: android.content.Context, event: HistoryEvent) {
-    try {
-        val printManager = context.getSystemService(android.content.Context.PRINT_SERVICE) as? android.print.PrintManager
-        if (printManager == null) {
-            android.widget.Toast.makeText(context, "Print service not available", android.widget.Toast.LENGTH_SHORT).show()
-            return
-        }
-        
-        val webView = android.webkit.WebView(context).apply {
-            settings.allowContentAccess = true
-            settings.allowFileAccess = true
-        }
-        activePrintWebView = webView
-        
-        val sdf = SimpleDateFormat("dd MMM yyyy hh:mm a", Locale.getDefault())
-        val date = sdf.format(Date(event.timestamp))
-        
-        val imgTags = event.photoUri?.split(",")?.filter { it.isNotBlank() && (!it.startsWith("ic_") || it in listOf("ic_phone_blue", "ic_phone_amber", "ic_watch", "ic_tablet")) }?.map {
-            com.example.util.AppUtils.convertImageToWebviewBase64(context, it)
-        }?.joinToString("") {
-            "<img src='$it' style='max-width: 250px; max-height: 180px; object-fit: contain; margin-top: 12px; margin-right: 12px; border: 2px solid #ccc; border-radius: 4px; padding: 4px;'/>"
-        } ?: ""
+    val printManager = context.getSystemService(android.content.Context.PRINT_SERVICE) as? android.print.PrintManager
+    if (printManager == null) {
+        android.widget.Toast.makeText(context, "Print service not available", android.widget.Toast.LENGTH_SHORT).show()
+        return
+    }
 
-        val htmlDocument = """
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <style>
-                    body {
-                        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-                        padding: 20px;
-                        color: #111;
-                        line-height: 1.4;
-                        max-width: 750px;
-                        margin: 0 auto;
-                        box-sizing: border-box;
-                    }
-                    .invoice-card {
-                        border: 3px double #333;
-                        border-radius: 8px;
-                        padding: 24px;
-                        background: #fff;
-                        box-sizing: border-box;
-                    }
-                    .header {
-                        display: flex;
-                        justify-content: space-between;
-                        align-items: center;
-                        border-bottom: 3px solid #111;
-                        padding-bottom: 8px;
-                        margin-bottom: 16px;
-                    }
-                    .header-title {
-                        font-size: 20px;
-                        font-weight: 800;
-                        text-transform: uppercase;
-                        letter-spacing: 0.8px;
-                        color: #111;
-                    }
-                    .header-meta {
-                        font-size: 11px;
-                        text-align: right;
-                        color: #333;
-                    }
-                    .grid {
-                        display: table;
-                        width: 100%;
-                        margin-bottom: 16px;
-                        border-collapse: collapse;
-                    }
-                    .grid-row {
-                        display: table-row;
-                    }
-                    .grid-cell {
-                        display: table-cell;
-                        padding: 8px 10px;
-                        font-size: 11px;
-                        border-bottom: 1px dotted #ccc;
-                    }
-                    .label {
-                        font-weight: bold;
-                        color: #111;
-                        background: #fdfdfd;
-                        width: 130px;
-                    }
-                    .photos {
-                        margin-top: 16px;
-                        display: flex;
-                        gap: 12px;
-                        flex-wrap: wrap;
-                    }
-                    .photos img {
-                        max-height: 120px;
-                        border: 1px solid #ddd;
-                        padding: 4px;
-                        border-radius: 4px;
-                    }
-                    .terms-block {
-                        font-size: 9px;
-                        background: #f9f9f9;
-                        border: 1px solid #e0e0e0;
-                        padding: 10px;
-                        border-radius: 4px;
-                        margin-top: 16px;
-                        color: #333;
-                        white-space: pre-wrap;
-                    }
-                    .sign-row {
-                        margin-top: 80px; /* Luxurious margin above signing row */
-                        display: flex;
-                        justify-content: space-between;
-                        padding: 0 15px;
-                        font-size: 11px;
-                    }
-                    .sign-line {
-                        width: 200px;
-                        border-top: 1px solid #111;
-                        text-align: center;
-                        padding-top: 8px; /* Extra padding top */
-                        margin-top: 60px; /* High margin top around sign line for ease of handwritten writing */
-                        font-weight: bold;
-                    }
-                    .footer-note {
-                        font-size: 8px;
-                        text-align: center;
-                        margin-top: 16px;
-                        color: #888;
-                        font-style: italic;
-                    }
-                    @media print {
-                        body { padding: 0; margin: 0; }
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="invoice-card">
-                    <div class="header">
-                        <div>
-                            <div class="header-title">Mobile Gallery</div>
-                            <!-- <div style="font-size: 10px; color: #555; font-style: italic;">Official Transaction & Safe-Custody Bill</div> -->
+    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+        try {
+            val sdf = SimpleDateFormat("dd MMM yyyy hh:mm a", Locale.getDefault())
+            val date = sdf.format(Date(event.timestamp))
+            
+            val imgTags = event.photoUri?.split(",")?.filter { it.isNotBlank() && (!it.startsWith("ic_") || it in listOf("ic_phone_blue", "ic_phone_amber", "ic_watch", "ic_tablet")) }?.map {
+                com.example.util.AppUtils.convertImageToWebviewBase64(context, it)
+            }?.joinToString("") {
+                "<img src='$it' style='max-width: 47%; max-height: 480px; object-fit: contain; margin-top: 10px; margin-right: 10px; border: 1.5px solid #bbb; border-radius: 4px; padding: 3px;'/>"
+            } ?: ""
+
+            val htmlDocument = """
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <style>
+                        body {
+                            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+                            padding: 20px;
+                            color: #111;
+                            line-height: 1.4;
+                            max-width: 750px;
+                            margin: 0 auto;
+                            box-sizing: border-box;
+                        }
+                        .invoice-card {
+                            border: 3px double #333;
+                            border-radius: 8px;
+                            padding: 24px;
+                            background: #fff;
+                            box-sizing: border-box;
+                        }
+                        .header {
+                            display: flex;
+                            justify-content: space-between;
+                            align-items: center;
+                            border-bottom: 3px solid #111;
+                            padding-bottom: 8px;
+                            margin-bottom: 16px;
+                        }
+                        .header-title {
+                            font-size: 20px;
+                            font-weight: 800;
+                            text-transform: uppercase;
+                            letter-spacing: 0.8px;
+                            color: #111;
+                        }
+                        .header-meta {
+                            font-size: 11px;
+                            text-align: right;
+                            color: #333;
+                        }
+                        .grid {
+                            display: table;
+                            width: 100%;
+                            margin-bottom: 16px;
+                            border-collapse: collapse;
+                        }
+                        .grid-row {
+                            display: table-row;
+                        }
+                        .grid-cell {
+                            display: table-cell;
+                            padding: 8px 10px;
+                            font-size: 11px;
+                            border-bottom: 1px dotted #ccc;
+                        }
+                        .label {
+                            font-weight: bold;
+                            color: #111;
+                            background: #fdfdfd;
+                            width: 130px;
+                        }
+                        .photos {
+                            margin-top: 12px;
+                            display: flex;
+                            gap: 12px;
+                            flex-wrap: wrap;
+                            justify-content: center;
+                        }
+                        .photos img {
+                            max-height: 480px;
+                            max-width: 47%;
+                            border: 1.5px solid #bbb;
+                            padding: 3px;
+                            border-radius: 4px;
+                        }
+                        .terms-block {
+                            font-size: 9px;
+                            background: #f9f9f9;
+                            border: 1px solid #e0e0e0;
+                            padding: 10px;
+                            border-radius: 4px;
+                            margin-top: 16px;
+                            color: #333;
+                            white-space: pre-wrap;
+                        }
+                        .footer-note {
+                            font-size: 8px;
+                            text-align: center;
+                            margin-top: 16px;
+                            color: #888;
+                            font-style: italic;
+                        }
+                        @media print {
+                            body { padding: 0; margin: 0; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="invoice-card">
+                        <div class="header">
+                            <div>
+                                <div class="header-title">Mobile Gallery</div>
+                                <div style="font-size: 11px; margin-top: 2px; color: #555;">Operator ID: ${event.userId}</div>
+                            </div>
+                            <div class="header-meta">
+                                <div>Date: $date</div>
+                                <div>Tx ID: ${event.id.take(8).uppercase()}</div>
+                            </div>
                         </div>
-                        <div class="header-meta">
-                            <div>Date: $date</div>
-                            <div>Tx ID: ${event.id.take(8).uppercase()}</div>
+    
+                        <div class="grid">
+                            <div class="grid-row">
+                                <div class="grid-cell label">Transaction Mode:</div>
+                                <div class="grid-cell" style="font-weight: bold; color: #111;">${event.actionType}</div>
+                                <div class="grid-cell label">Brand & Model:</div>
+                                <div class="grid-cell">${event.model.ifBlank { "________________" }}</div>
+                            </div>
+                            <div class="grid-row">
+                                <div class="grid-cell label">Customer Name:</div>
+                                <div class="grid-cell">${event.name.ifBlank { "_____________________________" }}</div>
+                                <div class="grid-cell label">Contact Phone:</div>
+                                <div class="grid-cell">${event.phoneNumber ?: "_____________________________"}</div>
+                            </div>
+                            <div class="grid-row">
+                                <div class="grid-cell label">IMEI/Serial Key:</div>
+                                <div class="grid-cell" style="font-family: monospace;">${event.serialNumber.ifBlank { "________________" }}</div>
+                                <div class="grid-cell label"></div>
+                                <div class="grid-cell"></div>
+                            </div>
+                            <div class="grid-row">
+                                <div class="grid-cell label">Audited By:</div>
+                                <div class="grid-cell">${event.userId}</div>
+                                <div class="grid-cell label">Quantity Unit:</div>
+                                <div class="grid-cell">${event.quantity} Unit(s)</div>
+                            </div>
+                        </div>
+    
+                        <div style="font-size: 11px; margin-top: 8px; padding-bottom: 8px; border-bottom: 1px dotted #ccc;">
+                            <strong>Log Remarks:</strong> ${event.description.ifBlank { "No additional remarks logged." }}
+                        </div>
+    
+                        <div class="photos">$imgTags</div>
+    
+                        <div class="terms-block">
+                            <strong>COMMON TRANSACTION DISCLOSURES & POLICY TERMS:</strong><br/>
+    1. WARRANTY ASSISTANCE: All brand items are covered solely by manufacturer service centers. Retailer holds no liability for mechanical failure, screen damage, liquid ingress, or physical wear/breakage.
+    2. DOCUMENTATION REQUIREMENT: Please retain original packaging box, complete inside accessories, and this physical printed voucher/bill to initiate claims, verification, or service assistance.
+    3. REFUND POLICY: All processed sales are final. Absolutely no cash refunds. Unopened, untampered items may be considered for exchange or store ledger credit notes within 24 hours of receipt.
+    4. OUT-FOR-REPAIR DEVICES: Repair hand-overs are registered entirely at client's risk. Please backup/clone personal user files. Retailer is not liable for data loss or software degradation during repair.
+                        </div>
+    
+                        <div class="footer-note">
+                            Thank you for your business! | System generated via Mobile Gallery Suite.
                         </div>
                     </div>
+                </body>
+                </html>
+            """.trimIndent()
 
-                    <div class="grid">
-                        <div class="grid-row">
-                            <div class="grid-cell label">Transaction Mode:</div>
-                            <div class="grid-cell" style="font-weight: bold; color: #111;">${event.actionType}</div>
-                            <div class="grid-cell label">Brand & Model:</div>
-                            <div class="grid-cell">${event.model.ifBlank { "________________" }}</div>
-                        </div>
-                        <div class="grid-row">
-                            <div class="grid-cell label">Customer Name:</div>
-                            <div class="grid-cell">${event.name.ifBlank { "_____________________________" }}</div>
-                            <div class="grid-cell label">Contact Phone:</div>
-                            <div class="grid-cell">${event.phoneNumber ?: "_____________________________"}</div>
-                        </div>
-                        <div class="grid-row">
-                            <div class="grid-cell label">IMEI/Serial Key:</div>
-                            <div class="grid-cell" style="font-family: monospace;">${event.serialNumber.ifBlank { "________________" }}</div>
-                            <!-- <div class="grid-cell label">Disbursed Amount:</div> -->
-                            <!-- <div class="grid-cell" style="font-weight: bold; color: #111;">INR ${String.format("%,.2f", event.amount)}</div> -->
-                            <div class="grid-cell label"></div>
-                            <div class="grid-cell"></div>
-                        </div>
-                        <div class="grid-row">
-                            <div class="grid-cell label">Audited By:</div>
-                            <div class="grid-cell">${event.userId}</div>
-                            <div class="grid-cell label">Quantity Unit:</div>
-                            <div class="grid-cell">${event.quantity} Unit(s)</div>
-                        </div>
-                    </div>
-
-                    <div style="font-size: 11px; margin-top: 8px; padding-bottom: 8px; border-bottom: 1px dotted #ccc;">
-                        <strong>Log Remarks:</strong> ${event.description.ifBlank { "No additional remarks logged." }}
-                    </div>
-
-                    <div class="photos">$imgTags</div>
-
-                    <div class="terms-block">
-                        <strong>COMMON TRANSACTION DISCLOSURES & POLICY TERMS:</strong><br/>
-1. WARRANTY ASSISTANCE: All brand items are covered solely by manufacturer service centers. Retailer holds no liability for mechanical failure, screen damage, liquid ingress, or physical wear/breakage.
-2. DOCUMENTATION REQUIREMENT: Please retain original packaging box, complete inside accessories, and this physical printed voucher/bill to initiate claims, verification, or service assistance.
-3. REFUND POLICY: All processed sales are final. Absolutely no cash refunds. Unopened, untampered items may be considered for exchange or store ledger credit notes within 24 hours of receipt.
-4. OUT-FOR-REPAIR DEVICES: Repair hand-overs are registered entirely at client's risk. Please backup/clone personal user files. Retailer is not liable for data loss or software degradation during repair.
-                    </div>
-
-                    <div class="sign-row">
-                        <div class="sign-line">Operator / Auditor Signature</div>
-                        <div class="sign-line">Customer Accept Signature</div>
-                    </div>
-
-                    <div class="footer-note">
-                        Thank you for your business! | System generated via Mobile Gallery Suite.
-                    </div>
-                </div>
-            </body>
-            </html>
-        """.trimIndent()
-
-        webView.webViewClient = object : android.webkit.WebViewClient() {
-            override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
-                try {
-                    view?.let {
-                        val printAdapter = it.createPrintDocumentAdapter("Transaction Receipt")
-                        val jobName = "Receipt_${event.serialNumber}"
-                        printManager.print(jobName, printAdapter, android.print.PrintAttributes.Builder().build())
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                val webView = android.webkit.WebView(context).apply {
+                    settings.allowContentAccess = true
+                    settings.allowFileAccess = true
                 }
+                activePrintWebView = webView
+
+                webView.webViewClient = object : android.webkit.WebViewClient() {
+                    override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
+                        try {
+                            view?.let {
+                                val printAdapter = it.createPrintDocumentAdapter("Transaction Receipt")
+                                val jobName = "Receipt_${event.serialNumber}"
+                                printManager.print(jobName, printAdapter, android.print.PrintAttributes.Builder().build())
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                }
+                webView.loadDataWithBaseURL(null, htmlDocument, "text/HTML", "UTF-8", null)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                android.widget.Toast.makeText(context, "Cannot generate PDF", android.widget.Toast.LENGTH_SHORT).show()
             }
         }
-        webView.loadDataWithBaseURL(null, htmlDocument, "text/HTML", "UTF-8", null)
-    } catch (e: Exception) {
-        e.printStackTrace()
-        android.widget.Toast.makeText(context, "Cannot generate PDF", android.widget.Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -1011,224 +1001,208 @@ fun printHistoryEventCustom(
     selectedPhotos: List<String>,
     placeholderCount: Int
 ) {
-    try {
-        val printManager = context.getSystemService(android.content.Context.PRINT_SERVICE) as? android.print.PrintManager
-        if (printManager == null) {
-            android.widget.Toast.makeText(context, "Print service not available", android.widget.Toast.LENGTH_SHORT).show()
-            return
-        }
-        
-        val webView = android.webkit.WebView(context).apply {
-            settings.allowContentAccess = true
-            settings.allowFileAccess = true
-        }
-        activePrintWebView = webView
-        
-        val sdf = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
-        val date = sdf.format(Date(event.timestamp))
-        
-        val loadedPhotos = selectedPhotos.map {
-            com.example.util.AppUtils.convertImageToWebviewBase64(context, it)
-        }
+    val printManager = context.getSystemService(android.content.Context.PRINT_SERVICE) as? android.print.PrintManager
+    if (printManager == null) {
+        android.widget.Toast.makeText(context, "Print service not available", android.widget.Toast.LENGTH_SHORT).show()
+        return
+    }
 
-        val declarationTitle = when (event.actionType) {
-            "PURCHASE" -> "Purchase Declaration"
-            "SALE" -> "Sale Declaration"
-            "REPAIR_SENT", "REPAIR_RETURNED" -> "Repair Declaration"
-            "RETURN" -> "Return Declaration"
-            else -> "${event.actionType.replace("_", " ")} Declaration"
-        }
+    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+        try {
+            val sdf = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
+            val date = sdf.format(Date(event.timestamp))
+            
+            val loadedPhotos = selectedPhotos.map {
+                com.example.util.AppUtils.convertImageToWebviewBase64(context, it)
+            }
 
-        val (addressVal, descVal) = extractAddressAndDescription(event.description)
+            val declarationTitle = when (event.actionType) {
+                "PURCHASE" -> "Purchase Declaration"
+                "SALE" -> "Sale Declaration"
+                "REPAIR_SENT", "REPAIR_RETURNED" -> "Repair Declaration"
+                "RETURN" -> "Return Declaration"
+                else -> "${event.actionType.replace("_", " ")} Declaration"
+            }
 
-        var photosHtml = ""
-        if (loadedPhotos.isNotEmpty()) {
-            photosHtml += """
-                <div style="margin-top: 15px; margin-bottom: 15px; text-align: center; border-top: 1px dotted #ccc; padding-top: 12px;">
-                    <div style="font-size: 11px; font-weight: bold; color: #555; text-transform: uppercase; margin-bottom: 8px; text-align: left;">Attached Transaction Snapshots:</div>
-                    <div style="display: block; text-align: center;">
-            """.trimIndent()
-            for (photo in loadedPhotos) {
+            val (addressVal, descVal) = extractAddressAndDescription(event.description)
+
+            var photosHtml = ""
+            if (loadedPhotos.isNotEmpty()) {
                 photosHtml += """
-                        <img src="$photo" style="max-width: 280px; max-height: 200px; object-fit: contain; border: 2px solid #ddd; border-radius: 4px; padding: 4px; margin: 8px; display: inline-block;" />
+                    <div style="margin-top: 10px; margin-bottom: 10px; text-align: center;">
+                        <div style="display: block; text-align: center;">
+                """.trimIndent()
+                for (photo in loadedPhotos) {
+                    photosHtml += """
+                            <img src="$photo" style="max-width: 47%; max-height: 480px; width: auto; height: auto; object-fit: contain; border: 1.5px solid #bbb; border-radius: 4px; padding: 3px; margin: 6px; display: inline-block;" />
+                    """.trimIndent()
+                }
+                photosHtml += """
+                        </div>
+                    </div>
                 """.trimIndent()
             }
-            photosHtml += """
+
+            val htmlDocument = """
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <style>
+                        body {
+                            font-family: sans-serif;
+                            padding: 10px;
+                            color: #111;
+                            line-height: 1.3;
+                            max-width: 800px;
+                            margin: 0 auto;
+                            box-sizing: border-box;
+                        }
+                        .invoice-card {
+                            border: 2px solid #222;
+                            border-radius: 4px;
+                            padding: 16px;
+                            background: #fff;
+                            box-sizing: border-box;
+                            min-height: 95vh;
+                            display: flex;
+                            flex-direction: column;
+                        }
+                        .header {
+                            display: flex;
+                            justify-content: space-between;
+                            align-items: center;
+                            border-bottom: 2px solid #222;
+                            padding-bottom: 4px;
+                            margin-bottom: 8px;
+                        }
+                        .header-title {
+                            font-size: 16px;
+                            font-weight: 800;
+                            text-transform: uppercase;
+                            letter-spacing: 0.5px;
+                            color: #111;
+                        }
+                        .header-meta {
+                            font-size: 11px;
+                            text-align: right;
+                            color: #444;
+                        }
+                        .grid {
+                            display: table;
+                            width: 100%;
+                            margin-bottom: 8px;
+                        }
+                        .grid-row {
+                            display: table-row;
+                        }
+                        .grid-cell {
+                            display: table-cell;
+                            padding: 4px 6px;
+                            font-size: 11px;
+                            border-bottom: 1px dotted #ccc;
+                        }
+                        .label {
+                            font-weight: bold;
+                            color: #111;
+                            width: 140px;
+                        }
+                        .terms-block {
+                            font-size: 11px;
+                            margin-top: 15px;
+                            color: #111;
+                            white-space: pre-wrap;
+                            border-bottom: 1px dotted #ccc;
+                            padding-bottom: 15px;
+                        }
+                        @media print {
+                            body { padding: 0; margin: 0; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="invoice-card">
+                        <div class="header">
+                            <div>
+                                <div class="header-title">$declarationTitle</div>
+                                <div style="font-size: 11px; margin-top: 2px; color: #555;">Operator ID: ${event.userId}</div>
+                            </div>
+                            <div class="header-meta">
+                                <div>Date: $date</div>
+                                <div>Tx ID: ${event.id.take(8).uppercase()}</div>
+                            </div>
+                        </div>
+                        
+                        <div class="grid">
+                            <div class="grid-row">
+                                <div class="grid-cell label">Action Mode:</div>
+                                <div class="grid-cell" style="font-weight: bold; color: #111;">${event.actionType}</div>
+                                <div class="grid-cell label">Brand & Model:</div>
+                                <div class="grid-cell">${event.model.ifBlank { "________________" }}</div>
+                            </div>
+                            <div class="grid-row">
+                                <div class="grid-cell label">Customer Name:</div>
+                                <div class="grid-cell">${event.name.ifBlank { "_____________________________" }}</div>
+                                <div class="grid-cell label">Contact Phone:</div>
+                                <div class="grid-cell">${event.phoneNumber ?: "_____________________________"}</div>
+                            </div>
+                            <div class="grid-row">
+                                <div class="grid-cell label">IMEI / Serial key:</div>
+                                <div class="grid-cell" style="font-family: monospace;">${event.serialNumber.ifBlank { "________________" }}</div>
+                                <div class="grid-cell label"></div>
+                                <div class="grid-cell"></div>
+                            </div>
+                            <div class="grid-row">
+                                <div class="grid-cell label">Aadhaar Number:</div>
+                                <div class="grid-cell" style="font-family: monospace;">${event.aadhaarNumber?.ifBlank { "_____________________________" } ?: "_____________________________"}</div>
+                                <div class="grid-cell label">Quantity / Qty:</div>
+                                <div class="grid-cell">${event.quantity} unit(s)</div>
+                            </div>
+                            <div class="grid-row">
+                                <div class="grid-cell label">Address:</div>
+                                <div class="grid-cell">${addressVal.ifBlank { "_____________________________" }}</div>
+                                <div class="grid-cell label"></div>
+                                <div class="grid-cell"></div>
+                            </div>
+                        </div>
+    
+                        <div class="terms-block">
+                            $customText
+                        </div>
+    
+                        $photosHtml
                     </div>
-                </div>
+                </body>
+                </html>
             """.trimIndent()
-        }
 
-        val htmlDocument = """
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <style>
-                    body {
-                        font-family: sans-serif;
-                        padding: 10px;
-                        color: #111;
-                        line-height: 1.3;
-                        max-width: 800px;
-                        margin: 0 auto;
-                        box-sizing: border-box;
-                    }
-                    .invoice-card {
-                        border: 2px solid #222;
-                        border-radius: 4px;
-                        padding: 16px;
-                        background: #fff;
-                        box-sizing: border-box;
-                        min-height: 95vh;
-                        display: flex;
-                        flex-direction: column;
-                    }
-                    .header {
-                        display: flex;
-                        justify-content: space-between;
-                        align-items: center;
-                        border-bottom: 2px solid #222;
-                        padding-bottom: 4px;
-                        margin-bottom: 8px;
-                    }
-                    .header-title {
-                        font-size: 16px;
-                        font-weight: 800;
-                        text-transform: uppercase;
-                        letter-spacing: 0.5px;
-                        color: #111;
-                    }
-                    .header-meta {
-                        font-size: 11px;
-                        text-align: right;
-                        color: #444;
-                    }
-                    .grid {
-                        display: table;
-                        width: 100%;
-                        margin-bottom: 8px;
-                    }
-                    .grid-row {
-                        display: table-row;
-                    }
-                    .grid-cell {
-                        display: table-cell;
-                        padding: 4px 6px;
-                        font-size: 11px;
-                        border-bottom: 1px dotted #ccc;
-                    }
-                    .label {
-                        font-weight: bold;
-                        color: #111;
-                        width: 140px;
-                    }
-                    .terms-block {
-                        font-size: 11px;
-                        margin-top: 15px;
-                        color: #111;
-                        white-space: pre-wrap;
-                        border-bottom: 1px dotted #ccc;
-                        padding-bottom: 15px;
-                    }
-                    .sign-row {
-                        margin-top: 80px; /* Luxury top margin for handwritten signature */
-                        display: flex;
-                        justify-content: space-between;
-                        padding: 0 15px;
-                        font-size: 11px;
-                    }
-                    .sign-line {
-                        width: 220px;
-                        border-top: 1px solid #111;
-                        text-align: center;
-                        padding-top: 8px; /* High padding top */
-                        margin-top: 60px; /* Extra generous margin top for ink signing */
-                        font-weight: bold;
-                    }
-                    @media print {
-                        body { padding: 0; margin: 0; }
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="invoice-card">
-                    <div class="header">
-                        <div>
-                            <div class="header-title">$declarationTitle</div>
-                        </div>
-                        <div class="header-meta">
-                            <div>Date: $date</div>
-                            <div>Tx ID: ${event.id.take(8).uppercase()}</div>
-                        </div>
-                    </div>
-                    
-                    <div class="grid">
-                        <div class="grid-row">
-                            <div class="grid-cell label">Action Mode:</div>
-                            <div class="grid-cell" style="font-weight: bold; color: #111;">${event.actionType}</div>
-                            <div class="grid-cell label">Brand & Model:</div>
-                            <div class="grid-cell">${event.model.ifBlank { "________________" }}</div>
-                        </div>
-                        <div class="grid-row">
-                            <div class="grid-cell label">Customer Name:</div>
-                            <div class="grid-cell">${event.name.ifBlank { "_____________________________" }}</div>
-                            <div class="grid-cell label">Contact Phone:</div>
-                            <div class="grid-cell">${event.phoneNumber ?: "_____________________________"}</div>
-                        </div>
-                        <div class="grid-row">
-                            <div class="grid-cell label">IMEI / Serial key:</div>
-                            <div class="grid-cell" style="font-family: monospace;">${event.serialNumber.ifBlank { "________________" }}</div>
-                            <!-- <div class="grid-cell label">Disbursed Amount:</div> -->
-                            <!-- <div class="grid-cell" style="font-weight: bold; color: #111;">INR ${String.format("%,.2f", event.amount)}</div> -->
-                            <div class="grid-cell label"></div>
-                            <div class="grid-cell"></div>
-                        </div>
-                        <div class="grid-row">
-                            <div class="grid-cell label">Aadhaar Number:</div>
-                            <div class="grid-cell" style="font-family: monospace;">${event.aadhaarNumber?.ifBlank { "_____________________________" } ?: "_____________________________"}</div>
-                            <div class="grid-cell label">Quantity / Qty:</div>
-                            <div class="grid-cell">${event.quantity} unit(s)</div>
-                        </div>
-                        <div class="grid-row">
-                            <div class="grid-cell label">Address:</div>
-                            <div class="grid-cell">${addressVal.ifBlank { "_____________________________" }}</div>
-                            <div class="grid-cell label"></div>
-                            <div class="grid-cell"></div>
-                        </div>
-                    </div>
-
-                    <div class="terms-block">
-                        $customText
-                    </div>
-
-                    $photosHtml
-
-                    <div class="sign-row">
-                        <div class="sign-line">Operator / Partner Signature</div>
-                        <div class="sign-line">Customer / Depositor Signature</div>
-                    </div>
-                </div>
-            </body>
-            </html>
-        """.trimIndent()
-
-        webView.webViewClient = object : android.webkit.WebViewClient() {
-            override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
-                try {
-                    view?.let {
-                        val printAdapter = it.createPrintDocumentAdapter("Custom Receipt")
-                        val jobName = "Custom_Receipt_${event.serialNumber}"
-                        printManager.print(jobName, printAdapter, android.print.PrintAttributes.Builder().build())
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                val webView = android.webkit.WebView(context).apply {
+                    settings.allowContentAccess = true
+                    settings.allowFileAccess = true
                 }
+                activePrintWebView = webView
+
+                webView.webViewClient = object : android.webkit.WebViewClient() {
+                    override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
+                        try {
+                            view?.let {
+                                val printAdapter = it.createPrintDocumentAdapter("Custom Receipt")
+                                val jobName = "Custom_Receipt_${event.serialNumber}"
+                                printManager.print(jobName, printAdapter, android.print.PrintAttributes.Builder().build())
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                }
+                webView.loadDataWithBaseURL(null, htmlDocument, "text/HTML", "UTF-8", null)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                android.widget.Toast.makeText(context, "Cannot generate custom print doc", android.widget.Toast.LENGTH_SHORT).show()
             }
         }
-        webView.loadDataWithBaseURL(null, htmlDocument, "text/HTML", "UTF-8", null)
-    } catch (e: Exception) {
-        e.printStackTrace()
-        android.widget.Toast.makeText(context, "Cannot generate custom print doc", android.widget.Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -1242,22 +1216,15 @@ fun CustomPrintDialog(
         val sdfDate = SimpleDateFormat("dd MMMM yyyy", Locale.getDefault())
         val formattedDateVal = sdfDate.format(Date(event.timestamp))
         if (event.actionType == "PURCHASE") {
-            "Declaration: All the above listed facts are absolutely true and correct. उपरोक्त सभी तथ्य बिल्कुल सही है।\n\n" +
-            "Today, I have voluntarily handed over this mobile, of which I am the sole owner, to Mobile Gallery of my own free will. " +
-            "मैने आज ये मोबाइल जिसका मै खुद स्वामी हू, स्वेच्छा से मोबाइल गैलरी को दिया है। " +
-            "There is no outstanding loan, EMI or claim of any kind remaining on this phone. If there is any future loan recovery, I shall hold complete liability for it. " +
-            "उपरोक्त फोन पर किसी भी प्रकार का ऋण, ब्याज या क्लेम बाकी नहीं है। इसका किसी भी लोन/फाइनेंस कंपनी से कोई संबंध नहीं है। यदि इसपे कोई लोन रिकवरी होती है तो उसकी सारी जिम्मेदारी मेरी होगी और किसी की नहीं होगी। " +
-            "From today, I am no longer the owner of this device. आज से इस फोन का मालिक मै नहीं हू।\n\n" +
-            "Sign                                                       Date: $formattedDateVal\n\n" +
-            "Seller/Customer is solely responsible for all the previous repairs, finances and other tasks related to this phone. The buyer-store does not have any responsibility of any finance emi's or any wrong doings in the past. Any EMIs due on this phone shall be paid by the seller-customer. Buyer can independently format it now.\n" +
-            "REFUND POLICY: All processed sales are final. Absolutely no cash refunds. Unopened, untampered items may be considered for exchange or store ledger credit notes within 24 hours of receipt."
+            "Declaration: Facts true. Handed over device voluntarily with no outstanding loans or EMIs. " +
+            "(सभी तथ्य सत्य हैं। स्वेच्छा से बिना किसी लोन/बकाया के मोबाइल दिया है।)\n" +
+            "Seller holds full liability for previous ownership, past repairs, and any future financial claims. Buyer can format freely.\n" +
+            "REFUND POLICY: All sales are final. Unopened items may be considered for exchange/credit within 24 hours."
         } else {
-            "Declaration: All the above listed facts are absolutely true and correct. उपरोक्त सभी तथ्य बिल्कुल सही है।\n\n" +
-            "Today, I have voluntarily taken this mobile from Mobile Gallery after thoroughly checking everything. I am fully satisfied with the device and its current condition, and I take complete responsibility for it starting today. " +
-            "मैने आज यह मोबाइल मोबाइल गैलरी से सब कुछ चेक करके अपनी मर्जी से लिया है। मै इस फोन एवं उसकी कंडीशन से संतुष्ट हू। अबसे इसकी सारी जिम्मेदारी मेरी होगी।\n\n" +
-            "Sign                                                       Date: $formattedDateVal\n\n" +
-            "1. WARRANTY ASSISTANCE: No warranty/guarantee for the used phones. In case any phone is eligible, it will be told separately and shall be valid only if it is written on this paper.\n" +
-            "2. REFUND POLICY: All processed sales are final. Absolutely no cash refunds. Unopened, untampered items may be considered for exchange or store ledger credit notes within 24 hours of receipt."
+            "Declaration: Checked device fully and accepted voluntary purchase self-satisfied. " +
+            "(सब कुछ चेक करके संतुष्ट होकर स्वेच्छा से मोबाइल लिया है। इसकी जिम्मेदारी अबसे मेरी होगी।)\n" +
+            "WARRANTY: Used devices carry no warranty/guarantee. Valid only if documented in writing on this receipt.\n" +
+            "REFUND POLICY: All sales are final. Unopened items may be considered for exchange/credit within 24 hours."
         }
     }
 

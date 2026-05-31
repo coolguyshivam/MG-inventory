@@ -387,32 +387,60 @@ object AppUtils {
         return uploadedParts.filter { it.isNotBlank() }.joinToString(",")
     }
 
-    fun convertImageToWebviewBase64(context: Context, source: String): String {
-        if (source.startsWith("http") || source.startsWith("https")) {
-            return source
-        }
-        if (source == "camera_snapshot.jpg") {
-            return "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=400&q=80"
-        }
-        if (source == "ic_phone_blue" || source == "ic_phone_amber" || source == "ic_watch" || source == "ic_tablet") {
-            return when (source) {
-                "ic_phone_blue" -> "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=400&q=80"
-                "ic_phone_amber" -> "https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?auto=format&fit=crop&w=400&q=80"
-                "ic_watch" -> "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=400&q=80"
-                "ic_tablet" -> "https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?auto=format&fit=crop&w=400&q=80"
-                else -> source
-            }
-        }
-        if (source.length > 100 && !source.startsWith("content://") && !source.startsWith("file://")) {
-            return if (source.startsWith("data:image")) {
-                source
+    fun downloadUrlToBase64(urlStr: String): String {
+        return try {
+            val url = java.net.URL(urlStr)
+            val connection = url.openConnection() as java.net.HttpURLConnection
+            connection.doInput = true
+            connection.connectTimeout = 6000
+            connection.readTimeout = 6000
+            connection.connect()
+            if (connection.responseCode == 200) {
+                val input = connection.inputStream
+                val bytes = input.readBytes()
+                val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                    .replace("\n", "").replace("\r", "").replace(" ", "")
+                "data:image/jpeg;base64,$base64"
             } else {
-                "data:image/jpeg;base64,$source"
+                urlStr
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            urlStr
+        }
+    }
+
+    fun convertImageToWebviewBase64(context: Context, source: String): String {
+        val cleanSource = source.trim()
+        val targetUrl = when (cleanSource) {
+            "camera_snapshot.jpg" -> "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=400&q=80"
+            "ic_phone_blue" -> "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=400&q=80"
+            "ic_phone_amber" -> "https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?auto=format&fit=crop&w=400&q=80"
+            "ic_watch" -> "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=400&q=80"
+            "ic_tablet" -> "https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?auto=format&fit=crop&w=400&q=80"
+            else -> null
+        }
+
+        if (targetUrl != null) {
+            return downloadUrlToBase64(targetUrl)
+        }
+
+        if (cleanSource.startsWith("http") || cleanSource.startsWith("https")) {
+            return downloadUrlToBase64(cleanSource)
+        }
+
+        if (cleanSource.length > 100 && !cleanSource.startsWith("content://") && !cleanSource.startsWith("file://")) {
+            val cleanBase64 = cleanSource.replace("\n", "").replace("\r", "").replace(" ", "")
+            return if (cleanBase64.startsWith("data:image")) {
+                cleanBase64
+            } else {
+                "data:image/jpeg;base64,$cleanBase64"
             }
         }
-        if (source.startsWith("content://") || source.startsWith("file://")) {
+
+        if (cleanSource.startsWith("content://") || cleanSource.startsWith("file://")) {
             try {
-                val uri = android.net.Uri.parse(source)
+                val uri = android.net.Uri.parse(cleanSource)
                 val stream = context.contentResolver.openInputStream(uri)
                 if (stream != null) {
                     val bitmap = BitmapFactory.decodeStream(stream)
@@ -420,6 +448,7 @@ object AppUtils {
                         val out = ByteArrayOutputStream()
                         bitmap.compress(Bitmap.CompressFormat.JPEG, 70, out)
                         val base64 = android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
+                            .replace("\n", "").replace("\r", "").replace(" ", "")
                         return "data:image/jpeg;base64,$base64"
                     }
                 }
@@ -428,13 +457,14 @@ object AppUtils {
             }
         } else {
             try {
-                val file = File(source)
+                val file = File(cleanSource)
                 if (file.exists()) {
                     val bitmap = BitmapFactory.decodeFile(file.absolutePath)
                     if (bitmap != null) {
                         val out = ByteArrayOutputStream()
                         bitmap.compress(Bitmap.CompressFormat.JPEG, 70, out)
                         val base64 = android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
+                            .replace("\n", "").replace("\r", "").replace(" ", "")
                         return "data:image/jpeg;base64,$base64"
                     }
                 }
@@ -442,7 +472,7 @@ object AppUtils {
                 e.printStackTrace()
             }
         }
-        return source
+        return cleanSource
     }
 }
 
