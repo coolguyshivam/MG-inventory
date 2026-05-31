@@ -758,6 +758,22 @@ fun printHistoryEvent(context: android.content.Context, event: HistoryEvent) {
             val sdf = SimpleDateFormat("dd MMM yyyy hh:mm a", Locale.getDefault())
             val date = sdf.format(Date(event.timestamp))
             
+            val terms = if (event.actionType == "PURCHASE") {
+                "Declaration: Facts are true. Handed over device voluntarily with no outstanding loans or EMIs. \n" +
+                "उपरोक्त सभी तथ्य बिल्कुल सही है।\n" +
+                "मैने आज ये मोबाइल जिसका मै खुद स्वामी हू, स्वेच्छा से मोबाइल गैलरी को दिया है।\n" +
+                "उपरोक्त फोन पर किसी भी प्रकार का ऋण, ब्याज या क्लेम बाकी नहीं है। इसका किसी भी लोन/फाइनेंस कंपनी से कोई संबंध नहीं है। यदि इसपे कोई लोन रिकवरी होती है तो उसकी\n" +
+                "सारी जिम्मेदारी मेरी होगी और किसी की नहीं होगी ।\n" +
+                "आज से इस फोन का मालिक मै नहीं हू।\n\n\n" +
+                "Sign                             Date:\n\n\n" +
+                "- Customer holds full liability for previous ownership, past repairs, and any future financial claims. Buyer can format freely. - REFUND POLICY: All sales are final. No refunds and no guarantee unless specified otherwise."
+            } else {
+                "Declaration: Checked device fully and accepted voluntary purchase and I am satisfied with it. " +
+                "मैने यह फोन पूरा चेक करके संतुष्ट होकर स्वेच्छा से लिया है। इसकी जिम्मेदारी अबसे मेरी होगी ।\n\n" +
+                "WARRANTY: Used devices carry no warranty/guarantee. Valid only if documented in writing on this receipt.\n" +
+                "REFUND POLICY: All sales are final. Unopened items may be considered for exchange/credit within 24 hours only at the discretion of the store."
+            }
+            
             val imgTags = event.photoUri?.split(",")?.filter { it.isNotBlank() && (!it.startsWith("ic_") || it in listOf("ic_phone_blue", "ic_phone_amber", "ic_watch", "ic_tablet")) }?.map {
                 com.example.util.AppUtils.convertImageToWebviewBase64(context, it)
             }?.joinToString("") {
@@ -909,11 +925,7 @@ fun printHistoryEvent(context: android.content.Context, event: HistoryEvent) {
                         <div class="photos">$imgTags</div>
     
                         <div class="terms-block">
-                            <strong>COMMON TRANSACTION DISCLOSURES & POLICY TERMS:</strong><br/>
-    1. WARRANTY ASSISTANCE: All brand items are covered solely by manufacturer service centers. Retailer holds no liability for mechanical failure, screen damage, liquid ingress, or physical wear/breakage.
-    2. DOCUMENTATION REQUIREMENT: Please retain original packaging box, complete inside accessories, and this physical printed voucher/bill to initiate claims, verification, or service assistance.
-    3. REFUND POLICY: All processed sales are final. Absolutely no cash refunds. Unopened, untampered items may be considered for exchange or store ledger credit notes within 24 hours of receipt.
-    4. OUT-FOR-REPAIR DEVICES: Repair hand-overs are registered entirely at client's risk. Please backup/clone personal user files. Retailer is not liable for data loss or software degradation during repair.
+                            $terms
                         </div>
     
                         <div class="footer-note">
@@ -961,6 +973,7 @@ fun shareToWhatsApp(context: android.content.Context, message: String) {
             type = "text/plain"
             putExtra(android.content.Intent.EXTRA_TEXT, message)
             setPackage("com.whatsapp")
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         context.startActivity(sendIntent)
     } catch (e: Exception) {
@@ -968,8 +981,12 @@ fun shareToWhatsApp(context: android.content.Context, message: String) {
             val sendIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
                 type = "text/plain"
                 putExtra(android.content.Intent.EXTRA_TEXT, message)
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-            context.startActivity(android.content.Intent.createChooser(sendIntent, "Share Updates"))
+            val chooserIntent = android.content.Intent.createChooser(sendIntent, "Share Updates").apply {
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(chooserIntent)
         } catch (ex: Exception) {
             android.widget.Toast.makeText(context, "No sharing app installed", android.widget.Toast.LENGTH_SHORT).show()
         }
@@ -1216,15 +1233,19 @@ fun CustomPrintDialog(
         val sdfDate = SimpleDateFormat("dd MMMM yyyy", Locale.getDefault())
         val formattedDateVal = sdfDate.format(Date(event.timestamp))
         if (event.actionType == "PURCHASE") {
-            "Declaration: Facts true. Handed over device voluntarily with no outstanding loans or EMIs. " +
-            "(सभी तथ्य सत्य हैं। स्वेच्छा से बिना किसी लोन/बकाया के मोबाइल दिया है।)\n" +
-            "Seller holds full liability for previous ownership, past repairs, and any future financial claims. Buyer can format freely.\n" +
-            "REFUND POLICY: All sales are final. Unopened items may be considered for exchange/credit within 24 hours."
+            "Declaration: Facts are true. Handed over device voluntarily with no outstanding loans or EMIs. \n" +
+            "उपरोक्त सभी तथ्य बिल्कुल सही है।\n" +
+            "मैने आज ये मोबाइल जिसका मै खुद स्वामी हू, स्वेच्छा से मोबाइल गैलरी को दिया है।\n" +
+            "उपरोक्त फोन पर किसी भी प्रकार का ऋण, ब्याज या क्लेम बाकी नहीं है। इसका किसी भी लोन/फाइनेंस कंपनी से कोई संबंध नहीं है। यदि इसपे कोई लोन रिकवरी होती है तो उसकी\n" +
+            "सारी जिम्मेदारी मेरी होगी और किसी की नहीं होगी ।\n" +
+            "आज से इस फोन का मालिक मै नहीं हू।\n\n\n" +
+            "Sign                             Date:\n\n\n" +
+            "- Customer holds full liability for previous ownership, past repairs, and any future financial claims. Buyer can format freely. - REFUND POLICY: All sales are final. No refunds and no guarantee unless specified otherwise."
         } else {
-            "Declaration: Checked device fully and accepted voluntary purchase self-satisfied. " +
-            "(सब कुछ चेक करके संतुष्ट होकर स्वेच्छा से मोबाइल लिया है। इसकी जिम्मेदारी अबसे मेरी होगी।)\n" +
+            "Declaration: Checked device fully and accepted voluntary purchase and I am satisfied with it. " +
+            "मैने यह फोन पूरा चेक करके संतुष्ट होकर स्वेच्छा से लिया है। इसकी जिम्मेदारी अबसे मेरी होगी ।\n\n" +
             "WARRANTY: Used devices carry no warranty/guarantee. Valid only if documented in writing on this receipt.\n" +
-            "REFUND POLICY: All sales are final. Unopened items may be considered for exchange/credit within 24 hours."
+            "REFUND POLICY: All sales are final. Unopened items may be considered for exchange/credit within 24 hours only at the discretion of the store."
         }
     }
 

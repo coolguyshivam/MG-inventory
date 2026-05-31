@@ -27,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.text.KeyboardOptions
@@ -44,6 +45,9 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -161,6 +165,25 @@ fun TransactionsScreen(viewModel: StockViewModel) {
     val dateInMillis by viewModel.dateInMillisInput.collectAsStateWithLifecycle()
     val quantity by viewModel.quantityInput.collectAsStateWithLifecycle()
     val photoUri by viewModel.photoUriInput.collectAsStateWithLifecycle()
+    val allParties by viewModel.allParties.collectAsStateWithLifecycle()
+    val combinedParties = remember(allParties) {
+        val list = allParties.toMutableList()
+        val hardcoded = viewModel.regularPartners.map {
+            com.example.data.model.Party(
+                name = it.name,
+                phoneNumber = it.phone,
+                aadhaarNumber = it.aadhaar,
+                address = ""
+            )
+        }
+        for (hp in hardcoded) {
+            if (list.none { it.name.trim().lowercase() == hp.name.trim().lowercase() }) {
+                list.add(hp)
+            }
+        }
+        list
+    }
+    var nameFocused by remember { mutableStateOf(false) }
 
     val technician by viewModel.technicianNameInput.collectAsStateWithLifecycle()
     val repairReason by viewModel.repairReasonInput.collectAsStateWithLifecycle()
@@ -522,20 +545,98 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                     supportingText = if (modelError != null) { { Text(modelError, color = MaterialTheme.colorScheme.error) } } else null
                 )
 
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = {
-                        viewModel.nameInput.value = it
-                        viewModel.clearFormErrorAndSuccess()
-                        nameTouched.value = true
-                    },
-                    label = { Text("Name *") },
-                    singleLine = true,
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.weight(1f),
-                    isError = nameError != null,
-                    supportingText = if (nameError != null) { { Text(nameError, color = MaterialTheme.colorScheme.error) } } else null
-                )
+                Box(modifier = Modifier.weight(1f)) {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = {
+                            viewModel.nameInput.value = it
+                            viewModel.clearFormErrorAndSuccess()
+                            nameTouched.value = true
+                        },
+                        label = { Text("Name *") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onFocusChanged { nameFocused = it.isFocused },
+                        isError = nameError != null,
+                        supportingText = if (nameError != null) { { Text(nameError, color = MaterialTheme.colorScheme.error) } } else null
+                    )
+
+                    val filteredParties = remember(name, combinedParties) {
+                        if (name.isBlank()) {
+                            combinedParties
+                        } else {
+                            combinedParties.filter { it.name.contains(name, ignoreCase = true) }
+                        }
+                    }
+
+                    if (nameFocused && filteredParties.isNotEmpty()) {
+                        Card(
+                            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 64.dp)
+                                .heightIn(max = 240.dp)
+                                .align(Alignment.TopStart)
+                                .shadow(8.dp, RoundedCornerShape(8.dp))
+                        ) {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                items(filteredParties) { party ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                viewModel.nameInput.value = party.name
+                                                viewModel.phoneInput.value = party.phoneNumber
+                                                viewModel.aadhaarInput.value = party.aadhaarNumber
+                                                viewModel.addressInput.value = party.address
+                                                nameFocused = false
+                                            }
+                                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = party.name,
+                                                fontWeight = FontWeight.Bold,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            if (party.phoneNumber.isNotBlank()) {
+                                                Text(
+                                                    text = "📞 Phone: ${party.phoneNumber}",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                            if (party.aadhaarNumber.isNotBlank()) {
+                                                Text(
+                                                    text = "🆔 Aadhaar: ${party.aadhaarNumber}",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                            if (party.address.isNotBlank()) {
+                                                Text(
+                                                    text = "📍 Address: ${party.address}",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                    }
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             // General Info: Phone & Aadhaar (With Stack style for full visibility of numbers)

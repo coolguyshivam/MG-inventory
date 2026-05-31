@@ -38,6 +38,7 @@ fun LedgerScreen(viewModel: StockViewModel) {
     val loggedInUser by viewModel.loggedInUser.collectAsStateWithLifecycle()
     val isAdmin = loggedInUser?.role == "Admin"
     var selectedEventForDialog by remember { mutableStateOf<com.example.data.model.HistoryEvent?>(null) }
+    var eventToPrintCustomly by remember { mutableStateOf<com.example.data.model.HistoryEvent?>(null) }
 
     var showAddPartyDialog by remember { mutableStateOf(false) }
     var showEditPartyDialog by remember { mutableStateOf(false) }
@@ -281,12 +282,22 @@ fun LedgerScreen(viewModel: StockViewModel) {
                     event = event,
                     isExpanded = true,
                     onExpandTapped = {},
-                    onPhotoClick = { } 
+                    onPhotoClick = { },
+                    onPrintClick = { ev ->
+                        eventToPrintCustomly = ev
+                    }
                 )
             },
             confirmButton = {
                 TextButton(onClick = { selectedEventForDialog = null }) { Text("Close") }
             }
+        )
+    }
+
+    if (eventToPrintCustomly != null) {
+        CustomPrintDialog(
+            event = eventToPrintCustomly!!,
+            onDismiss = { eventToPrintCustomly = null }
         )
     }
 
