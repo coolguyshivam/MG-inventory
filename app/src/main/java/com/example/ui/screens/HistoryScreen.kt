@@ -33,16 +33,17 @@ import com.example.ui.theme.TransactionColors
 import com.example.ui.viewmodel.StockViewModel
 import java.text.SimpleDateFormat
 import java.util.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryScreen(viewModel: StockViewModel) {
-    val rawEvents by viewModel.historyEvents.collectAsState()
+    val rawEvents by viewModel.historyEvents.collectAsStateWithLifecycle()
     val suggestedImeis = remember(rawEvents) { rawEvents.map { it.serialNumber } }
     var showScanner by remember { mutableStateOf(false) }
-    val searchWord by viewModel.historySearchTerm.collectAsState()
-    val typeFilter by viewModel.historyTypeFilter.collectAsState() // "All", "PURCHASE", "SALE", "REPAIR_SENT", "REPAIR_RETURNED", "RETURN", "EDIT", "DELETE"
-    val sortOption by viewModel.historySortOption.collectAsState()
+    val searchWord by viewModel.historySearchTerm.collectAsStateWithLifecycle()
+    val typeFilter by viewModel.historyTypeFilter.collectAsStateWithLifecycle() // "All", "PURCHASE", "SALE", "REPAIR_SENT", "REPAIR_RETURNED", "RETURN", "EDIT", "DELETE"
+    val sortOption by viewModel.historySortOption.collectAsStateWithLifecycle()
 
     var showScannerDialog by remember { mutableStateOf(false) }
     var expandedFilterMenu by remember { mutableStateOf(false) }
@@ -759,15 +760,9 @@ fun printHistoryEvent(context: android.content.Context, event: HistoryEvent) {
         val date = sdf.format(Date(event.timestamp))
         
         val imgTags = event.photoUri?.split(",")?.filter { it.isNotBlank() && (!it.startsWith("ic_") || it in listOf("ic_phone_blue", "ic_phone_amber", "ic_watch", "ic_tablet")) }?.map {
-            when (it) {
-                "ic_phone_blue" -> "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=400&q=80"
-                "ic_phone_amber" -> "https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?auto=format&fit=crop&w=400&q=80"
-                "ic_watch" -> "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=400&q=80"
-                "ic_tablet" -> "https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?auto=format&fit=crop&w=400&q=80"
-                else -> it
-            }
+            com.example.util.AppUtils.convertImageToWebviewBase64(context, it)
         }?.joinToString("") {
-            "<img src='$it' style='max-width: 100%; height: auto; margin-top: 10px; border: 1px solid #ddd; padding: 4px;'/>"
+            "<img src='$it' style='max-width: 250px; max-height: 180px; object-fit: contain; margin-top: 12px; margin-right: 12px; border: 2px solid #ccc; border-radius: 4px; padding: 4px;'/>"
         } ?: ""
 
         val htmlDocument = """
@@ -855,18 +850,18 @@ fun printHistoryEvent(context: android.content.Context, event: HistoryEvent) {
                         white-space: pre-wrap;
                     }
                     .sign-row {
-                        margin-top: 30px;
+                        margin-top: 80px; /* Luxurious margin above signing row */
                         display: flex;
                         justify-content: space-between;
-                        padding: 0 10px;
-                        font-size: 10px;
+                        padding: 0 15px;
+                        font-size: 11px;
                     }
                     .sign-line {
-                        width: 180px;
+                        width: 200px;
                         border-top: 1px solid #111;
                         text-align: center;
-                        padding-top: 4px;
-                        margin-top: 25px;
+                        padding-top: 8px; /* Extra padding top */
+                        margin-top: 60px; /* High margin top around sign line for ease of handwritten writing */
                         font-weight: bold;
                     }
                     .footer-note {
@@ -1033,13 +1028,7 @@ fun printHistoryEventCustom(
         val date = sdf.format(Date(event.timestamp))
         
         val loadedPhotos = selectedPhotos.map {
-            when (it) {
-                "ic_phone_blue" -> "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=400&q=80"
-                "ic_phone_amber" -> "https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?auto=format&fit=crop&w=400&q=80"
-                "ic_watch" -> "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=400&q=80"
-                "ic_tablet" -> "https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?auto=format&fit=crop&w=400&q=80"
-                else -> it
-            }
+            com.example.util.AppUtils.convertImageToWebviewBase64(context, it)
         }
 
         val declarationTitle = when (event.actionType) {
@@ -1055,16 +1044,17 @@ fun printHistoryEventCustom(
         var photosHtml = ""
         if (loadedPhotos.isNotEmpty()) {
             photosHtml += """
-                <div style="display: flex; gap: 8px; margin: 8px 0; max-height: 500px; justify-content: center; align-items: center;">
+                <div style="margin-top: 15px; margin-bottom: 15px; text-align: center; border-top: 1px dotted #ccc; padding-top: 12px;">
+                    <div style="font-size: 11px; font-weight: bold; color: #555; text-transform: uppercase; margin-bottom: 8px; text-align: left;">Attached Transaction Snapshots:</div>
+                    <div style="display: block; text-align: center;">
             """.trimIndent()
             for (photo in loadedPhotos) {
                 photosHtml += """
-                    <div style="flex: 1; text-align: center; height: 100%;">
-                        <img src="$photo" style="max-width: 100%; max-height: 500px; object-fit: contain; border-radius: 4px;" />
-                    </div>
+                        <img src="$photo" style="max-width: 280px; max-height: 200px; object-fit: contain; border: 2px solid #ddd; border-radius: 4px; padding: 4px; margin: 8px; display: inline-block;" />
                 """.trimIndent()
             }
             photosHtml += """
+                    </div>
                 </div>
             """.trimIndent()
         }
@@ -1133,10 +1123,27 @@ fun printHistoryEventCustom(
                         width: 140px;
                     }
                     .terms-block {
-                        font-size: 12px;
-                        margin-top: 10px;
+                        font-size: 11px;
+                        margin-top: 15px;
                         color: #111;
                         white-space: pre-wrap;
+                        border-bottom: 1px dotted #ccc;
+                        padding-bottom: 15px;
+                    }
+                    .sign-row {
+                        margin-top: 80px; /* Luxury top margin for handwritten signature */
+                        display: flex;
+                        justify-content: space-between;
+                        padding: 0 15px;
+                        font-size: 11px;
+                    }
+                    .sign-line {
+                        width: 220px;
+                        border-top: 1px solid #111;
+                        text-align: center;
+                        padding-top: 8px; /* High padding top */
+                        margin-top: 60px; /* Extra generous margin top for ink signing */
+                        font-weight: bold;
                     }
                     @media print {
                         body { padding: 0; margin: 0; }
@@ -1195,6 +1202,11 @@ fun printHistoryEventCustom(
                     </div>
 
                     $photosHtml
+
+                    <div class="sign-row">
+                        <div class="sign-line">Operator / Partner Signature</div>
+                        <div class="sign-line">Customer / Depositor Signature</div>
+                    </div>
                 </div>
             </body>
             </html>
@@ -1230,17 +1242,20 @@ fun CustomPrintDialog(
         val sdfDate = SimpleDateFormat("dd MMMM yyyy", Locale.getDefault())
         val formattedDateVal = sdfDate.format(Date(event.timestamp))
         if (event.actionType == "PURCHASE") {
-            "उपरोक्त सभी तथ्य बिल्कुल सही है। " +
+            "Declaration: All the above listed facts are absolutely true and correct. उपरोक्त सभी तथ्य बिल्कुल सही है।\n\n" +
+            "Today, I have voluntarily handed over this mobile, of which I am the sole owner, to Mobile Gallery of my own free will. " +
             "मैने आज ये मोबाइल जिसका मै खुद स्वामी हू, स्वेच्छा से मोबाइल गैलरी को दिया है। " +
+            "There is no outstanding loan, EMI or claim of any kind remaining on this phone. If there is any future loan recovery, I shall hold complete liability for it. " +
             "उपरोक्त फोन पर किसी भी प्रकार का ऋण, ब्याज या क्लेम बाकी नहीं है। इसका किसी भी लोन/फाइनेंस कंपनी से कोई संबंध नहीं है। यदि इसपे कोई लोन रिकवरी होती है तो उसकी सारी जिम्मेदारी मेरी होगी और किसी की नहीं होगी। " +
-            "आज से इस फोन का मालिक मै नहीं हू।\n" +
-            "Sign                                                       Date: $formattedDateVal\n" +
-            "Seller/Customer is solely responsible for the all the previous repairs, finances and other tasks related to this phone. The buyer-store does not have any responsibility of any finance emi's or and any wrong doings in the past. Any EMIs due on this phone shall be paid by the seller-customer. Buyer can independently format it now.\n" +
+            "From today, I am no longer the owner of this device. आज से इस फोन का मालिक मै नहीं हू।\n\n" +
+            "Sign                                                       Date: $formattedDateVal\n\n" +
+            "Seller/Customer is solely responsible for all the previous repairs, finances and other tasks related to this phone. The buyer-store does not have any responsibility of any finance emi's or any wrong doings in the past. Any EMIs due on this phone shall be paid by the seller-customer. Buyer can independently format it now.\n" +
             "REFUND POLICY: All processed sales are final. Absolutely no cash refunds. Unopened, untampered items may be considered for exchange or store ledger credit notes within 24 hours of receipt."
         } else {
-            "उपरोक्त सभी तथ्य बिल्कुल सही है। " +
-            "मैने आज यह मोबाइल मोबाइल गैलरी से सब कुछ चेक करके अपनी मर्जी से लिया है। मै इस फोन एवं उसकी कंडीशन से संतुष्ट हू।  अबसे इसकी सारी जिम्मेदारी मेरी होगी।\n" +
-            "Sign                                                       Date: $formattedDateVal\n" +
+            "Declaration: All the above listed facts are absolutely true and correct. उपरोक्त सभी तथ्य बिल्कुल सही है।\n\n" +
+            "Today, I have voluntarily taken this mobile from Mobile Gallery after thoroughly checking everything. I am fully satisfied with the device and its current condition, and I take complete responsibility for it starting today. " +
+            "मैने आज यह मोबाइल मोबाइल गैलरी से सब कुछ चेक करके अपनी मर्जी से लिया है। मै इस फोन एवं उसकी कंडीशन से संतुष्ट हू। अबसे इसकी सारी जिम्मेदारी मेरी होगी।\n\n" +
+            "Sign                                                       Date: $formattedDateVal\n\n" +
             "1. WARRANTY ASSISTANCE: No warranty/guarantee for the used phones. In case any phone is eligible, it will be told separately and shall be valid only if it is written on this paper.\n" +
             "2. REFUND POLICY: All processed sales are final. Absolutely no cash refunds. Unopened, untampered items may be considered for exchange or store ledger credit notes within 24 hours of receipt."
         }

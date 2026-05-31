@@ -36,24 +36,25 @@ import com.example.ui.viewmodel.StockViewModel
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InventoryScreen(viewModel: StockViewModel) {
-    val rawItems by viewModel.inventoryItems.collectAsState()
+    val rawItems by viewModel.inventoryItems.collectAsStateWithLifecycle()
     val suggestedImeis = remember(rawItems) { rawItems.map { it.serialNumber } }
     var showScanner by remember { mutableStateOf(false) }
-    val searchWord by viewModel.inventorySearchTerm.collectAsState()
-    val activeSubTab by viewModel.inventorySubTab.collectAsState() // 0 = Inventory, 1 = Repair
-    val sortOption by viewModel.inventorySortOption.collectAsState()
-    val sortAscending by viewModel.inventorySortAscending.collectAsState()
-    val revealedSet by viewModel.revealedPrices.collectAsState()
+    val searchWord by viewModel.inventorySearchTerm.collectAsStateWithLifecycle()
+    val activeSubTab by viewModel.inventorySubTab.collectAsStateWithLifecycle() // 0 = Inventory, 1 = Repair
+    val sortOption by viewModel.inventorySortOption.collectAsStateWithLifecycle()
+    val sortAscending by viewModel.inventorySortAscending.collectAsStateWithLifecycle()
+    val revealedSet by viewModel.revealedPrices.collectAsStateWithLifecycle()
 
-    val canManageInventory by viewModel.canManageInventory.collectAsState()
-    val canRepair by viewModel.canRepair.collectAsState()
-    val canDelete by viewModel.canDelete.collectAsState()
-    val canSeePrice by viewModel.canSeePrice.collectAsState()
-    val canSell by viewModel.canSell.collectAsState()
+    val canManageInventory by viewModel.canManageInventory.collectAsStateWithLifecycle()
+    val canRepair by viewModel.canRepair.collectAsStateWithLifecycle()
+    val canDelete by viewModel.canDelete.collectAsStateWithLifecycle()
+    val canSeePrice by viewModel.canSeePrice.collectAsStateWithLifecycle()
+    val canSell by viewModel.canSell.collectAsStateWithLifecycle()
 
     var showSortMenu by remember { mutableStateOf(false) }
 
@@ -891,28 +892,51 @@ fun InventoryCardItem(
                             Spacer(modifier = Modifier.width(4.dp))
                         }
 
-                        // Status Badge
+                        // Status Badge with build/tool symbol indicating repair quantities gracefully
                         if (isRepair) {
-                            Text(
-                                text = "IN REPAIR",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF92400E), // amber-800
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
                                 modifier = Modifier
                                     .background(Color(0xFFFEF3C7), RoundedCornerShape(12.dp))
+                                    .border(1.dp, Color(0xFFFDE68A), RoundedCornerShape(12.dp))
                                     .padding(horizontal = 8.dp, vertical = 2.dp)
-                            )
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Build,
+                                    contentDescription = null,
+                                    tint = Color(0xFF92400E),
+                                    modifier = Modifier.size(11.dp)
+                                )
+                                Text(
+                                    text = "IN REPAIR [${item.quantity}]",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF92400E) // amber-800
+                                )
+                            }
                         } else {
-                            Text(
-                                text = if (item.quantity > 0) "IN STOCK (${item.quantity})" else "OUT OF STOCK",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF15803D), // green-700
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
                                 modifier = Modifier
-                                    .background(Color(0xFFF0FDF4), RoundedCornerShape(12.dp))
-                                    .border(1.dp, Color(0xFFDCFCE7), RoundedCornerShape(12.dp))
+                                    .background(if (item.quantity > 0) Color(0xFFF0FDF4) else Color(0xFFFEF2F2), RoundedCornerShape(12.dp))
+                                    .border(1.dp, if (item.quantity > 0) Color(0xFFDCFCE7) else Color(0xFFFEE2E2), RoundedCornerShape(12.dp))
                                     .padding(horizontal = 8.dp, vertical = 2.dp)
-                            )
+                            ) {
+                                Icon(
+                                    imageVector = if (item.quantity > 0) Icons.Default.CheckCircle else Icons.Default.Cancel,
+                                    contentDescription = null,
+                                    tint = if (item.quantity > 0) Color(0xFF15803D) else Color(0xFFB91C1C),
+                                    modifier = Modifier.size(11.dp)
+                                )
+                                Text(
+                                    text = if (item.quantity > 0) "IN STOCK [${item.quantity}]" else "OUT OF STOCK",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (item.quantity > 0) Color(0xFF15803D) else Color(0xFFB91C1C)
+                                )
+                            }
                         }
                     }
                 }

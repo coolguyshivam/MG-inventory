@@ -22,6 +22,46 @@ import kotlinx.coroutines.tasks.await
 
 object AppUtils {
 
+    private const val ENCRYPTION_KEY = "MG_GALLERY_SECURE_SALT_KEY"
+
+    fun hashPassword(password: String): String {
+        return try {
+            val digest = MessageDigest.getInstance("SHA-256")
+            val hashBytes = digest.digest(password.toByteArray(Charsets.UTF_8))
+            hashBytes.joinToString("") { "%02x".format(it) }
+        } catch (e: Exception) {
+            md5(password)
+        }
+    }
+
+    fun encrypt(data: String): String {
+        return try {
+            val keyBytes = ENCRYPTION_KEY.toByteArray(Charsets.UTF_8)
+            val dataBytes = data.toByteArray(Charsets.UTF_8)
+            val encrypted = ByteArray(dataBytes.size)
+            for (i in dataBytes.indices) {
+                encrypted[i] = (dataBytes[i].toInt() xor keyBytes[i % keyBytes.size].toInt()).toByte()
+            }
+            android.util.Base64.encodeToString(encrypted, android.util.Base64.NO_WRAP)
+        } catch (e: Exception) {
+            data
+        }
+    }
+
+    fun decrypt(data: String): String {
+        return try {
+            val decoded = android.util.Base64.decode(data, android.util.Base64.NO_WRAP)
+            val keyBytes = ENCRYPTION_KEY.toByteArray(Charsets.UTF_8)
+            val decrypted = ByteArray(decoded.size)
+            for (i in decoded.indices) {
+                decrypted[i] = (decoded[i].toInt() xor keyBytes[i % keyBytes.size].toInt()).toByte()
+            }
+            String(decrypted, Charsets.UTF_8)
+        } catch (e: Exception) {
+            data
+        }
+    }
+
     fun md5(s: String): String {
         return try {
             val digest = MessageDigest.getInstance("MD5")
@@ -345,6 +385,64 @@ object AppUtils {
             }
         }
         return uploadedParts.filter { it.isNotBlank() }.joinToString(",")
+    }
+
+    fun convertImageToWebviewBase64(context: Context, source: String): String {
+        if (source.startsWith("http") || source.startsWith("https")) {
+            return source
+        }
+        if (source == "camera_snapshot.jpg") {
+            return "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=400&q=80"
+        }
+        if (source == "ic_phone_blue" || source == "ic_phone_amber" || source == "ic_watch" || source == "ic_tablet") {
+            return when (source) {
+                "ic_phone_blue" -> "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=400&q=80"
+                "ic_phone_amber" -> "https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?auto=format&fit=crop&w=400&q=80"
+                "ic_watch" -> "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=400&q=80"
+                "ic_tablet" -> "https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?auto=format&fit=crop&w=400&q=80"
+                else -> source
+            }
+        }
+        if (source.length > 100 && !source.startsWith("content://") && !source.startsWith("file://")) {
+            return if (source.startsWith("data:image")) {
+                source
+            } else {
+                "data:image/jpeg;base64,$source"
+            }
+        }
+        if (source.startsWith("content://") || source.startsWith("file://")) {
+            try {
+                val uri = android.net.Uri.parse(source)
+                val stream = context.contentResolver.openInputStream(uri)
+                if (stream != null) {
+                    val bitmap = BitmapFactory.decodeStream(stream)
+                    if (bitmap != null) {
+                        val out = ByteArrayOutputStream()
+                        bitmap.compress(Bitmap.CompressFormat.JPEG, 70, out)
+                        val base64 = android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
+                        return "data:image/jpeg;base64,$base64"
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        } else {
+            try {
+                val file = File(source)
+                if (file.exists()) {
+                    val bitmap = BitmapFactory.decodeFile(file.absolutePath)
+                    if (bitmap != null) {
+                        val out = ByteArrayOutputStream()
+                        bitmap.compress(Bitmap.CompressFormat.JPEG, 70, out)
+                        val base64 = android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
+                        return "data:image/jpeg;base64,$base64"
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+        return source
     }
 }
 

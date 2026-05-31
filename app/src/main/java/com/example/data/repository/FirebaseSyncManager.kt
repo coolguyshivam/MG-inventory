@@ -139,29 +139,45 @@ object FirebaseSyncManager {
 
         try {
             for (item in items) {
-                val itemMap = hashMapOf(
-                    "id" to item.id,
-                    "serialNumber" to item.serialNumber,
-                    "model" to item.model,
-                    "name" to item.name,
-                    "phoneNumber" to item.phoneNumber,
-                    "aadhaarNumber" to item.aadhaarNumber,
-                    "amount" to item.amount,
-                    "description" to item.description,
-                    "dateInMillis" to item.dateInMillis,
-                    "quantity" to item.quantity,
-                    "photoUri" to item.photoUri,
-                    "isUnderRepair" to item.isUnderRepair,
-                    "technicianName" to item.technicianName,
-                    "repairReason" to item.repairReason,
-                    "lastUpdated" to System.currentTimeMillis()
-                )
-                db.collection("inventory_items")
-                    .document(item.id.toString())
-                    .set(itemMap)
-                    .awaitTask()
+                val docRef = db.collection("inventory_items").document(item.id.toString())
+                var shouldOverwrite = true
+                try {
+                    val remoteDoc = docRef.get().awaitTask()
+                    if (remoteDoc.exists()) {
+                        val remoteLastUpdated = remoteDoc.getLong("lastUpdated") ?: 0L
+                        val localLastUpdated = if (item.lastUpdated > 0) item.lastUpdated else System.currentTimeMillis()
+                        if (remoteLastUpdated > localLastUpdated) {
+                            Log.d("FirebaseSyncManager", "Conflict detected for item ${item.id}: Cloud has newer modifications. Keeping cloud version.")
+                            shouldOverwrite = false
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w("FirebaseSyncManager", "Could not check remote timestamp, proceeding with sync: ${e.message}")
+                }
+
+                if (shouldOverwrite) {
+                    val finalTimestamp = if (item.lastUpdated > 0) item.lastUpdated else System.currentTimeMillis()
+                    val itemMap = hashMapOf(
+                        "id" to item.id,
+                        "serialNumber" to item.serialNumber,
+                        "model" to item.model,
+                        "name" to item.name,
+                        "phoneNumber" to item.phoneNumber,
+                        "aadhaarNumber" to item.aadhaarNumber,
+                        "amount" to item.amount,
+                        "description" to item.description,
+                        "dateInMillis" to item.dateInMillis,
+                        "quantity" to item.quantity,
+                        "photoUri" to item.photoUri,
+                        "isUnderRepair" to item.isUnderRepair,
+                        "technicianName" to item.technicianName,
+                        "repairReason" to item.repairReason,
+                        "lastUpdated" to finalTimestamp
+                    )
+                    docRef.set(itemMap).awaitTask()
+                }
             }
-            Log.d("FirebaseSyncManager", "Synced ${items.size} inventory items to cloud.")
+            Log.d("FirebaseSyncManager", "Synced items to cloud with conflict resolution logic.")
             return true
         } catch (e: Exception) {
             Log.e("FirebaseSyncManager", "Error syncing items to Firebase", e)

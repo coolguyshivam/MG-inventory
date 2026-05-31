@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.repository.InventoryRepository
 import com.example.ui.components.PullToRefreshContainer
 import com.example.ui.screens.*
@@ -75,12 +76,13 @@ class MainActivity : FragmentActivity() {
                 factory = ViewModelFactory(repository)
             )
 
-            val isDarkTheme by stockViewModel.isDarkTheme.collectAsState()
-            val isLoggedIn by stockViewModel.isLoggedIn.collectAsState()
-            val appIconStyle by stockViewModel.appIconStyle.collectAsState()
+            val isDarkTheme by stockViewModel.isDarkTheme.collectAsStateWithLifecycle()
+            val isLoggedIn by stockViewModel.isLoggedIn.collectAsStateWithLifecycle()
+            val appIconStyle by stockViewModel.appIconStyle.collectAsStateWithLifecycle()
 
             LaunchedEffect(Unit) {
                 stockViewModel.loadAppIconStyle(applicationContext)
+                stockViewModel.checkAutoLogin(applicationContext)
             }
 
             MyApplicationTheme(darkTheme = isDarkTheme, appIconStyle = appIconStyle) {
@@ -477,7 +479,7 @@ fun MainAppContent(viewModel: StockViewModel) {
                 Button(
                     onClick = {
                         showLogoutDialog = false
-                        viewModel.logout()
+                        viewModel.logout(context)
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) {

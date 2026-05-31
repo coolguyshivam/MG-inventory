@@ -7,6 +7,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,12 +17,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.model.User
 import com.example.ui.viewmodel.StockViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UserManagementScreen(viewModel: StockViewModel) {
-    val users by viewModel.allUsers.collectAsState()
+    val users by viewModel.allUsers.collectAsStateWithLifecycle()
     var showAddUserDialog by remember { mutableStateOf(false) }
+    var changePasswordForUser by remember { mutableStateOf<User?>(null) }
 
     Column(
         modifier = Modifier
@@ -55,9 +58,52 @@ fun UserManagementScreen(viewModel: StockViewModel) {
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(users) { user ->
-                UserCard(user = user, onDelete = { viewModel.deleteUser(user) })
+                UserCard(
+                    user = user, 
+                    onDelete = { viewModel.deleteUser(user) },
+                    onChangePassword = { changePasswordForUser = user }
+                )
             }
         }
+    }
+
+    if (changePasswordForUser != null) {
+        var newSecretPassword by remember { mutableStateOf("") }
+        val targetUser = changePasswordForUser!!
+        AlertDialog(
+            onDismissRequest = { changePasswordForUser = null },
+            title = { Text("Change Password for ${targetUser.username}") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "As administrator, you can override and set a new password for this user account.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    OutlinedTextField(
+                        value = newSecretPassword,
+                        onValueChange = { newSecretPassword = it },
+                        label = { Text("New Password") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (newSecretPassword.isNotBlank()) {
+                        viewModel.changeUserPassword(targetUser.username, newSecretPassword)
+                        changePasswordForUser = null
+                    }
+                }) {
+                    Text("Change Password")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { changePasswordForUser = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     if (showAddUserDialog) {
@@ -123,7 +169,7 @@ fun UserManagementScreen(viewModel: StockViewModel) {
 }
 
 @Composable
-fun UserCard(user: User, onDelete: () -> Unit) {
+fun UserCard(user: User, onDelete: () -> Unit, onChangePassword: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -140,9 +186,14 @@ fun UserCard(user: User, onDelete: () -> Unit) {
                     Text(text = "Role: ${user.role}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            if (user.username != "admin") { // Prevent deleting default admin
-                IconButton(onClick = onDelete) {
-                    Icon(Icons.Default.Delete, contentDescription = "Delete User", tint = Color.Red)
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onChangePassword) {
+                    Icon(Icons.Default.Edit, contentDescription = "Change User Password", tint = MaterialTheme.colorScheme.primary)
+                }
+                if (user.username != "admin") { // Prevent deleting default admin
+                    IconButton(onClick = onDelete) {
+                        Icon(Icons.Default.Delete, contentDescription = "Delete User", tint = Color.Red)
+                    }
                 }
             }
         }

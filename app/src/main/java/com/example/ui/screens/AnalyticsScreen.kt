@@ -28,11 +28,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.viewmodel.StockViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @Composable
 fun AnalyticsScreen(viewModel: StockViewModel) {
-    val items by viewModel.inventoryItems.collectAsState()
-    val rawHistory by viewModel.historyEvents.collectAsState()
+    val items by viewModel.inventoryItems.collectAsStateWithLifecycle()
+    val rawHistory by viewModel.historyEvents.collectAsStateWithLifecycle()
     val scrollState = rememberScrollState()
 
     var activeFilter by remember { mutableStateOf("All Time") }

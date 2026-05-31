@@ -19,7 +19,8 @@ data class InventoryItem(
     val photoUri: String? = null,
     val isUnderRepair: Boolean = false,
     val technicianName: String? = null,
-    val repairReason: String? = null
+    val repairReason: String? = null,
+    val lastUpdated: Long = System.currentTimeMillis()
 )
 
 @Entity(tableName = "history_events")

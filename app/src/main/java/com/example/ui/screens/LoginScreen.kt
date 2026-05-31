@@ -32,6 +32,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.unit.sp
 import com.example.ui.viewmodel.StockViewModel
 import kotlinx.coroutines.delay
@@ -44,8 +45,8 @@ fun LoginScreen(viewModel: StockViewModel) {
     var password by remember { mutableStateOf("") }
     var isPasswordVisible by remember { mutableStateOf(false) }
 
-    val loginError by viewModel.loginError.collectAsState()
-    val isSyncing by viewModel.isSyncing.collectAsState()
+    val loginError by viewModel.loginError.collectAsStateWithLifecycle()
+    val isSyncing by viewModel.isSyncing.collectAsStateWithLifecycle()
     val coroutineScope = rememberCoroutineScope()
     
     // Gradient brush background
@@ -237,6 +238,80 @@ fun LoginScreen(viewModel: StockViewModel) {
                         )
                     }
 
+                    // Recover Admin Account action
+                    var showAdminRecoveryDialog by remember { mutableStateOf(false) }
+                    var recoveryCodeInput by remember { mutableStateOf("") }
+
+                    TextButton(
+                        onClick = { showAdminRecoveryDialog = true },
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                    ) {
+                        Text(
+                            text = "Forgot Admin Password? Recover Access",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    if (showAdminRecoveryDialog) {
+                        AlertDialog(
+                            onDismissRequest = { 
+                                showAdminRecoveryDialog = false 
+                                recoveryCodeInput = ""
+                            },
+                            title = {
+                                Text("Emergency Admin Recovery", fontWeight = FontWeight.Bold)
+                            },
+                            text = {
+                                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Text(
+                                        "To prevent data lockout, you can reset the master admin user password to default ('admin') by answering the secure recovery prompt.",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                    Text(
+                                        "Verification Question: What is the primary store keyword of this Mobile Gallery app? (Hint: 'gallery')",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    OutlinedTextField(
+                                        value = recoveryCodeInput,
+                                        onValueChange = { recoveryCodeInput = it },
+                                        label = { Text("Security Answer") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                            },
+                            confirmButton = {
+                                Button(
+                                    onClick = {
+                                        if (recoveryCodeInput.trim().lowercase() == "gallery") {
+                                            viewModel.resetAdminPasswordToDefault()
+                                            android.widget.Toast.makeText(appContext, "Admin password reset successfully to: admin", android.widget.Toast.LENGTH_LONG).show()
+                                            showAdminRecoveryDialog = false
+                                            recoveryCodeInput = ""
+                                        } else {
+                                            android.widget.Toast.makeText(appContext, "Incorrect answer. Hint: 'gallery'", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                ) {
+                                    Text("Reset Password")
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(
+                                    onClick = { 
+                                        showAdminRecoveryDialog = false 
+                                        recoveryCodeInput = ""
+                                    }
+                                ) {
+                                    Text("Cancel")
+                                }
+                            }
+                        )
+                    }
+
                     // Check if biometric user is registered
                     val hasBiometricUser = remember { viewModel.getBiometricRegisteredUser(appContext) != null }
                     
@@ -321,8 +396,8 @@ fun LoginScreen(viewModel: StockViewModel) {
 
 
         // Biometric registration / linking dialog flow
-        val showBiometricLinkingDialog by viewModel.showBiometricLinkingDialog.collectAsState()
-        val tempPendingUser by viewModel.tempPendingUser.collectAsState()
+        val showBiometricLinkingDialog by viewModel.showBiometricLinkingDialog.collectAsStateWithLifecycle()
+        val tempPendingUser by viewModel.tempPendingUser.collectAsStateWithLifecycle()
 
         if (showBiometricLinkingDialog && tempPendingUser != null) {
             AlertDialog(

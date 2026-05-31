@@ -59,20 +59,70 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
 
     fun getBiometricRegisteredUser(context: Context): String? {
         val prefs = context.getSharedPreferences("mobile_gallery_prefs", Context.MODE_PRIVATE)
-        return prefs.getString("biometric_username", null)
+        val raw = prefs.getString("biometric_username", null) ?: return null
+        return com.example.util.AppUtils.decrypt(raw)
     }
 
     fun registerBiometrics(context: Context, username: String) {
         val prefs = context.getSharedPreferences("mobile_gallery_prefs", Context.MODE_PRIVATE)
-        prefs.edit().putString("biometric_username", username).apply()
+        val encrypted = com.example.util.AppUtils.encrypt(username)
+        prefs.edit().putString("biometric_username", encrypted).apply()
     }
 
-    fun completeLogin(user: User) {
+    fun saveLoggedInSession(context: Context, user: User) {
+        val prefs = context.getSharedPreferences("mobile_gallery_prefs", Context.MODE_PRIVATE)
+        val encryptedUser = com.example.util.AppUtils.encrypt(user.username)
+        val encryptedRole = com.example.util.AppUtils.encrypt(user.role)
+        prefs.edit()
+            .putString("session_username", encryptedUser)
+            .putString("session_role", encryptedRole)
+            .apply()
+    }
+
+    fun checkAutoLogin(context: Context) {
+        val prefs = context.getSharedPreferences("mobile_gallery_prefs", Context.MODE_PRIVATE)
+        val encryptedUser = prefs.getString("session_username", null)
+        val encryptedRole = prefs.getString("session_role", null)
+        if (!encryptedUser.isNullOrEmpty() && !encryptedRole.isNullOrEmpty()) {
+            val username = com.example.util.AppUtils.decrypt(encryptedUser)
+            val role = com.example.util.AppUtils.decrypt(encryptedRole)
+            if (username.isNotEmpty()) {
+                val user = User(username, "", role)
+                _loggedInUser.value = user
+                _isLoggedIn.value = true
+                triggerCloudSync()
+            }
+        }
+    }
+
+    fun completeLogin(user: User, context: Context? = null) {
         _isLoggedIn.value = true
         _loggedInUser.value = user
         _loginError.value = null
         _activeTab.value = 0
+        if (context != null) {
+            saveLoggedInSession(context, user)
+        }
         triggerCloudSync()
+    }
+
+    fun changeUserPassword(username: String, newPass: String) {
+        viewModelScope.launch {
+            val user = repository.getUserByUsername(username)
+            if (user != null) {
+                val hashed = com.example.util.AppUtils.hashPassword(newPass)
+                val updated = user.copy(passwordHash = hashed)
+                repository.updateUser(updated)
+            }
+        }
+    }
+
+    fun resetAdminPasswordToDefault() {
+        viewModelScope.launch {
+            val hashed = com.example.util.AppUtils.hashPassword("admin")
+            val adminUser = User("admin", hashed, "Admin")
+            repository.insertUser(adminUser)
+        }
     }
 
     // Permissions based on Role
@@ -208,7 +258,8 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
             try {
                 val count = repository.getUserCount()
                 if (count == 0) {
-                    repository.insertUser(User("admin", "admin", "Admin"))
+                    val hashedAdmin = com.example.util.AppUtils.hashPassword("admin")
+                    repository.insertUser(User("admin", hashedAdmin, "Admin"))
                 }
                 
                 // Seed default items and audit histories if empty to restore vanished cards
@@ -373,13 +424,23 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                 val user = repository.getUserByUsername(username)
                 
                 if (user != null) {
-                    if (user.passwordHash == passwordStr) {
+                    val hashedInput = com.example.util.AppUtils.hashPassword(passwordStr)
+                    val md5Input = com.example.util.AppUtils.md5(passwordStr)
+                    
+                    if (user.passwordHash == hashedInput || user.passwordHash == md5Input || user.passwordHash == passwordStr) {
+                        // Password matches! Migrate/Upgrade legacy password to secure SHA-256 hash automatically
+                        var finalUser = user
+                        if (user.passwordHash != hashedInput) {
+                            finalUser = user.copy(passwordHash = hashedInput)
+                            repository.updateUser(finalUser)
+                        }
+                        
                         val registeredUser = getBiometricRegisteredUser(context)
                         if (registeredUser == username) {
-                            completeLogin(user)
+                            completeLogin(finalUser, context)
                         } else {
                             // First time login - prompt to enable biometric login
-                            tempPendingUser.value = user
+                            tempPendingUser.value = finalUser
                             showBiometricLinkingDialog.value = true
                         }
                     } else {
@@ -389,11 +450,12 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                     // Seed Admin if database has no users and admin/admin is tried
                     val userCount = repository.getUserCount()
                     if (userCount == 0 && username == "admin" && passwordStr == "admin") {
-                        val adminUser = User("admin", "admin", "Admin")
+                        val secureAdminHash = com.example.util.AppUtils.hashPassword("admin")
+                        val adminUser = User("admin", secureAdminHash, "Admin")
                         repository.insertUser(adminUser)
                         val registeredUser = getBiometricRegisteredUser(context)
                         if (registeredUser == "admin") {
-                            completeLogin(adminUser)
+                            completeLogin(adminUser, context)
                         } else {
                             tempPendingUser.value = adminUser
                             showBiometricLinkingDialog.value = true
@@ -419,6 +481,7 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                         _loggedInUser.value = user
                         _loginError.value = null
                         _activeTab.value = 0
+                        saveLoggedInSession(context, user)
                         triggerCloudSync()
                     } else {
                         _loginError.value = "Biometric account not found. Please log in with password to re-link."
@@ -432,10 +495,17 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
         }
     }
 
-    fun logout() {
+    fun logout(context: Context? = null) {
         _isLoggedIn.value = false
         _loggedInUser.value = null
         _activeTab.value = 0
+        if (context != null) {
+            val prefs = context.getSharedPreferences("mobile_gallery_prefs", Context.MODE_PRIVATE)
+            prefs.edit()
+                .remove("session_username")
+                .remove("session_role")
+                .apply()
+        }
     }
 
     // --- Cloud Sync Realtime (Now handled by Firestore listeners) ---
@@ -708,7 +778,8 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
 
     fun addUser(username: String, passwordHash: String, role: String) {
         viewModelScope.launch {
-            repository.insertUser(User(username, passwordHash, role))
+            val hashed = com.example.util.AppUtils.hashPassword(passwordHash)
+            repository.insertUser(User(username, hashed, role))
         }
     }
     

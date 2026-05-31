@@ -43,6 +43,7 @@ import com.example.ui.viewmodel.StockViewModel
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -142,32 +143,32 @@ fun TransactionsScreen(viewModel: StockViewModel) {
     }
 
     // ViewModel form states
-    val activeSelection by viewModel.transactionSelection.collectAsState() // 0: Purchase, 1: Sale, 2: Return, 3: Repair
-    val isUploading by viewModel.isUploadingTransaction.collectAsState()
-    val errMessage by viewModel.transactionError.collectAsState()
-    val successMessage by viewModel.transactionSuccessMessage.collectAsState()
-    val rawItems by viewModel.inventoryItems.collectAsState()
+    val activeSelection by viewModel.transactionSelection.collectAsStateWithLifecycle() // 0: Purchase, 1: Sale, 2: Return, 3: Repair
+    val isUploading by viewModel.isUploadingTransaction.collectAsStateWithLifecycle()
+    val errMessage by viewModel.transactionError.collectAsStateWithLifecycle()
+    val successMessage by viewModel.transactionSuccessMessage.collectAsStateWithLifecycle()
+    val rawItems by viewModel.inventoryItems.collectAsStateWithLifecycle()
     val suggestedImeis = remember(rawItems) { rawItems.map { it.serialNumber } }
 
-    val serialNumber by viewModel.serialNumberInput.collectAsState()
-    val model by viewModel.modelInput.collectAsState()
-    val name by viewModel.nameInput.collectAsState()
-    val phone by viewModel.phoneInput.collectAsState()
-    val aadhaar by viewModel.aadhaarInput.collectAsState()
-    val amount by viewModel.amountInput.collectAsState()
-    val address by viewModel.addressInput.collectAsState()
-    val description by viewModel.descriptionInput.collectAsState()
-    val dateInMillis by viewModel.dateInMillisInput.collectAsState()
-    val quantity by viewModel.quantityInput.collectAsState()
-    val photoUri by viewModel.photoUriInput.collectAsState()
+    val serialNumber by viewModel.serialNumberInput.collectAsStateWithLifecycle()
+    val model by viewModel.modelInput.collectAsStateWithLifecycle()
+    val name by viewModel.nameInput.collectAsStateWithLifecycle()
+    val phone by viewModel.phoneInput.collectAsStateWithLifecycle()
+    val aadhaar by viewModel.aadhaarInput.collectAsStateWithLifecycle()
+    val amount by viewModel.amountInput.collectAsStateWithLifecycle()
+    val address by viewModel.addressInput.collectAsStateWithLifecycle()
+    val description by viewModel.descriptionInput.collectAsStateWithLifecycle()
+    val dateInMillis by viewModel.dateInMillisInput.collectAsStateWithLifecycle()
+    val quantity by viewModel.quantityInput.collectAsStateWithLifecycle()
+    val photoUri by viewModel.photoUriInput.collectAsStateWithLifecycle()
 
-    val technician by viewModel.technicianNameInput.collectAsState()
-    val repairReason by viewModel.repairReasonInput.collectAsState()
+    val technician by viewModel.technicianNameInput.collectAsStateWithLifecycle()
+    val repairReason by viewModel.repairReasonInput.collectAsStateWithLifecycle()
 
     var showPhotoChooserDialog by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
     var scannerIndex by remember { mutableStateOf<Int?>(null) }
-    val transactionSubItems by viewModel.transactionSubItems.collectAsState()
+    val transactionSubItems by viewModel.transactionSubItems.collectAsStateWithLifecycle()
 
     // Date formatting helper
     val formattedDate = remember(dateInMillis) {
@@ -175,8 +176,8 @@ fun TransactionsScreen(viewModel: StockViewModel) {
         sdf.format(Date(dateInMillis))
     }
 
-    val canSell by viewModel.canSell.collectAsState()
-    val canRepair by viewModel.canRepair.collectAsState()
+    val canSell by viewModel.canSell.collectAsStateWithLifecycle()
+    val canRepair by viewModel.canRepair.collectAsStateWithLifecycle()
     
     val isActionAllowed = if (activeSelection == 3) canRepair else canSell
 
