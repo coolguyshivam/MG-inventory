@@ -69,7 +69,6 @@ fun InventoryScreen(viewModel: StockViewModel) {
     var editName by remember { mutableStateOf("") }
     var editAmount by remember { mutableStateOf("") }
     var editDesc by remember { mutableStateOf("") }
-    var editQty by remember { mutableStateOf("1") }
 
     var selectedPhotosForViewer by remember { mutableStateOf<List<String>?>(null) }
 
@@ -409,8 +408,7 @@ fun InventoryScreen(viewModel: StockViewModel) {
                             editModel = item.model
                             editName = item.name
                             editAmount = item.amount.toString()
-                            editDesc = item.description
-                            editQty = item.quantity.toString()
+                            editDesc = item.description.ifBlank { "BH - \nSale price - \nCondition - " }
                         },
                         onRepairClicked = {
                             // If standard stock, triggers send-to-repair popup
@@ -516,7 +514,7 @@ fun InventoryScreen(viewModel: StockViewModel) {
                     Button(
                         onClick = {
                             val amountVal = editAmount.toDoubleOrNull() ?: item.amount
-                            val qtyVal = editQty.toIntOrNull() ?: item.quantity
+                            val qtyVal = 1
                             viewModel.editInventoryItem(
                                 item.id,
                                 item.copy(
@@ -562,13 +560,6 @@ fun InventoryScreen(viewModel: StockViewModel) {
                             value = editAmount,
                             onValueChange = { editAmount = it },
                             label = { Text("Purchase Price") },
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        OutlinedTextField(
-                            value = editQty,
-                            onValueChange = { editQty = it },
-                            label = { Text("Quantity") },
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.fillMaxWidth()
                         )

@@ -36,6 +36,9 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
     private val _appIconStyle = MutableStateFlow("Classic Slate")
     val appIconStyle: StateFlow<String> = _appIconStyle.asStateFlow()
 
+    private val _printPriceInPdf = MutableStateFlow(false)
+    val printPriceInPdf: StateFlow<Boolean> = _printPriceInPdf.asStateFlow()
+
     fun loadAppIconStyle(context: Context) {
         val prefs = context.getSharedPreferences("mobile_gallery_prefs", Context.MODE_PRIVATE)
         _appIconStyle.value = prefs.getString("app_icon_style", "Classic Slate") ?: "Classic Slate"
@@ -45,6 +48,17 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
         _appIconStyle.value = style
         val prefs = context.getSharedPreferences("mobile_gallery_prefs", Context.MODE_PRIVATE)
         prefs.edit().putString("app_icon_style", style).apply()
+    }
+
+    fun loadPrintPriceInPdf(context: Context) {
+        val prefs = context.getSharedPreferences("mobile_gallery_prefs", Context.MODE_PRIVATE)
+        _printPriceInPdf.value = prefs.getBoolean("print_price_in_pdf", false)
+    }
+
+    fun setPrintPriceInPdf(context: Context, enabled: Boolean) {
+        _printPriceInPdf.value = enabled
+        val prefs = context.getSharedPreferences("mobile_gallery_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putBoolean("print_price_in_pdf", enabled).apply()
     }
 
     // --- Authentication & Biometric State ---
@@ -200,7 +214,7 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
     var aadhaarInput = MutableStateFlow("")
     var amountInput = MutableStateFlow("")
     var addressInput = MutableStateFlow("")
-    var descriptionInput = MutableStateFlow("")
+    var descriptionInput = MutableStateFlow("BH - \nSale price - \nCondition - ")
     var dateInMillisInput = MutableStateFlow(System.currentTimeMillis())
     
     data class TransactionSubItem(
@@ -243,7 +257,7 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
         phoneInput.value = ""
         aadhaarInput.value = ""
         amountInput.value = ""
-        descriptionInput.value = ""
+        descriptionInput.value = item.description.ifBlank { "BH - \nSale price - \nCondition - " }
         quantityInput.value = 1
         photoUriInput.value = null
         transactionSubItems.value = listOf(TransactionSubItem(serialNumber = item.serialNumber, amount = item.amount.toInt().toString()))
@@ -346,7 +360,7 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                                     phoneInput.value = ""
                                     aadhaarInput.value = ""
                                     amountInput.value = ""
-                                    descriptionInput.value = ""
+                                    descriptionInput.value = "BH - \nSale price - \nCondition - "
                                 } else if (selection == 2) { // RETURN Category
                                     // Rule 7: For returns, all details should be copied.
                                     modelInput.value = matchingItem.model
@@ -354,7 +368,7 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                                     phoneInput.value = matchingItem.phoneNumber ?: ""
                                     aadhaarInput.value = matchingItem.aadhaarNumber ?: ""
                                     amountInput.value = matchingItem.amount.toString()
-                                    descriptionInput.value = matchingItem.description
+                                    descriptionInput.value = matchingItem.description.ifBlank { "BH - \nSale price - \nCondition - " }
                                 }
                             }
                         }
@@ -868,7 +882,7 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                     modelInput.value = matchingItem.model
                     nameInput.value = matchingItem.name
                     amountInput.value = matchingItem.amount.toString()
-                    descriptionInput.value = matchingItem.description
+                    descriptionInput.value = matchingItem.description.ifBlank { "BH - \nSale price - \nCondition - " }
                 }
             }
         }
@@ -888,7 +902,7 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
         aadhaarInput.value = ""
         amountInput.value = ""
         addressInput.value = ""
-        descriptionInput.value = ""
+        descriptionInput.value = "BH - \nSale price - \nCondition - "
         dateInMillisInput.value = System.currentTimeMillis()
         quantityInput.value = 1
         photoUriInput.value = null

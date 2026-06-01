@@ -780,6 +780,14 @@ fun printHistoryEvent(context: android.content.Context, event: HistoryEvent) {
                 "<img src='$it' style='max-width: 47%; max-height: 480px; object-fit: contain; margin-top: 10px; margin-right: 10px; border: 1.5px solid #bbb; border-radius: 4px; padding: 3px;'/>"
             } ?: ""
 
+            val prefs = context.getSharedPreferences("mobile_gallery_prefs", android.content.Context.MODE_PRIVATE)
+            val printPrice = prefs.getBoolean("print_price_in_pdf", false)
+            val pricePlaceholder = if (printPrice) {
+                "₹${String.format("%,.2f", event.amount)}"
+            } else {
+                "________________"
+            }
+
             val htmlDocument = """
                 <!DOCTYPE html>
                 <html>
@@ -907,8 +915,8 @@ fun printHistoryEvent(context: android.content.Context, event: HistoryEvent) {
                             <div class="grid-row">
                                 <div class="grid-cell label">IMEI/Serial Key:</div>
                                 <div class="grid-cell" style="font-family: monospace;">${event.serialNumber.ifBlank { "________________" }}</div>
-                                <div class="grid-cell label"></div>
-                                <div class="grid-cell"></div>
+                                <div class="grid-cell label">Amount / Price:</div>
+                                <div class="grid-cell" style="font-weight: bold; color: #111;">$pricePlaceholder</div>
                             </div>
                             <div class="grid-row">
                                 <div class="grid-cell label">Audited By:</div>
@@ -1060,6 +1068,14 @@ fun printHistoryEventCustom(
                 """.trimIndent()
             }
 
+            val prefs = context.getSharedPreferences("mobile_gallery_prefs", android.content.Context.MODE_PRIVATE)
+            val printPrice = prefs.getBoolean("print_price_in_pdf", false)
+            val pricePlaceholder = if (printPrice) {
+                "₹${String.format("%,.2f", event.amount)}"
+            } else {
+                "________________"
+            }
+
             val htmlDocument = """
                 <!DOCTYPE html>
                 <html>
@@ -1165,8 +1181,8 @@ fun printHistoryEventCustom(
                             <div class="grid-row">
                                 <div class="grid-cell label">IMEI / Serial key:</div>
                                 <div class="grid-cell" style="font-family: monospace;">${event.serialNumber.ifBlank { "________________" }}</div>
-                                <div class="grid-cell label"></div>
-                                <div class="grid-cell"></div>
+                                <div class="grid-cell label">Amount / Price:</div>
+                                <div class="grid-cell" style="font-weight: bold; color: #111;">$pricePlaceholder</div>
                             </div>
                             <div class="grid-row">
                                 <div class="grid-cell label">Aadhaar Number:</div>

@@ -82,6 +82,7 @@ class MainActivity : FragmentActivity() {
 
             LaunchedEffect(Unit) {
                 stockViewModel.loadAppIconStyle(applicationContext)
+                stockViewModel.loadPrintPriceInPdf(applicationContext)
                 stockViewModel.checkAutoLogin(applicationContext)
             }
 
@@ -212,7 +213,7 @@ fun MainAppContent(viewModel: StockViewModel) {
                         )
                     }
 
-                    if (canViewLedger) {
+                     if (canViewLedger) {
                         NavigationDrawerItem(
                             icon = { Icon(Icons.AutoMirrored.Filled.CompareArrows, contentDescription = null, modifier = Modifier.size(22.dp)) },
                             label = { 
@@ -228,6 +229,49 @@ fun MainAppContent(viewModel: StockViewModel) {
                             },
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                         )
+                    }
+
+                    if (canManageUsers) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 12.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant
+                        )
+                        
+                        Text(
+                            text = "Application Settings",
+                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        
+                        val printPriceInPdf by viewModel.printPriceInPdf.collectAsStateWithLifecycle()
+                        
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 24.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Print Price in Receipts",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Print item prices in the generated receipt PDFs",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 11.sp
+                                )
+                            }
+                            Switch(
+                                checked = printPriceInPdf,
+                                onCheckedChange = { viewModel.setPrintPriceInPdf(context, it) }
+                            )
+                        }
                     }
 
                     Spacer(modifier = Modifier.weight(1f))
