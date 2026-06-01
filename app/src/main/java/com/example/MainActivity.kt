@@ -110,6 +110,7 @@ fun MainAppContent(viewModel: StockViewModel) {
     val lastSynced by viewModel.lastSyncedTime.collectAsState()
 
     var showLogoutDialog by remember { mutableStateOf(false) }
+    var showChangePasswordDialog by remember { mutableStateOf(false) }
 
     val context = androidx.compose.ui.platform.LocalContext.current
     var lastBackPress by remember { mutableStateOf(0L) }
@@ -245,6 +246,20 @@ fun MainAppContent(viewModel: StockViewModel) {
                                 Text(text = "${user.role} Authorization", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
                                 
                                 Spacer(modifier = Modifier.height(12.dp))
+                                
+                                OutlinedButton(
+                                    onClick = { 
+                                        coroutineScope.launch { drawerState.close() }
+                                        showChangePasswordDialog = true 
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(imageVector = Icons.Default.Edit, contentDescription = "Change Password")
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Change Password")
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
                                 
                                 OutlinedButton(
                                     onClick = { 
@@ -494,6 +509,90 @@ fun MainAppContent(viewModel: StockViewModel) {
             title = { Text("Confirm Logout Request") },
             text = {
                 Text("Are you sure you want to log out from the administrative control panel? Real-time database synchronizations will sleep safely.")
+            }
+        )
+    }
+
+    if (showChangePasswordDialog) {
+        var newSecretPassword by remember { mutableStateOf("") }
+        var confirmSecretPassword by remember { mutableStateOf("") }
+        var passwordError by remember { mutableStateOf<String?>(null) }
+        
+        AlertDialog(
+            onDismissRequest = { 
+                showChangePasswordDialog = false 
+                newSecretPassword = ""
+                confirmSecretPassword = ""
+                passwordError = null
+            },
+            title = { Text("Change Password", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = "Set a secure password for your operator account (${loggedInUser?.username ?: ""}).",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    OutlinedTextField(
+                        value = newSecretPassword,
+                        onValueChange = { 
+                            newSecretPassword = it
+                            passwordError = null
+                        },
+                        label = { Text("New Password") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = confirmSecretPassword,
+                        onValueChange = { 
+                            confirmSecretPassword = it
+                            passwordError = null
+                        },
+                        label = { Text("Confirm New Password") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (passwordError != null) {
+                        Text(
+                            text = passwordError!!,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (newSecretPassword.isBlank()) {
+                            passwordError = "Password cannot be blank"
+                        } else if (newSecretPassword != confirmSecretPassword) {
+                            passwordError = "Passwords do not match"
+                        } else {
+                            val activeUsername = loggedInUser?.username ?: "admin"
+                            viewModel.changeUserPassword(activeUsername, newSecretPassword)
+                            android.widget.Toast.makeText(context, "Password updated successfully!", android.widget.Toast.LENGTH_SHORT).show()
+                            showChangePasswordDialog = false
+                            newSecretPassword = ""
+                            confirmSecretPassword = ""
+                            passwordError = null
+                        }
+                    }
+                ) {
+                    Text("Change Password")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { 
+                        showChangePasswordDialog = false 
+                        newSecretPassword = ""
+                        confirmSecretPassword = ""
+                        passwordError = null
+                    }
+                ) {
+                    Text("Cancel")
+                }
             }
         )
     }

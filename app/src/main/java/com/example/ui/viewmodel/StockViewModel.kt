@@ -927,6 +927,8 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
     }
 
     fun executeTransaction() {
+        _transactionError.value = null
+        _transactionSuccessMessage.value = null
         val typeId = _transactionSelection.value // 0: Purchase, 1: Sale, 2: Return, 3: Repair
         val model = modelInput.value.trim()
         val name = nameInput.value.trim()
@@ -1133,7 +1135,6 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                     _transactionError.value = "Transaction timed out. Cloud database might be unreachable."
                 }
 
-                _isUploadingTransaction.value = false
                 if (allSuccess && _transactionError.value == null) {
                     when (typeId) {
                         0 -> _transactionSuccessMessage.value = "Purchase logged successfully! Added ${itemsToProcess.size} item(s)."

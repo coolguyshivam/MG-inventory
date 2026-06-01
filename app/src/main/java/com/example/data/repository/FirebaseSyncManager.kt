@@ -46,16 +46,16 @@ object FirebaseSyncManager {
 
     fun initialize(context: Context) {
         synchronized(this) {
+            com.example.util.AppUtils.init(context)
             if (isInitialized) return
             try {
-                val isAlreadyInitialized = try {
+                val existingApp = try {
                     FirebaseApp.getInstance()
-                    true
                 } catch (e: IllegalStateException) {
-                    false
+                    null
                 }
 
-                if (!isAlreadyInitialized) {
+                if (existingApp == null) {
                     try {
                         val options = if (isConfigured()) {
                             Log.d("FirebaseSyncManager", "Firebase configured. Initializing real sync mode!")
@@ -69,7 +69,6 @@ object FirebaseSyncManager {
                                 val bucket = BuildConfig.FIREBASE_STORAGE_BUCKET
                                 if (bucket.isNotBlank() && !bucket.contains("your-app")) {
                                     val cleanBucket = if (bucket.startsWith("gs://")) bucket else "gs://$bucket"
-                                    // Set custom storage bucket in FirebaseOptions for implicit initialization
                                     val rawBucket = cleanBucket.removePrefix("gs://")
                                     builder.setStorageBucket(rawBucket)
                                 }
@@ -89,14 +88,15 @@ object FirebaseSyncManager {
                         FirebaseApp.initializeApp(context.applicationContext, options)
                     } catch (e: Exception) {
                         Log.e("FirebaseSyncManager", "Failed to initialize Firebase with main options, trying dummy fallback", e)
-                        // Fallback to dummy
-                        val dummyOptions = FirebaseOptions.Builder()
-                            .setApiKey("AIzaSyDummyKeyForFirestoreOfflineWorking")
-                            .setApplicationId("1:123456789012:android:0123456789abcdef012345")
-                            .setProjectId("inventorymanagement-dummy")
-                            .build()
                         try {
-                            FirebaseApp.initializeApp(context.applicationContext, dummyOptions)
+                            val dummyOptions = FirebaseOptions.Builder()
+                                .setApiKey("AIzaSyDummyKeyForFirestoreOfflineWorking")
+                                .setApplicationId("1:123456789012:android:0123456789abcdef012345")
+                                .setProjectId("inventorymanagement-dummy")
+                                .build()
+                            if (FirebaseApp.getApps(context.applicationContext).isEmpty()) {
+                                FirebaseApp.initializeApp(context.applicationContext, dummyOptions)
+                            }
                         } catch (ex: Exception) {
                             Log.e("FirebaseSyncManager", "Failed to initialize default dummy Firebase fallback", ex)
                         }
@@ -111,18 +111,20 @@ object FirebaseSyncManager {
                     Log.e("FirebaseSyncManager", "Failed to get Firestore instance during initialization", e)
                 }
                 
-                // Attempt Anonymous Sign-in for Firestore Auth rules
-                try {
-                    com.google.firebase.auth.FirebaseAuth.getInstance().signInAnonymously()
-                        .addOnCompleteListener { task ->
-                            if (task.isSuccessful) {
-                                Log.d("FirebaseSyncManager", "signInAnonymously:success")
-                            } else {
-                                Log.w("FirebaseSyncManager", "signInAnonymously:failure", task.exception)
+                // Attempt Anonymous Sign-in for Firestore Auth rules if configured and initialized
+                if (isConfigured() && isInitialized) {
+                    try {
+                        com.google.firebase.auth.FirebaseAuth.getInstance().signInAnonymously()
+                            .addOnCompleteListener { task ->
+                                if (task.isSuccessful) {
+                                    Log.d("FirebaseSyncManager", "signInAnonymously:success")
+                                } else {
+                                    Log.w("FirebaseSyncManager", "signInAnonymously:failure", task.exception)
+                                }
                             }
-                        }
-                } catch (e: Exception) {
-                    Log.w("FirebaseSyncManager", "Auth sign in bypassed or failed under current context configuration", e)
+                    } catch (e: Exception) {
+                        Log.w("FirebaseSyncManager", "Auth sign in bypassed or failed under current context configuration", e)
+                    }
                 }
             } catch (e: Exception) {
                 Log.e("FirebaseSyncManager", "Failed to initialize Firebase app dynamically", e)

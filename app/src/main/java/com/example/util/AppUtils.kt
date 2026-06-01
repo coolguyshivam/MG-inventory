@@ -22,6 +22,12 @@ import kotlinx.coroutines.tasks.await
 
 object AppUtils {
 
+    private var appContext: Context? = null
+
+    fun init(context: Context) {
+        appContext = context.applicationContext
+    }
+
     private const val ENCRYPTION_KEY = "MG_GALLERY_SECURE_SALT_KEY"
 
     fun hashPassword(password: String): String {
@@ -315,7 +321,19 @@ object AppUtils {
     }
 
     suspend fun uploadPhotoToFirebaseStorage(base64Str: String): String {
-        if (base64Str.startsWith("http") || base64Str.startsWith("gs://") || base64Str.startsWith("ic_") || base64Str.isBlank()) {
+        if (base64Str.startsWith("http") || base64Str.startsWith("gs://") || base64Str.startsWith("ic_") || base64Str.startsWith("file://") || base64Str.isBlank()) {
+            return base64Str
+        }
+
+        // If firebase is not configured, write to local file cache instead of keeping a massive base64 string
+        if (!com.example.data.repository.FirebaseSyncManager.isConfigured()) {
+            val context = appContext
+            if (context != null) {
+                val file = base64ToLocalFile(context, base64Str)
+                if (file != null) {
+                    return "file://${file.absolutePath}"
+                }
+            }
             return base64Str
         }
         
@@ -370,7 +388,17 @@ object AppUtils {
         } catch (e: Exception) {
             e.printStackTrace()
             android.util.Log.e("UploadPhoto", "Error uploading photo content to storage: ${e.message}")
-            base64Str
+            val context = appContext
+            if (context != null) {
+                val file = base64ToLocalFile(context, base64Str)
+                if (file != null) {
+                    "file://${file.absolutePath}"
+                } else {
+                    base64Str
+                }
+            } else {
+                base64Str
+            }
         }
     }
 

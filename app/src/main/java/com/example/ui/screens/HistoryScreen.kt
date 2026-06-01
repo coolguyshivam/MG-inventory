@@ -376,7 +376,7 @@ fun HistoryScreen(viewModel: StockViewModel) {
     }
 
     // FullScreen Photo Viewer
-    if (selectedPhotosForViewer != null) {
+    if (selectedPhotosForViewer != null && selectedPhotosForViewer!!.isNotEmpty()) {
         androidx.compose.ui.window.Dialog(
             onDismissRequest = { selectedPhotosForViewer = null },
             properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)

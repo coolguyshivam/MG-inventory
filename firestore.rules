@@ -1,0 +1,49 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function to check if the user is authenticated securely in the application
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Allow authenticated users (Operators, Admins, MIS, Managers) to retrieve and update inventory listings
+    match /inventory_items/{itemId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Audit logs of all purchases and sales
+    match /history_events/{eventId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Registered operators list
+    match /users/{username} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Customers and Supplier ledgers
+    match /parties/{partyId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Financial transaction log entries
+    match /ledger_entries/{entryId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Staff attendance logs
+    match /attendance_records/{recordId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Leave request entries
+    match /leave_applications/{leaveId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Administrative push alerts and notices
+    match /attendance_notifications/{notificationId} {
+      allow read, write: if isAuthenticated();
+    }
+  }
+}

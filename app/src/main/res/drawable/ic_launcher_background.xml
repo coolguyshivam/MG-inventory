@@ -5,6 +5,8 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    
+    <!-- Base Deep Space Galactic Dark Purple-To-Black Gradient -->
     <path
         android:pathData="M0,0h108v108h-108z">
         <aapt:attr name="android:fillColor">
@@ -14,15 +16,21 @@
                 android:startY="0"
                 android:endX="108"
                 android:endY="108">
-                <item android:offset="0" android:color="#0B0F19" />
-                <item android:offset="0.5" android:color="#111827" />
-                <item android:offset="1" android:color="#1E3A8A" />
+                <item android:offset="0" android:color="#040308" />     <!-- Deep Black -->
+                <item android:offset="0.4" android:color="#0A0615" />   <!-- Deep Indigo/Magenta shadow -->
+                <item android:offset="1" android:color="#140624" />     <!-- Ambient Glowing Purple -->
             </gradient>
         </aapt:attr>
     </path>
-    <!-- Grid overlay for visual texture -->
+    
+    <!-- Sophisticated Ambient Tech Grid Texture Overlay -->
     <path
-        android:pathData="M0,18h108 M0,36h108 M0,54h108 M0,72h108 M0,90h108 M18,0v108 M36,0v108 M54,0v108 M72,0v108 M90,0v108"
-        android:strokeWidth="0.5"
-        android:strokeColor="#11FFFFFF" />
+        android:pathData="M 0,18 H 108 M 0,36 H 108 M 0,54 H 108 M 0,72 H 108 M 0,90 H 108 M 18,0 V 108 M 36,0 V 108 M 54,0 V 108 M 72,0 V 108 M 90,0 V 108"
+        android:strokeWidth="0.4"
+        android:strokeColor="#0BFFFFFF" />
+
+    <!-- Distant Cosmic Nebula Glow Accent (Bottom-Right Circle Aura) -->
+    <path
+        android:pathData="M 108, 108 M 108, 48 A 60,60 0 0,0 48, 108 Z"
+        android:fillColor="#08FF007F" />
 </vector>

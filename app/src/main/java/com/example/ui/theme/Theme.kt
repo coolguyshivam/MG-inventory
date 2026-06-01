@@ -39,6 +39,7 @@ private val LightColorScheme = lightColorScheme(
 
 fun getPrimaryColor(style: String, dark: Boolean): Color {
     return when (style) {
+        "Neon Magenta" -> if (dark) Color(0xFFFF007F) else Color(0xFFEC4899)
         "Sunset Glow" -> if (dark) Color(0xFFFB7185) else Color(0xFFE11D48)
         "Emerald Mint" -> if (dark) Color(0xFF2DD4BF) else Color(0xFF0D9488)
         "Golden Luxury" -> if (dark) Color(0xFFFBBF24) else Color(0xFFD97706)
@@ -49,6 +50,7 @@ fun getPrimaryColor(style: String, dark: Boolean): Color {
 
 fun getSecondaryColor(style: String, dark: Boolean): Color {
     return when (style) {
+        "Neon Magenta" -> if (dark) Color(0xFFA855F7) else Color(0xFF6366F1)
         "Sunset Glow" -> if (dark) Color(0xFFFDA4AF) else Color(0xFFFB7185)
         "Emerald Mint" -> if (dark) Color(0xFF34D399) else Color(0xFF10B981)
         "Golden Luxury" -> if (dark) Color(0xFFF59E0B) else Color(0xFFF59E0B)

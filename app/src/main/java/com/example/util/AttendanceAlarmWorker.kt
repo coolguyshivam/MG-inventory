@@ -22,6 +22,7 @@ class AttendanceAlarmWorker(
 
     override suspend fun doWork(): Result {
         return try {
+            com.example.data.repository.FirebaseSyncManager.initialize(context)
             val db = FirebaseFirestore.getInstance()
             val sharedPrefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
             val username = sharedPrefs.getString("logged_in_username", null) ?: return Result.success()
