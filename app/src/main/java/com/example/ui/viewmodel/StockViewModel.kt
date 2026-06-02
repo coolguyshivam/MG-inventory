@@ -275,68 +275,6 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                     val hashedAdmin = com.example.util.AppUtils.hashPassword("admin")
                     repository.insertUser(User("admin", hashedAdmin, "Admin"))
                 }
-                
-                // Seed default items and audit histories if empty to restore vanished cards
-                val currentItems = repository.allInventoryItems.first()
-                if (currentItems.isEmpty()) {
-                    repository.purchaseProduct(
-                        serialNumber = "354920056123456",
-                        model = "Pixel 9 Pro",
-                        name = "Google Pixel 9 Pro (128GB)",
-                        phoneNumber = "9876543210",
-                        aadhaarNumber = "123456789012",
-                        amount = 99999.00,
-                        description = "Brand new inbound stock from Delhi distributor",
-                        dateInMillis = System.currentTimeMillis() - 86400000 * 2,
-                        quantity = 5,
-                        photoUri = "ic_phone_blue",
-                        userId = "admin"
-                    )
-                    
-                    repository.purchaseProduct(
-                        serialNumber = "880439821876543",
-                        model = "Galaxy S25 Ultra",
-                        name = "Samsung Galaxy S25 Ultra",
-                        phoneNumber = "9988776655",
-                        aadhaarNumber = "987654321098",
-                        amount = 129000.00,
-                        description = "Pre-owned high tier premium stock intake",
-                        dateInMillis = System.currentTimeMillis() - 86400000,
-                        quantity = 3,
-                        photoUri = "ic_phone_amber",
-                        userId = "admin"
-                    )
-                    
-                    repository.purchaseProduct(
-                        serialNumber = "998247716900124",
-                        model = "iPhone 16 Pro Max",
-                        name = "Apple iPhone 16 Pro Max",
-                        phoneNumber = "9123456789",
-                        aadhaarNumber = "111122223333",
-                        amount = 144900.00,
-                        description = "Direct store incoming purchase",
-                        dateInMillis = System.currentTimeMillis() - 3600000 * 4,
-                        quantity = 2,
-                        photoUri = "ic_watch",
-                        userId = "admin"
-                    )
-                    
-                    repository.directRepair(
-                        serialNumber = "123456789012345",
-                        model = "OnePlus 12",
-                        name = "OnePlus 12 Black Onyx",
-                        phoneNumber = "7766554433",
-                        aadhaarNumber = "444455556666",
-                        amount = 64999.00,
-                        description = "Display flickering issue repair inbound log",
-                        dateInMillis = System.currentTimeMillis() - 3600000 * 2,
-                        quantity = 1,
-                        photoUri = "ic_tablet",
-                        userId = "admin",
-                        technicianName = "John Miller",
-                        repairReason = "Screen Replacement"
-                    )
-                }
             } catch (e: Exception) {
                 // Safe exception catch during database startup
             }
@@ -351,24 +289,41 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                     try {
                         val trimmedSn = sn.trim()
                         if (trimmedSn.isNotBlank()) {
-                            val matchingItem = repository.getItemBySerialNumber(trimmedSn)
-                            if (matchingItem != null) {
-                                if (selection == 1) { // SALE Category
-                                    // Rule 7: Model number should autofill, but other fields should be empty.
-                                    modelInput.value = matchingItem.model
-                                    nameInput.value = ""
-                                    phoneInput.value = ""
-                                    aadhaarInput.value = ""
-                                    amountInput.value = ""
-                                    descriptionInput.value = "BH - \nSale price - \nCondition - "
-                                } else if (selection == 2) { // RETURN Category
-                                    // Rule 7: For returns, all details should be copied.
-                                    modelInput.value = matchingItem.model
-                                    nameInput.value = matchingItem.name
-                                    phoneInput.value = matchingItem.phoneNumber ?: ""
-                                    aadhaarInput.value = matchingItem.aadhaarNumber ?: ""
-                                    amountInput.value = matchingItem.amount.toString()
-                                    descriptionInput.value = matchingItem.description.ifBlank { "BH - \nSale price - \nCondition - " }
+                            if (selection == 2) { // RETURN Category
+                                // Try finding last sales transaction for the targeted IMEI first
+                                val lastSale = repository.getLastSaleEventBySerialNumber(trimmedSn)
+                                if (lastSale != null) {
+                                    modelInput.value = lastSale.model
+                                    nameInput.value = lastSale.name
+                                    phoneInput.value = lastSale.phoneNumber ?: ""
+                                    aadhaarInput.value = lastSale.aadhaarNumber ?: ""
+                                    amountInput.value = lastSale.amount.toString()
+                                    descriptionInput.value = lastSale.description.ifBlank { "BH - \nSale price - \nCondition - " }
+                                } else {
+                                    // Fallback to active inventory matching
+                                    val matchingItem = repository.getItemBySerialNumber(trimmedSn)
+                                    if (matchingItem != null) {
+                                        modelInput.value = matchingItem.model
+                                        nameInput.value = matchingItem.name
+                                        phoneInput.value = matchingItem.phoneNumber ?: ""
+                                        aadhaarInput.value = matchingItem.aadhaarNumber ?: ""
+                                        amountInput.value = matchingItem.amount.toString()
+                                        descriptionInput.value = matchingItem.description.ifBlank { "BH - \nSale price - \nCondition - " }
+                                    }
+                                }
+                            } else {
+                                // Other categories like SALE, etc. use active stock item
+                                val matchingItem = repository.getItemBySerialNumber(trimmedSn)
+                                if (matchingItem != null) {
+                                    if (selection == 1) { // SALE Category
+                                        // Rule 7: Model number should autofill, but other fields should be empty.
+                                        modelInput.value = matchingItem.model
+                                        nameInput.value = ""
+                                        phoneInput.value = ""
+                                        aadhaarInput.value = ""
+                                        amountInput.value = ""
+                                        descriptionInput.value = "BH - \nSale price - \nCondition - "
+                                    }
                                 }
                             }
                         }

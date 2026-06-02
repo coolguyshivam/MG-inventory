@@ -23,6 +23,7 @@ import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -288,6 +289,8 @@ fun TransactionsScreen(viewModel: StockViewModel) {
     LaunchedEffect(successMessage) {
         if (successMessage != null) {
             resetAllTouched()
+            delay(4000L)
+            viewModel.clearFormErrorAndSuccess()
         }
     }
 
@@ -560,79 +563,7 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                         supportingText = if (nameError != null) { { Text(nameError, color = MaterialTheme.colorScheme.error) } } else null
                     )
 
-                    val filteredParties = remember(name, combinedParties) {
-                        if (name.isBlank()) {
-                            combinedParties
-                        } else {
-                            combinedParties.filter { it.name.contains(name, ignoreCase = true) }
-                        }
-                    }
-
-                    if (nameFocused && filteredParties.isNotEmpty()) {
-                        Card(
-                            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-                            shape = RoundedCornerShape(8.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 64.dp)
-                                .heightIn(max = 240.dp)
-                                .align(Alignment.TopStart)
-                                .shadow(8.dp, RoundedCornerShape(8.dp))
-                        ) {
-                            LazyColumn(
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                items(filteredParties) { party ->
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable {
-                                                viewModel.nameInput.value = party.name
-                                                viewModel.phoneInput.value = party.phoneNumber
-                                                viewModel.aadhaarInput.value = party.aadhaarNumber
-                                                viewModel.addressInput.value = party.address
-                                                nameFocused = false
-                                            }
-                                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = party.name,
-                                                fontWeight = FontWeight.Bold,
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = MaterialTheme.colorScheme.onSurface
-                                            )
-                                            if (party.phoneNumber.isNotBlank()) {
-                                                Text(
-                                                    text = "📞 Phone: ${party.phoneNumber}",
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
-                                            if (party.aadhaarNumber.isNotBlank()) {
-                                                Text(
-                                                    text = "🆔 Aadhaar: ${party.aadhaarNumber}",
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
-                                            if (party.address.isNotBlank()) {
-                                                Text(
-                                                    text = "📍 Address: ${party.address}",
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
-                                        }
-                                    }
-                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                                }
-                            }
-                        }
-                    }
+                    // Empty space or placeholder to match parent alignment if required
                 }
             }
 

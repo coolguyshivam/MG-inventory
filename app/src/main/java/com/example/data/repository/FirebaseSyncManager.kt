@@ -185,7 +185,7 @@ object FirebaseSyncManager {
                         "dateInMillis" to item.dateInMillis,
                         "quantity" to item.quantity,
                         "photoUri" to item.photoUri,
-                        "isUnderRepair" to item.isUnderRepair,
+                        "underRepair" to item.underRepair,
                         "technicianName" to item.technicianName,
                         "repairReason" to item.repairReason,
                         "lastUpdated" to finalTimestamp

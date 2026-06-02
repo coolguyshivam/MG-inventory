@@ -17,11 +17,16 @@ data class InventoryItem(
     val dateInMillis: Long = System.currentTimeMillis(),
     val quantity: Int = 1,
     val photoUri: String? = null,
-    val isUnderRepair: Boolean = false,
+    val underRepair: Boolean = false,
     val technicianName: String? = null,
     val repairReason: String? = null,
     val lastUpdated: Long = System.currentTimeMillis()
-)
+) {
+    val isUnderRepair: Boolean
+        @com.google.firebase.firestore.Exclude
+        @androidx.room.Ignore
+        get() = underRepair
+}
 
 @Entity(tableName = "history_events")
 data class HistoryEvent(

@@ -23,6 +23,7 @@ import kotlinx.coroutines.tasks.await
 object AppUtils {
 
     private var appContext: Context? = null
+    private val imageCache = java.util.concurrent.ConcurrentHashMap<String, Any>()
 
     fun init(context: Context) {
         appContext = context.applicationContext
@@ -312,8 +313,16 @@ object AppUtils {
                 else -> modelStr
             }
             if (target.length > 100 && !target.startsWith("http") && !target.startsWith("content://") && !target.startsWith("file://")) {
-                val file = base64ToLocalFile(context, target)
-                file ?: target
+                val cacheKey = "${target.length}_${target.take(128)}"
+                val cached = imageCache[cacheKey]
+                if (cached != null) {
+                    cached
+                } else {
+                    val file = base64ToLocalFile(context, target)
+                    val result = file ?: target
+                    imageCache[cacheKey] = result
+                    result
+                }
             } else {
                 target
             }

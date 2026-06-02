@@ -117,6 +117,21 @@ class InventoryRepository {
         return snap.documents.firstOrNull()?.toObject(InventoryItem::class.java)
     }
 
+    suspend fun getLastSaleEventBySerialNumber(serialNumber: String): HistoryEvent? {
+        return try {
+            val snap = db.collection("history_events")
+                .whereEqualTo("actionType", "SALE")
+                .whereEqualTo("serialNumber", serialNumber)
+                .get()
+                .await()
+            snap.documents
+                .mapNotNull { it.toObject(HistoryEvent::class.java) }
+                .maxByOrNull { it.timestamp }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     suspend fun getItemById(id: String): InventoryItem? {
         return db.collection("inventory_items").document(id).get().await().toObject(InventoryItem::class.java)
     }
@@ -147,7 +162,7 @@ class InventoryRepository {
             dateInMillis = dateInMillis,
             quantity = quantity,
             photoUri = uploadedPhotoUri,
-            isUnderRepair = false
+            underRepair = false
         )
         db.collection("inventory_items").document(item.id).set(item).await()
 
@@ -244,7 +259,7 @@ class InventoryRepository {
                 dateInMillis = dateInMillis,
                 quantity = quantity,
                 photoUri = uploadedPhotoUri,
-                isUnderRepair = false
+                underRepair = false
             )
             db.collection("inventory_items").document(item.id).set(item).await()
         }
@@ -297,7 +312,7 @@ class InventoryRepository {
             dateInMillis = dateInMillis,
             quantity = quantity,
             photoUri = uploadedPhotoUri,
-            isUnderRepair = true,
+            underRepair = true,
             technicianName = technicianName,
             repairReason = repairReason
         )
@@ -327,7 +342,7 @@ class InventoryRepository {
     suspend fun sendItemToRepair(itemId: String, technicianName: String, reason: String, userId: String): Boolean {
         val existing = getItemById(itemId) ?: return false
         val updated = existing.copy(
-            isUnderRepair = true,
+            underRepair = true,
             technicianName = technicianName,
             repairReason = reason
         )
@@ -356,7 +371,7 @@ class InventoryRepository {
     suspend fun returnItemFromRepair(itemId: String, userId: String): Boolean {
         val existing = getItemById(itemId) ?: return false
         val updated = existing.copy(
-            isUnderRepair = false,
+            underRepair = false,
             technicianName = null,
             repairReason = null
         )
