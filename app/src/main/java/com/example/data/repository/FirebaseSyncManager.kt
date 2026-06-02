@@ -155,7 +155,7 @@ object FirebaseSyncManager {
 
         try {
             for (item in items) {
-                val docRef = db.collection("inventory_items").document(item.id.toString())
+                val docRef = db.collection(com.example.data.cloud.AppCloudConfig.COLL_INVENTORY_ITEMS).document(item.id.toString())
                 var shouldOverwrite = true
                 try {
                     val remoteDoc = docRef.get().awaitTask()
@@ -227,7 +227,7 @@ object FirebaseSyncManager {
                     "timestamp" to event.timestamp,
                     "extraDetails" to event.extraDetails
                 )
-                db.collection("history_events")
+                db.collection(com.example.data.cloud.AppCloudConfig.COLL_HISTORY_EVENTS)
                     .document(event.id.toString())
                     .set(eventMap)
                     .awaitTask()

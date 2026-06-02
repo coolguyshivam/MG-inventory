@@ -1,0 +1,172 @@
+package com.example.data.cloud
+
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.os.Environment
+import android.util.Base64
+import android.util.Log
+import com.example.BuildConfig
+import com.example.data.repository.FirebaseSyncManager
+import com.example.util.AppUtils
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.util.UUID
+
+/**
+ * Clean abstraction for Cloud Media/Photo Storage.
+ * Implementations of this interface handle how photos are optimized, compressed, 
+ * and uploaded to a target storage solution (e.g. Firebase, AWS S3, local dev API).
+ */
+interface CloudStorageService {
+    suspend fun uploadPhoto(base64Str: String): String
+    suspend fun processAndUploadPhotos(photoUriString: String?): String?
+}
+
+/**
+ * Base implementation handling image resizing and compression locally
+ * before delegating the final byte upload to the target provider.
+ */
+abstract class BaseCloudStorageService : CloudStorageService {
+    override suspend fun processAndUploadPhotos(photoUriString: String?): String? {
+        if (photoUriString.isNullOrBlank()) return null
+        val parts = photoUriString.split(",")
+        val uploadedParts = parts.map { part ->
+            uploadPhoto(part)
+        }
+        return uploadedParts.joinToString(",")
+    }
+
+    protected fun compressImage(base64Str: String, maxDimension: Int = 800): ByteArray {
+        val pureBase64 = if (base64Str.startsWith("data:image")) {
+            val index = base64Str.indexOf(",")
+            if (index != -1) base64Str.substring(index + 1) else base64Str
+        } else {
+            base64Str
+        }
+        val bytes = Base64.decode(pureBase64, Base64.NO_WRAP)
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return bytes
+        
+        val scaledBitmap = if (bitmap.width > maxDimension || bitmap.height > maxDimension) {
+            val ratio = bitmap.width.toFloat() / bitmap.height.toFloat()
+            val (w, h) = if (ratio > 1) {
+                Pair(maxDimension, (maxDimension / ratio).toInt())
+            } else {
+                Pair((maxDimension * ratio).toInt(), maxDimension)
+            }
+            Bitmap.createScaledBitmap(bitmap, w, h, true)
+        } else {
+            bitmap
+        }
+        
+        val out = ByteArrayOutputStream()
+        scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 75, out)
+        return out.toByteArray()
+    }
+}
+
+/**
+ * Standard Firebase Cloud Storage implementation.
+ */
+class FirebaseStorageService(private val context: Context) : BaseCloudStorageService() {
+    override suspend fun uploadPhoto(base64Str: String): String {
+        if (base64Str.startsWith("http") || base64Str.startsWith("gs://") || base64Str.startsWith("ic_") || base64Str.startsWith("file://") || base64Str.isBlank()) {
+            return base64Str
+        }
+
+        if (!FirebaseSyncManager.isConfigured()) {
+            return LocalStorageService(context).uploadPhoto(base64Str)
+        }
+
+        return try {
+            val compressedBytes = compressImage(base64Str)
+            
+            // Get configurable Storage Bucket configuration
+            val bucket = try { BuildConfig.FIREBASE_STORAGE_BUCKET } catch (e: Exception) { "" }
+            val storage = if (bucket.isNotBlank() && !bucket.contains("your-app")) {
+                val cleanBucket = if (bucket.startsWith("gs://")) bucket else "gs://$bucket"
+                com.google.firebase.storage.FirebaseStorage.getInstance(cleanBucket)
+            } else {
+                val projId = try { BuildConfig.FIREBASE_PROJECT_ID } catch (e: Exception) { "" }
+                if (projId.isNotBlank() && !projId.contains("dummy")) {
+                    try {
+                        com.google.firebase.storage.FirebaseStorage.getInstance()
+                    } catch (e: Exception) {
+                        try {
+                            com.google.firebase.storage.FirebaseStorage.getInstance("gs://$projId.firebasestorage.app")
+                        } catch (e2: Exception) {
+                            com.google.firebase.storage.FirebaseStorage.getInstance("gs://$projId.appspot.com")
+                        }
+                    }
+                } else {
+                    com.google.firebase.storage.FirebaseStorage.getInstance()
+                }
+            }
+
+            val filename = "${AppCloudConfig.STORAGE_FOLDER_PHOTOS}/${UUID.randomUUID()}.jpg"
+            val ref = storage.reference.child(filename)
+            
+            // Execute cloud upload and retrieve download URL
+            ref.putBytes(compressedBytes).await()
+            ref.downloadUrl.await().toString()
+        } catch (e: Exception) {
+            Log.e("FirebaseStorageService", "Failed uploading to Firebase Storage, falling back to local file. Error: ${e.message}")
+            LocalStorageService(context).uploadPhoto(base64Str)
+        }
+    }
+
+    // Helper extension to handle storage Task await
+    private suspend fun <T> com.google.android.gms.tasks.Task<T>.await(): T =
+        kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
+            addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    continuation.resume(task.result, null)
+                } else {
+                    continuation.resumeWith(Result.failure(task.exception ?: RuntimeException("Task failed")))
+                }
+            }
+        }
+}
+
+/**
+ * Local File Cache storage implementation. 
+ * Perfect for offline deployments or simple SQLite-only environments.
+ * Saves base64 strings into local jpg files on disk to prevent heap issues.
+ */
+class LocalStorageService(private val context: Context) : BaseCloudStorageService() {
+    override suspend fun uploadPhoto(base64Str: String): String {
+        if (base64Str.startsWith("http") || base64Str.startsWith("gs://") || base64Str.startsWith("ic_") || base64Str.startsWith("file://") || base64Str.isBlank()) {
+            return base64Str
+        }
+        val file = AppUtils.base64ToLocalFile(context, base64Str)
+        return if (file != null) "file://${file.absolutePath}" else base64Str
+    }
+}
+
+/**
+ * Central Cloud Provider Factory.
+ * Determines storage destination based on configurations.
+ * To change the storage solution completely in the future, developers only need
+ * to add their provider here (e.g. AWS S3, Cloudinary) and update the return statement.
+ */
+object CloudStorageFactory {
+    private var instance: CloudStorageService? = null
+
+    fun getStorageService(context: Context): CloudStorageService {
+        if (instance == null) {
+            synchronized(this) {
+                if (instance == null) {
+                    val providerType = AppCloudConfig.CURRENT_STORAGE_PROVIDER
+                    
+                    instance = when (providerType) {
+                        AppCloudConfig.PROVIDER_LOCAL_ONLY -> LocalStorageService(context.applicationContext)
+                        AppCloudConfig.PROVIDER_FIREBASE -> FirebaseStorageService(context.applicationContext)
+                        else -> FirebaseStorageService(context.applicationContext)
+                    }
+                    Log.d("CloudStorageFactory", "Configured storage adapter: ${instance?.javaClass?.simpleName}")
+                }
+            }
+        }
+        return instance!!
+    }
+}

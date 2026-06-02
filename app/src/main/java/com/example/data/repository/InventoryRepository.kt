@@ -17,7 +17,7 @@ class InventoryRepository {
     private val db by lazy { FirebaseFirestore.getInstance() }
 
     val allInventoryItems: Flow<List<InventoryItem>> = callbackFlow {
-        val sub = db.collection("inventory_items").addSnapshotListener { snap, err ->
+        val sub = db.collection(com.example.data.cloud.AppCloudConfig.COLL_INVENTORY_ITEMS).addSnapshotListener { snap, err ->
             if (snap != null) {
                 trySend(snap.documents.mapNotNull { it.toObject(InventoryItem::class.java) })
             }
@@ -26,7 +26,7 @@ class InventoryRepository {
     }
 
     val allHistoryEvents: Flow<List<HistoryEvent>> = callbackFlow {
-        val sub = db.collection("history_events").addSnapshotListener { snap, err ->
+        val sub = db.collection(com.example.data.cloud.AppCloudConfig.COLL_HISTORY_EVENTS).addSnapshotListener { snap, err ->
             if (snap != null) {
                 trySend(snap.documents.mapNotNull { it.toObject(HistoryEvent::class.java) })
             }
@@ -35,7 +35,7 @@ class InventoryRepository {
     }
 
     val allUsers: Flow<List<User>> = callbackFlow {
-        val sub = db.collection("users").addSnapshotListener { snap, err ->
+        val sub = db.collection(com.example.data.cloud.AppCloudConfig.COLL_USERS).addSnapshotListener { snap, err ->
             if (snap != null) {
                 trySend(snap.documents.mapNotNull { it.toObject(User::class.java) })
             }
@@ -44,7 +44,7 @@ class InventoryRepository {
     }
 
     val allParties: Flow<List<com.example.data.model.Party>> = callbackFlow {
-        val sub = db.collection("parties").addSnapshotListener { snap, err ->
+        val sub = db.collection(com.example.data.cloud.AppCloudConfig.COLL_PARTIES).addSnapshotListener { snap, err ->
             if (snap != null) {
                 trySend(snap.documents.mapNotNull { it.toObject(com.example.data.model.Party::class.java) })
             }
@@ -53,7 +53,7 @@ class InventoryRepository {
     }
 
     val allLedgerEntries: Flow<List<com.example.data.model.LedgerEntry>> = callbackFlow {
-        val sub = db.collection("ledger_entries").addSnapshotListener { snap, err ->
+        val sub = db.collection(com.example.data.cloud.AppCloudConfig.COLL_LEDGER_ENTRIES).addSnapshotListener { snap, err ->
             if (snap != null) {
                 trySend(snap.documents.mapNotNull { it.toObject(com.example.data.model.LedgerEntry::class.java) })
             }
@@ -62,7 +62,7 @@ class InventoryRepository {
     }
 
     val allAttendanceRecords: Flow<List<AttendanceRecord>> = callbackFlow {
-        val sub = db.collection("attendance_records").addSnapshotListener { snap, err ->
+        val sub = db.collection(com.example.data.cloud.AppCloudConfig.COLL_ATTENDANCE_RECORDS).addSnapshotListener { snap, err ->
             if (snap != null) {
                 trySend(snap.documents.mapNotNull { it.toObject(AttendanceRecord::class.java) })
             }
@@ -71,7 +71,7 @@ class InventoryRepository {
     }
 
     val allLeaveApplications: Flow<List<LeaveApplication>> = callbackFlow {
-        val sub = db.collection("leave_applications").addSnapshotListener { snap, err ->
+        val sub = db.collection(com.example.data.cloud.AppCloudConfig.COLL_LEAVE_APPLICATIONS).addSnapshotListener { snap, err ->
             if (snap != null) {
                 trySend(snap.documents.mapNotNull { it.toObject(LeaveApplication::class.java) })
             }
@@ -80,7 +80,7 @@ class InventoryRepository {
     }
 
     val allNotifications: Flow<List<NotificationLog>> = callbackFlow {
-        val sub = db.collection("attendance_notifications").addSnapshotListener { snap, err ->
+        val sub = db.collection(com.example.data.cloud.AppCloudConfig.COLL_ATTENDANCE_NOTIFICATIONS).addSnapshotListener { snap, err ->
             if (snap != null) {
                 trySend(snap.documents.mapNotNull { it.toObject(NotificationLog::class.java) })
             }
