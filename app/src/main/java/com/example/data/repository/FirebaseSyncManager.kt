@@ -33,6 +33,17 @@ object FirebaseSyncManager {
         }
 
     fun isConfigured(): Boolean {
+        try {
+            val app = com.google.firebase.FirebaseApp.getInstance()
+            val options = app.options
+            val projectId = options.projectId
+            if (projectId != null && projectId.isNotBlank() && !projectId.contains("dummy", ignoreCase = true)) {
+                return true
+            }
+        } catch (e: Exception) {
+            // Not initialized yet
+        }
+
         return try {
             val apiKey = BuildConfig.FIREBASE_API_KEY
             val projectId = BuildConfig.FIREBASE_PROJECT_ID

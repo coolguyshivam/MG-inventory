@@ -3,7 +3,7 @@ service firebase.storage {
   match /b/{bucket}/o {
     // Secure media bucket space for staff selfies, products snapshots or attachments
     match /photos/{allPaths=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if true;
     }
   }
 }
