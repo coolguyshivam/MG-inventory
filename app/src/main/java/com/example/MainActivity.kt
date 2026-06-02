@@ -65,6 +65,28 @@ class MainActivity : FragmentActivity() {
 
         enableEdgeToEdge()
 
+        // Configure highly aggressive global Coil memory/disk image cache ignoring restrictive cache headers
+        try {
+            val imageLoader = coil.ImageLoader.Builder(applicationContext)
+                .memoryCache {
+                    coil.memory.MemoryCache.Builder(applicationContext)
+                        .maxSizePercent(0.25)
+                        .build()
+                }
+                .diskCache {
+                    coil.disk.DiskCache.Builder()
+                        .directory(applicationContext.cacheDir.resolve("image_cache"))
+                        .maxSizePercent(0.10)
+                        .build()
+                }
+                .respectCacheHeaders(false)
+                .crossfade(true)
+                .build()
+            coil.Coil.setImageLoader(imageLoader)
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "Failed to configure Coil ImageLoader caches", e)
+        }
+
         // Initialize Firebase dynamically if keys are configured
         com.example.data.repository.FirebaseSyncManager.initialize(applicationContext)
 

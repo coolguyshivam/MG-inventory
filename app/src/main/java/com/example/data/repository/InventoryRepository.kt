@@ -182,6 +182,12 @@ class InventoryRepository {
             userId = userId
         )
         db.collection("history_events").document(history.id).set(history).await()
+        
+        if (uploadedPhotoUri != null && uploadedPhotoUri.startsWith("file://")) {
+            com.example.util.AppUtils.uploadPhotoInBackground(item.id, uploadedPhotoUri, "inventory_items")
+            com.example.util.AppUtils.uploadPhotoInBackground(history.id, uploadedPhotoUri, "history_events")
+        }
+
         processPartyTransactionIfApplicable(name, "PURCHASE", amount * quantity, history.id)
         return true
     }
@@ -225,6 +231,11 @@ class InventoryRepository {
             userId = userId
         )
         db.collection("history_events").document(history.id).set(history).await()
+        
+        if (uploadedPhotoUri != null && uploadedPhotoUri.startsWith("file://")) {
+            com.example.util.AppUtils.uploadPhotoInBackground(history.id, uploadedPhotoUri, "history_events")
+        }
+
         processPartyTransactionIfApplicable(name, "SALE", amount * quantity, history.id)
         return true
     }
@@ -262,6 +273,9 @@ class InventoryRepository {
                 underRepair = false
             )
             db.collection("inventory_items").document(item.id).set(item).await()
+            if (uploadedPhotoUri != null && uploadedPhotoUri.startsWith("file://")) {
+                com.example.util.AppUtils.uploadPhotoInBackground(item.id, uploadedPhotoUri, "inventory_items")
+            }
         }
 
         val history = HistoryEvent(
@@ -280,6 +294,11 @@ class InventoryRepository {
             userId = userId
         )
         db.collection("history_events").document(history.id).set(history).await()
+        
+        if (uploadedPhotoUri != null && uploadedPhotoUri.startsWith("file://")) {
+            com.example.util.AppUtils.uploadPhotoInBackground(history.id, uploadedPhotoUri, "history_events")
+        }
+
         processPartyTransactionIfApplicable(name, "RETURN", amount * quantity, history.id)
         return true
     }
@@ -335,6 +354,12 @@ class InventoryRepository {
             extraDetails = "Technician: $technicianName, Reason: $repairReason"
         )
         db.collection("history_events").document(history.id).set(history).await()
+        
+        if (uploadedPhotoUri != null && uploadedPhotoUri.startsWith("file://")) {
+            com.example.util.AppUtils.uploadPhotoInBackground(item.id, uploadedPhotoUri, "inventory_items")
+            com.example.util.AppUtils.uploadPhotoInBackground(history.id, uploadedPhotoUri, "history_events")
+        }
+
         processPartyTransactionIfApplicable(name, "REPAIR_SENT", amount * quantity, history.id)
         return true
     }
@@ -418,6 +443,12 @@ class InventoryRepository {
             userId = userId
         )
         db.collection("history_events").document(history.id).set(history).await()
+        
+        if (uploadedPhotoUri != null && uploadedPhotoUri.startsWith("file://")) {
+            com.example.util.AppUtils.uploadPhotoInBackground(finalItem.id, uploadedPhotoUri, "inventory_items")
+            com.example.util.AppUtils.uploadPhotoInBackground(history.id, uploadedPhotoUri, "history_events")
+        }
+
         return true
     }
 

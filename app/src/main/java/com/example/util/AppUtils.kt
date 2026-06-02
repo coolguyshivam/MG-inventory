@@ -19,6 +19,10 @@ import java.io.OutputStream
 import java.security.MessageDigest
 import java.util.UUID
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 object AppUtils {
 
@@ -129,7 +133,7 @@ object AppUtils {
             val dir = File(context.filesDir, "photos")
             if (!dir.exists()) dir.mkdirs()
             
-            val hash = md5(pureBase64)
+            val hash = pureBase64.length.toString() + "_" + pureBase64.take(128).hashCode().toString()
             val file = File(dir, "cache_pic_$hash.jpg")
             if (!file.exists()) {
                 FileOutputStream(file).use { out ->
@@ -329,6 +333,36 @@ object AppUtils {
         }
     }
 
+    private val backgroundScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    fun uploadPhotoInBackground(itemId: String, localPhotoUri: String, collectionName: String = "inventory_items") {
+        if (localPhotoUri.isBlank() || !localPhotoUri.startsWith("file://")) return
+        backgroundScope.launch {
+            try {
+                val context = appContext ?: return@launch
+                val file = File(localPhotoUri.removePrefix("file://"))
+                if (!file.exists()) return@launch
+                
+                val bytes = file.readBytes()
+                val base64Str = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                
+                val storageService = com.example.data.cloud.CloudStorageFactory.getStorageService(context)
+                if (storageService is com.example.data.cloud.FirebaseStorageService) {
+                    val cloudUrl = storageService.uploadPhoto(base64Str)
+                    if (cloudUrl.startsWith("http")) {
+                        val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                        db.collection(collectionName).document(itemId)
+                            .update("photoUri", cloudUrl)
+                            .await()
+                        android.util.Log.d("AppUtils", "Successfully uploaded photo in background for $itemId to $cloudUrl in $collectionName")
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("AppUtils", "Failed background photo upload for item $itemId", e)
+            }
+        }
+    }
+
     suspend fun uploadPhotoToFirebaseStorage(base64Str: String): String {
         val context = appContext ?: return base64Str
         return com.example.data.cloud.CloudStorageFactory.getStorageService(context).uploadPhoto(base64Str)
@@ -336,7 +370,19 @@ object AppUtils {
 
     suspend fun processAndUploadPhotos(photoUriString: String?): String? {
         val context = appContext ?: return photoUriString
-        return com.example.data.cloud.CloudStorageFactory.getStorageService(context).processAndUploadPhotos(photoUriString)
+        if (photoUriString.isNullOrBlank()) return null
+        
+        // Split and convert Base64 parts instantly to local cache file URIs
+        val parts = photoUriString.split(",")
+        val localParts = parts.map { part ->
+            if (part.startsWith("http") || part.startsWith("gs://") || part.startsWith("ic_") || part.startsWith("file://") || part.isBlank()) {
+                part
+            } else {
+                val file = base64ToLocalFile(context, part)
+                if (file != null) "file://${file.absolutePath}" else part
+            }
+        }
+        return localParts.joinToString(",")
     }
 
     fun downloadUrlToBase64(urlStr: String): String {
