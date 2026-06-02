@@ -78,11 +78,14 @@ object FirebaseSyncManager {
                             
                             try {
                                 val bucket = BuildConfig.FIREBASE_STORAGE_BUCKET
-                                if (bucket.isNotBlank() && !bucket.contains("your-app")) {
+                                val rawBucket = if (bucket.isNotBlank() && !bucket.contains("your-app")) {
                                     val cleanBucket = if (bucket.startsWith("gs://")) bucket else "gs://$bucket"
-                                    val rawBucket = cleanBucket.removePrefix("gs://")
-                                    builder.setStorageBucket(rawBucket)
+                                    cleanBucket.removePrefix("gs://")
+                                } else {
+                                    "${BuildConfig.FIREBASE_PROJECT_ID}.firebasestorage.app"
                                 }
+                                builder.setStorageBucket(rawBucket)
+                                Log.d("FirebaseSyncManager", "Firebase Storage Bucket configured: $rawBucket")
                             } catch (e: Exception) {
                                 Log.w("FirebaseSyncManager", "Could not set custom storage bucket in FirebaseOptions: ${e.message}")
                             }

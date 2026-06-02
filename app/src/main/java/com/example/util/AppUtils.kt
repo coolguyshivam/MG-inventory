@@ -376,15 +376,56 @@ object AppUtils {
                 val cleanBucket = if (bucket.startsWith("gs://")) bucket else "gs://$bucket"
                 com.google.firebase.storage.FirebaseStorage.getInstance(cleanBucket)
             } else {
-                com.google.firebase.storage.FirebaseStorage.getInstance()
+                val projId = try { com.example.BuildConfig.FIREBASE_PROJECT_ID } catch (e: Exception) { "" }
+                if (projId.isNotBlank() && !projId.contains("dummy")) {
+                    try {
+                        com.google.firebase.storage.FirebaseStorage.getInstance()
+                    } catch (e: Exception) {
+                        try {
+                            com.google.firebase.storage.FirebaseStorage.getInstance("gs://$projId.firebasestorage.app")
+                        } catch (e2: Exception) {
+                            com.google.firebase.storage.FirebaseStorage.getInstance("gs://$projId.appspot.com")
+                        }
+                    }
+                } else {
+                    com.google.firebase.storage.FirebaseStorage.getInstance()
+                }
             }
-            val ref = storage.reference.child("photos/${UUID.randomUUID()}.jpg")
+
+            val filename = "photos/${UUID.randomUUID()}.jpg"
+            var ref = storage.reference.child(filename)
             
-            // Upload bytes to Cloud Storage and await
-            ref.putBytes(compressedBytes).await()
-            
-            // Fetch download URI and await
-            ref.downloadUrl.await().toString()
+            val finalUrl = try {
+                // Try initial upload with primary configured bucket
+                ref.putBytes(compressedBytes).await()
+                ref.downloadUrl.await().toString()
+            } catch (primaryException: Exception) {
+                android.util.Log.w("UploadPhoto", "Primary upload failed: ${primaryException.message}. Attempting healing retry...")
+                
+                val projId = try { com.example.BuildConfig.FIREBASE_PROJECT_ID } catch (e: Exception) { "" }
+                if (projId.isNotBlank() && !projId.contains("dummy")) {
+                    val currentBucket = try { storage.reference.bucket } catch (e: Exception) { "" }
+                    val alternativeBucketStr = if (currentBucket.contains("firebasestorage.app")) {
+                        "gs://$projId.appspot.com"
+                    } else {
+                        "gs://$projId.firebasestorage.app"
+                    }
+                    
+                    try {
+                        android.util.Log.d("UploadPhoto", "Retrying with alternative bucket location: $alternativeBucketStr")
+                        val altStorage = com.google.firebase.storage.FirebaseStorage.getInstance(alternativeBucketStr)
+                        val altRef = altStorage.reference.child(filename)
+                        altRef.putBytes(compressedBytes).await()
+                        altRef.downloadUrl.await().toString()
+                    } catch (altException: Exception) {
+                        android.util.Log.e("UploadPhoto", "Alternative bucket retry also failed: ${altException.message}")
+                        throw primaryException
+                    }
+                } else {
+                    throw primaryException
+                }
+            }
+            finalUrl
         } catch (e: Exception) {
             e.printStackTrace()
             android.util.Log.e("UploadPhoto", "Error uploading photo content to storage: ${e.message}")
