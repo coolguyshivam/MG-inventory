@@ -227,7 +227,11 @@ fun TransactionsScreen(viewModel: StockViewModel) {
     val ignoreFieldError = successMessage != null || isUploading
     val modelError = if (!ignoreFieldError && modelTouched.value && model.isBlank()) "Model is a mandatory field" else null
     val nameError = if (!ignoreFieldError && nameTouched.value && name.isBlank()) "Name is a mandatory field" else null
-    val phoneError = if (!ignoreFieldError && phoneTouched.value && phone.isNotEmpty() && !phone.matches(Regex("^[6-9]\\d{9}$"))) "Must start with 6-9 and be 10 digits" else null
+    val phoneError = if (!ignoreFieldError && phoneTouched.value) {
+        if (phone.isBlank()) "Phone number is a mandatory field"
+        else if (!phone.matches(Regex("^[6-9]\\d{9}$"))) "Must start with 6-9 and be 10 digits"
+        else null
+    } else null
     val aadhaarError = if (!ignoreFieldError && aadhaarTouched.value && aadhaar.isNotEmpty() && !aadhaar.matches(Regex("^\\d{12}$"))) "Must be exactly 12 numeric digits" else null
     val techError = if (!ignoreFieldError && activeSelection == 3 && techTouched.value && technician.isBlank()) "Technician Assigned is mandatory" else null
     val repairReasonError = if (!ignoreFieldError && activeSelection == 3 && repairReasonTouched.value && repairReason.isBlank()) "Reason for Issue is mandatory" else null
@@ -237,6 +241,7 @@ fun TransactionsScreen(viewModel: StockViewModel) {
         if (successMessage != null || isUploading) return null
         if (model.isBlank() && modelTouched.value) return "Model is mandatory"
         if (name.isBlank() && nameTouched.value) return "Name is mandatory"
+        if (phone.isBlank() && phoneTouched.value) return "Phone number is mandatory"
         if (address.isBlank() && addressTouched.value) return "Address is mandatory"
         if (activeSelection == 3) {
             if (technician.isBlank() && techTouched.value) return "Technician Assigned is mandatory"
@@ -574,7 +579,7 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                     viewModel.phoneInput.value = it 
                     phoneTouched.value = true
                 },
-                label = { Text("Phone Number (Optional)") },
+                label = { Text("Phone Number *") },
                 placeholder = { Text("Enter 10-digit phone number") },
                 singleLine = true,
                 shape = RoundedCornerShape(10.dp),

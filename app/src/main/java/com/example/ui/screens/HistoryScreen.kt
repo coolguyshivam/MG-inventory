@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -43,6 +44,7 @@ import kotlinx.coroutines.withContext
 @Composable
 fun HistoryScreen(viewModel: StockViewModel) {
     val rawEvents by viewModel.historyEvents.collectAsStateWithLifecycle()
+    val listState = rememberLazyListState()
     val suggestedImeis = remember(rawEvents) { rawEvents.map { it.serialNumber } }
     var showScanner by remember { mutableStateOf(false) }
     val searchWord by viewModel.historySearchTerm.collectAsStateWithLifecycle()
@@ -121,6 +123,12 @@ fun HistoryScreen(viewModel: StockViewModel) {
         }
 
         list
+    }
+
+    LaunchedEffect(filteredEvents.firstOrNull()?.id) {
+        if (filteredEvents.isNotEmpty()) {
+            listState.animateScrollToItem(0)
+        }
     }
 
     Column(
@@ -347,6 +355,7 @@ fun HistoryScreen(viewModel: StockViewModel) {
             }
         } else {
             LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)

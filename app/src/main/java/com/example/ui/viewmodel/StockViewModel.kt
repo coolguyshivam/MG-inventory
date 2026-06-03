@@ -944,9 +944,13 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
             }
         }
 
-        // Phone - 10 digits starting with 6-9 (Rule 3)
-        if (phone.isNotBlank() && !phone.matches(Regex("^[6-9]\\d{9}$"))) {
-            _transactionError.value = "Phone number must be optional or a valid 10-digit number starting with 6-9."
+        // Phone - mandatory valid 10-digit number starting with 6-9
+        if (phone.isBlank()) {
+            _transactionError.value = "Phone number is mandatory."
+            return
+        }
+        if (!phone.matches(Regex("^[6-9]\\d{9}$"))) {
+            _transactionError.value = "Phone number must be a valid 10-digit number starting with 6-9."
             return
         }
 
