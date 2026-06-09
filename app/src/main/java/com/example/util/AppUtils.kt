@@ -308,7 +308,7 @@ object AppUtils {
     fun resolveImageModel(modelStr: String?): Any {
         if (modelStr.isNullOrBlank()) return "ic_placeholder" // Fallback placeholder
         val context = androidx.compose.ui.platform.LocalContext.current
-        return androidx.compose.runtime.remember(modelStr) {
+        return androidx.compose.runtime.produceState<Any>(initialValue = "ic_placeholder", modelStr) {
             val target = when (modelStr) {
                 "ic_phone_blue" -> "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=400&q=80"
                 "ic_phone_amber" -> "https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?auto=format&fit=crop&w=400&q=80"
@@ -320,17 +320,19 @@ object AppUtils {
                 val cacheKey = "${target.length}_${target.take(128)}"
                 val cached = imageCache[cacheKey]
                 if (cached != null) {
-                    cached
+                    value = cached
                 } else {
-                    val file = base64ToLocalFile(context, target)
+                    val file = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        base64ToLocalFile(context, target)
+                    }
                     val result = file ?: target
                     imageCache[cacheKey] = result
-                    result
+                    value = result
                 }
             } else {
-                target
+                value = target
             }
-        }
+        }.value
     }
 
     private val backgroundScope = CoroutineScope(Dispatchers.IO + SupervisorJob())

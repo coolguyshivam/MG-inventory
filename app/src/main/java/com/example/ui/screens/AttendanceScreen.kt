@@ -150,6 +150,18 @@ fun AttendanceScreen(viewModel: StockViewModel) {
     var showLeaveDialog by remember { mutableStateOf(false) }
     var showModifyAttendanceDialog by remember { mutableStateOf(false) }
     var clickedRecordDetailDialog by remember { mutableStateOf<AttendanceRecord?>(null) }
+    var selectedTeamDateStr by remember { mutableStateOf(todayStr) }
+    var showWhatsAppSettingsDialog by remember { mutableStateOf(false) }
+
+    val whatsAppWebhookUrl by viewModel.whatsAppWebhookUrl.collectAsState()
+    val whatsAppEnable by viewModel.whatsAppEnable.collectAsState()
+
+    var tempWebhookUrl by remember(whatsAppWebhookUrl) { mutableStateOf(whatsAppWebhookUrl) }
+    var tempWhatsAppEnable by remember(whatsAppEnable) { mutableStateOf(whatsAppEnable) }
+
+    LaunchedEffect(Unit) {
+        viewModel.loadWhatsAppSettings(context)
+    }
 
     // Camera attachments
     val tempCameraUriState = remember { mutableStateOf<Uri?>(null) }
@@ -243,24 +255,47 @@ fun AttendanceScreen(viewModel: StockViewModel) {
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // Aesthetic Section Tabs
-        TabRow(
-            selectedTabIndex = subTabSelection,
-            containerColor = MaterialTheme.colorScheme.surface,
-            contentColor = MaterialTheme.colorScheme.primary
+        // Aesthetic Section Tabs Row with Settings Option next to it
+        Row(
+            modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Tab(
-                selected = subTabSelection == 0,
-                onClick = { subTabSelection = 0 },
-                text = { Text("Attendance Board", fontWeight = FontWeight.Bold, fontSize = 14.sp) },
-                icon = { Icon(Icons.Default.Fingerprint, contentDescription = null) }
-            )
-            Tab(
-                selected = subTabSelection == 1,
-                onClick = { subTabSelection = 1 },
-                text = { Text("Leave Panel", fontWeight = FontWeight.Bold, fontSize = 14.sp) },
-                icon = { Icon(Icons.Default.CardTravel, contentDescription = null) }
-            )
+            Box(modifier = Modifier.weight(1f)) {
+                TabRow(
+                    selectedTabIndex = subTabSelection,
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.primary
+                ) {
+                    Tab(
+                        selected = subTabSelection == 0,
+                        onClick = { subTabSelection = 0 },
+                        text = { Text("Attendance Board", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
+                        icon = { Icon(Icons.Default.Fingerprint, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                    )
+                    Tab(
+                        selected = subTabSelection == 1,
+                        onClick = { subTabSelection = 1 },
+                        text = { Text("Leave Panel", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
+                        icon = { Icon(Icons.Default.CardTravel, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                    )
+                    Tab(
+                        selected = subTabSelection == 2,
+                        onClick = { subTabSelection = 2 },
+                        text = { Text("Team Calendar", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
+                        icon = { Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                    )
+                }
+            }
+            IconButton(
+                onClick = { showWhatsAppSettingsDialog = true },
+                modifier = Modifier.padding(end = 8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.SettingsPhone,
+                    contentDescription = "WhatsApp Notification Settings",
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
         }
 
         LazyColumn(
@@ -1097,11 +1132,488 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                         }
                     }
                 }
+            } else if (subTabSelection == 2) {
+                // TEAM ATTENDANCE CALENDAR (EVERYONE'S STATUS IN A SINGLE CALENDAR VIEW)
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            // Month Navigator
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                IconButton(onClick = {
+                                    if (currentMonth == 0) {
+                                        currentMonth = 11
+                                        currentYear -= 1
+                                    } else {
+                                        currentMonth -= 1
+                                    }
+                                }) {
+                                    Icon(Icons.Default.ArrowBack, contentDescription = "Previous Month")
+                                }
+                                
+                                Text(
+                                    text = "${monthsList[currentMonth]} $currentYear",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                
+                                IconButton(onClick = {
+                                    if (currentMonth == 11) {
+                                        currentMonth = 0
+                                        currentYear += 1
+                                    } else {
+                                        currentMonth += 1
+                                    }
+                                }) {
+                                    Icon(Icons.Default.ArrowForward, contentDescription = "Next Month")
+                                }
+                            }
+                            
+                            // Weekly columns Header
+                            Row(modifier = Modifier.fillMaxWidth()) {
+                                listOf("S", "M", "T", "W", "T", "F", "S").forEach { dName ->
+                                    Text(
+                                        text = dName,
+                                        modifier = Modifier.weight(1f),
+                                        textAlign = TextAlign.Center,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                    )
+                                }
+                            }
+                            
+                            // Calendar grid calculations
+                            val dCal = Calendar.getInstance().apply {
+                                set(Calendar.YEAR, currentYear)
+                                set(Calendar.MONTH, currentMonth)
+                                set(Calendar.DAY_OF_MONTH, 1)
+                            }
+                            val firstDayOfWeek = dCal.get(Calendar.DAY_OF_WEEK) // 1 = Sunday, 2 = Monday...
+                            val maxDays = dCal.getActualMaximum(Calendar.DAY_OF_MONTH)
+                            
+                            val daysList = mutableListOf<String?>()
+                            for (i in 1 until firstDayOfWeek) {
+                                daysList.add(null)
+                            }
+                            for (day in 1..maxDays) {
+                                daysList.add(String.format("%04d-%02d-%02d", currentYear, currentMonth + 1, day))
+                            }
+                            
+                            val rows = daysList.chunked(7)
+                            rows.forEach { rowDays ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceEvenly
+                                ) {
+                                    rowDays.forEach { dateStr ->
+                                        if (dateStr == null) {
+                                            Box(modifier = Modifier.weight(1f).aspectRatio(1f)) {}
+                                        } else {
+                                            val dayNum = dateStr.split("-").last().toInt().toString()
+                                            val isToday = dateStr == todayStr
+                                            val isSelected = dateStr == selectedTeamDateStr
+                                            
+                                            // Compute aggregated statistics for this specific date across ALL users
+                                            val staffListForStats = allUsers.filter { it.role != "Admin" }
+                                            
+                                            var presentCount = 0
+                                            var leaveCount = 0
+                                            var absentCount = 0
+                                            
+                                            staffListForStats.forEach { u ->
+                                                val rec = allAttendance.find { it.userId == u.username && it.dateString == dateStr }
+                                                val hasApprovedLeave = allLeaves.any { leave ->
+                                                    leave.userId == u.username &&
+                                                    leave.status == "Approved" &&
+                                                    dateStr >= leave.startDateString &&
+                                                    dateStr <= leave.endDateString
+                                                }
+                                                
+                                                when {
+                                                    rec?.status == "Present" -> presentCount++
+                                                    rec?.status == "On Leave" || hasApprovedLeave -> leaveCount++
+                                                    rec?.status == "Absent" -> absentCount++
+                                                    else -> {
+                                                        val checkCal = Calendar.getInstance()
+                                                        val queryCal = Calendar.getInstance().apply {
+                                                            val parts = dateStr.split("-")
+                                                            set(Calendar.YEAR, parts[0].toInt())
+                                                            set(Calendar.MONTH, parts[1].toInt() - 1)
+                                                            set(Calendar.DAY_OF_MONTH, parts[2].toInt())
+                                                        }
+                                                        if (queryCal.before(checkCal) && !isToday) {
+                                                            absentCount++
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            
+                                            val cellBg = when {
+                                                isSelected -> MaterialTheme.colorScheme.primaryContainer
+                                                isToday -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f)
+                                                else -> Color.Transparent
+                                            }
+                                            val cellBorder = when {
+                                                isSelected -> BorderStroke(1.8.dp, MaterialTheme.colorScheme.primary)
+                                                isToday -> BorderStroke(1.dp, MaterialTheme.colorScheme.secondary)
+                                                else -> BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                                            }
+                                            
+                                            Box(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .aspectRatio(1f)
+                                                    .padding(2.dp)
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .background(cellBg)
+                                                    .border(cellBorder, RoundedCornerShape(8.dp))
+                                                    .clickable {
+                                                        selectedTeamDateStr = dateStr
+                                                    },
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Column(
+                                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                                    verticalArrangement = Arrangement.Center
+                                                ) {
+                                                    Text(
+                                                        text = dayNum,
+                                                        fontWeight = if (isToday || isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                        fontSize = 11.sp,
+                                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                    
+                                                    Row(
+                                                        horizontalArrangement = Arrangement.spacedBy(1.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        modifier = Modifier.padding(top = 1.dp)
+                                                    ) {
+                                                        if (presentCount > 0) {
+                                                            Box(modifier = Modifier.size(3.5.dp).clip(CircleShape).background(Color(0xFF2E7D32)))
+                                                        }
+                                                        if (leaveCount > 0) {
+                                                            Box(modifier = Modifier.size(3.5.dp).clip(CircleShape).background(Color(0xFFFBC02D)))
+                                                        }
+                                                        if (absentCount > 0) {
+                                                            Box(modifier = Modifier.size(3.5.dp).clip(CircleShape).background(Color(0xFFC62828)))
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (rowDays.size < 7) {
+                                        for (j in 0 until (7 - rowDays.size)) {
+                                            Box(modifier = Modifier.weight(1f).aspectRatio(1f)) {}
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceAround
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFF2E7D32)))
+                                    Text("Present", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFFFBC02D)))
+                                    Text("On Leave", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFFC62828)))
+                                    Text("Absent", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                item {
+                    val formattedSelectedDate = try {
+                        val parsed = java.text.SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(selectedTeamDateStr)
+                        java.text.SimpleDateFormat("dd MMMM yyyy", Locale.getDefault()).format(parsed)
+                    } catch(e: Exception) {
+                        selectedTeamDateStr
+                    }
+                    
+                    Text(
+                        text = "Team Status: $formattedSelectedDate",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+                
+                val staffList = allUsers.filter { it.role != "Admin" }
+                if (staffList.isEmpty()) {
+                    item {
+                        Text(
+                            text = "No staff members registered in the database.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(16.dp)
+                        )
+                    }
+                } else {
+                    items(staffList) { staff ->
+                        val attRecord = allAttendance.find { it.userId == staff.username && it.dateString == selectedTeamDateStr }
+                        val leaveRecord = allLeaves.find { leave ->
+                            leave.userId == staff.username &&
+                            leave.status == "Approved" &&
+                            selectedTeamDateStr >= leave.startDateString &&
+                            selectedTeamDateStr <= leave.endDateString
+                        }
+                        
+                        val statusStr = when {
+                            attRecord?.status == "On Leave" || leaveRecord != null -> "On Leave"
+                            attRecord?.status == "Present" -> "Present"
+                            attRecord?.status == "Absent" -> "Absent"
+                            else -> {
+                                val checkCal = Calendar.getInstance()
+                                val queryCal = Calendar.getInstance().apply {
+                                    val parts = selectedTeamDateStr.split("-")
+                                    set(Calendar.YEAR, parts[0].toInt())
+                                    set(Calendar.MONTH, parts[1].toInt() - 1)
+                                    set(Calendar.DAY_OF_MONTH, parts[2].toInt())
+                                }
+                                if (queryCal.before(checkCal) && selectedTeamDateStr != todayStr) "Absent" else "Unmarked"
+                            }
+                        }
+                        
+                        val (pColor, pTextColor, pIcon) = when (statusStr) {
+                            "Present" -> Triple(Color(0xFFE8F5E9), Color(0xFF2E7D32), Icons.Default.CheckCircle)
+                            "On Leave" -> Triple(Color(0xFFFFF9C4), Color(0xFFE65100), Icons.Default.CardTravel)
+                            "Absent" -> Triple(Color(0xFFFFEBEE), Color(0xFFC62828), Icons.Default.Cancel)
+                            else -> Triple(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant, Icons.Default.RadioButtonUnchecked)
+                        }
+                        
+                        Card(
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                if (attRecord != null) {
+                                    clickedRecordDetailDialog = attRecord
+                                } else if (leaveRecord != null) {
+                                    clickedRecordDetailDialog = AttendanceRecord(
+                                        userId = staff.username,
+                                        userName = staff.username,
+                                        dateString = selectedTeamDateStr,
+                                        status = "On Leave",
+                                        notes = "Approved leave application: ${leaveRecord.reason}"
+                                    )
+                                }
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = staff.username.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() },
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    when {
+                                        statusStr == "Present" && attRecord != null -> {
+                                            val inTime = if (attRecord.checkInTime > 0) java.text.SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(attRecord.checkInTime)) else "--:--"
+                                            val outTime = if (attRecord.checkOutTime > 0) java.text.SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(attRecord.checkOutTime)) else "--:--"
+                                            Text(
+                                                text = "⏱ In: $inTime  |  Out: $outTime",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            if (!attRecord.checkInLocationSpec.isNullOrBlank()) {
+                                                Text(
+                                                    text = "📍 Log: ${attRecord.checkInLocationSpec}",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                                )
+                                            }
+                                        }
+                                        statusStr == "On Leave" -> {
+                                            val leaveType = leaveRecord?.leaveType ?: attRecord?.notes ?: "Approved"
+                                            val reason = leaveRecord?.reason ?: ""
+                                            Text(
+                                                text = "Type: $leaveType",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            if (reason.isNotBlank()) {
+                                                Text(
+                                                    text = "Reason: $reason",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                                )
+                                            }
+                                        }
+                                        else -> {
+                                            Text(
+                                                text = "No action logged",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                            )
+                                        }
+                                    }
+                                }
+                                
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(pColor)
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = pIcon,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp),
+                                            tint = pTextColor
+                                        )
+                                        Text(
+                                            text = statusStr,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = pTextColor
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 
     // DIALOGS SECTION
+
+    // 0. DIALOG: WHATSAPP CONFIGURATION
+    if (showWhatsAppSettingsDialog) {
+        AlertDialog(
+            onDismissRequest = { showWhatsAppSettingsDialog = false },
+            title = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.SettingsPhone,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "WhatsApp Notifications",
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleLarge
+                    )
+                }
+            },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                ) {
+                    Text(
+                        text = "Enable automated notification messages when an employee checks in or checks out. Configure your group webhook API endpoint below:",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    OutlinedTextField(
+                        value = tempWebhookUrl,
+                        onValueChange = { tempWebhookUrl = it },
+                        label = { Text("WhatsApp Webhook URL") },
+                        placeholder = { Text("https://api.gateway.com/endpoint") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        supportingText = {
+                            Text("E.g., custom trigger URL (or Twilio/Zapier webhook link)")
+                        }
+                    )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Enable Automatic Push",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Text(
+                                text = "Send automated checks instantly via webhook",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                            )
+                        }
+                        Switch(
+                            checked = tempWhatsAppEnable,
+                            onCheckedChange = { tempWhatsAppEnable = it }
+                        )
+                    }
+
+                    Text(
+                        text = "* If you do not have a webhook setup, you can also easily manually share any check-in stamp with WhatsApp directly by clicking on any card item in the history/list.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.saveWhatsAppSettings(context, tempWebhookUrl, tempWhatsAppEnable)
+                        Toast.makeText(context, "WhatsApp Settings Saved Successfully!", Toast.LENGTH_SHORT).show()
+                        showWhatsAppSettingsDialog = false
+                    },
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Save Settings", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showWhatsAppSettingsDialog = false }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 
     // 1. DIALOG: FILE LEAVE APPLICATION
     if (showLeaveDialog) {

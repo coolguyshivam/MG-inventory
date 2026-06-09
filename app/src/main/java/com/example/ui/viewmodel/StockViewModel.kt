@@ -61,6 +61,73 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
         prefs.edit().putBoolean("print_price_in_pdf", enabled).apply()
     }
 
+    // --- WhatsApp Notification Settings ---
+    private val _whatsAppWebhookUrl = MutableStateFlow("")
+    val whatsAppWebhookUrl: StateFlow<String> = _whatsAppWebhookUrl.asStateFlow()
+
+    private val _whatsAppEnable = MutableStateFlow(false)
+    val whatsAppEnable: StateFlow<Boolean> = _whatsAppEnable.asStateFlow()
+
+    fun loadWhatsAppSettings(context: Context) {
+        val prefs = context.getSharedPreferences("mobile_gallery_prefs", Context.MODE_PRIVATE)
+        _whatsAppWebhookUrl.value = prefs.getString("whatsapp_webhook_url", "") ?: ""
+        _whatsAppEnable.value = prefs.getBoolean("whatsapp_enable", false)
+    }
+
+    fun saveWhatsAppSettings(context: Context, url: String, enabled: Boolean) {
+        _whatsAppWebhookUrl.value = url
+        _whatsAppEnable.value = enabled
+        val prefs = context.getSharedPreferences("mobile_gallery_prefs", Context.MODE_PRIVATE)
+        prefs.edit()
+            .putString("whatsapp_webhook_url", url)
+            .putBoolean("whatsapp_enable", enabled)
+            .apply()
+    }
+
+    fun triggerWhatsAppMessage(context: Context, employeeName: String, timeStr: String, status: String, activity: String) {
+        val prefs = context.getSharedPreferences("mobile_gallery_prefs", Context.MODE_PRIVATE)
+        val urlStr = prefs.getString("whatsapp_webhook_url", "") ?: ""
+        val enabled = prefs.getBoolean("whatsapp_enable", false)
+        
+        val message = "Employee *$employeeName* marked attendance ($activity) at *$timeStr* - Status: $status"
+        
+        if (enabled && urlStr.isNotBlank()) {
+            viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    val url = java.net.URL(urlStr)
+                    val conn = url.openConnection() as java.net.HttpURLConnection
+                    conn.requestMethod = "POST"
+                    conn.connectTimeout = 5000
+                    conn.readTimeout = 5000
+                    conn.doOutput = true
+                    conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                    
+                    val json = """
+                        {
+                            "text": "$message",
+                            "message": "$message",
+                            "employeeName": "$employeeName",
+                            "time": "$timeStr",
+                            "status": "$status",
+                            "activity": "$activity"
+                        }
+                    """.trimIndent()
+                    
+                    conn.outputStream.use { os ->
+                        val input = json.toByteArray(Charsets.UTF_8)
+                        os.write(input, 0, input.size)
+                    }
+                    
+                    val responseCode = conn.responseCode
+                    android.util.Log.d("StockViewModel", "WhatsApp webhook background push completed with code: $responseCode")
+                    conn.disconnect()
+                } catch (e: Exception) {
+                    android.util.Log.e("StockViewModel", "WhatsApp Webhook background push error", e)
+                }
+            }
+        }
+    }
+
     // --- Authentication & Biometric State ---
     private val _isLoggedIn = MutableStateFlow(false)
     val isLoggedIn: StateFlow<Boolean> = _isLoggedIn.asStateFlow()
@@ -587,6 +654,13 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                     type = "CHECK_IN"
                 )
                 repository.insertNotification(notification)
+                triggerWhatsAppMessage(
+                    context = context,
+                    employeeName = currentUsername,
+                    timeStr = java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(now)),
+                    status = "Present",
+                    activity = "Check In"
+                )
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -632,6 +706,13 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                     type = "CHECK_OUT"
                 )
                 repository.insertNotification(notification)
+                triggerWhatsAppMessage(
+                    context = context,
+                    employeeName = currentUsername,
+                    timeStr = java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(now)),
+                    status = "Present",
+                    activity = "Check Out"
+                )
             } catch (e: Exception) {
                 e.printStackTrace()
             }
