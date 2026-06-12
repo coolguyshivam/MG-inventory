@@ -2019,6 +2019,129 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                                         }
                                     }
                                 }
+
+                                // 📢 WhatsApp Dispatcher Card Integration
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Share,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Text(
+                                                text = "WhatsApp Dispatcher",
+                                                fontWeight = FontWeight.Bold,
+                                                style = MaterialTheme.typography.titleSmall,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+
+                                        Text(
+                                            text = "Manage manual and webhook dispatch options for this attendance entry.",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            // Action 1: Generic WhatsApp Share via Intent (Manual Share)
+                                            Button(
+                                                onClick = {
+                                                    val shareText = StringBuilder().apply {
+                                                        append("📢 *Attendance Update* 📢\n\n")
+                                                        append("🆔 *Employee:* ${stamp.userName}\n")
+                                                        append("📅 *Date:* ${stamp.dateString}\n")
+                                                        append("📍 *Status:* ${stamp.status}\n")
+                                                        if (stamp.checkInTime > 0L) {
+                                                            append("⏱ *Check-In:* ${SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(stamp.checkInTime))}\n")
+                                                            stamp.checkInLocationSpec?.let { append("📍 *In Location:* $it\n") }
+                                                        }
+                                                        if (stamp.checkOutTime > 0L) {
+                                                            append("⏱ *Check-Out:* ${SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(stamp.checkOutTime))}\n")
+                                                            stamp.checkOutLocationSpec?.let { append("📍 *Out Location:* $it\n") }
+                                                        }
+                                                        if (!stamp.notes.isNullOrBlank()) {
+                                                            append("📝 *Notes:* ${stamp.notes}\n")
+                                                        }
+                                                    }.toString()
+
+                                                    val sendIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                                        type = "text/plain"
+                                                        putExtra(android.content.Intent.EXTRA_TEXT, shareText)
+                                                        setPackage("com.whatsapp")
+                                                    }
+                                                    try {
+                                                        context.startActivity(sendIntent)
+                                                    } catch (e: Exception) {
+                                                        // Fallback to general sharing or show error toast
+                                                        try {
+                                                            val generalIntent = android.content.Intent.createChooser(
+                                                                android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                                                    type = "text/plain"
+                                                                    putExtra(android.content.Intent.EXTRA_TEXT, shareText)
+                                                                },
+                                                                "Share Attendance Log"
+                                                            )
+                                                            context.startActivity(generalIntent)
+                                                        } catch (e2: Exception) {
+                                                            Toast.makeText(context, "No sharing apps found", Toast.LENGTH_SHORT).show()
+                                                        }
+                                                    }
+                                                },
+                                                modifier = Modifier.weight(1f),
+                                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                                                shape = RoundedCornerShape(8.dp)
+                                            ) {
+                                                Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(12.dp))
+                                                Spacer(Modifier.width(4.dp))
+                                                Text("WhatsApp Msg", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            }
+
+                                            // Action 2: Trigger Webhook Manually inside background API call!
+                                            Button(
+                                                onClick = {
+                                                    val timeString = if (stamp.checkInTime > 0L) {
+                                                        SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(stamp.checkInTime))
+                                                    } else {
+                                                        "N/A"
+                                                    }
+                                                    viewModel.triggerWhatsAppMessage(
+                                                        context = context,
+                                                        employeeName = stamp.userName,
+                                                        timeStr = timeString,
+                                                        status = stamp.status,
+                                                        activity = "Manual Push (${stamp.status})"
+                                                    )
+                                                    Toast.makeText(context, "Webhook background dispatch triggered!", Toast.LENGTH_SHORT).show()
+                                                },
+                                                modifier = Modifier.weight(1f),
+                                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                                                shape = RoundedCornerShape(8.dp)
+                                            ) {
+                                                Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(12.dp))
+                                                Spacer(Modifier.width(4.dp))
+                                                Text("Push Webhook", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         } else if (activeDialogTab == 1) {
                             // TAB 1: TEAM OVERVIEW (WHO IS PRESENT, ON LEAVE, OR ABSENT)
