@@ -29,8 +29,11 @@ android {
     applicationId = "com.aistudio.inventorymanagement.qkrwnb"
     minSdk = 24
     targetSdk = 36
-    versionCode = 1
-    versionName = "1.0"
+    
+    // Auto-increment versionCode using the build timestamp to enable smooth, seamless direct APK updates
+    val buildTimeSeconds = (System.currentTimeMillis() / 1000).toInt()
+    versionCode = buildTimeSeconds - 1735689600 // Epoch offset of January 1, 2025
+    versionName = "1.0.${versionCode}"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
