@@ -304,6 +304,37 @@ object AppUtils {
         }
     }
 
+    fun postWhatsAppAutomationNotification(context: Context, title: String, message: String) {
+        try {
+            val nManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager ?: return
+            val channelId = "whatsapp_automation"
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                val channel = android.app.NotificationChannel(
+                    channelId,
+                    "WhatsApp Automation Triggers",
+                    android.app.NotificationManager.IMPORTANCE_HIGH
+                ).apply {
+                    description = "Triggers captured by spare phone automation tools like MacroDroid and Tasker"
+                    enableLights(true)
+                    lightColor = android.graphics.Color.GREEN
+                }
+                nManager.createNotificationChannel(channel)
+            }
+
+            val builder = androidx.core.app.NotificationCompat.Builder(context, channelId)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle(title)
+                .setContentText(title)
+                .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText(message))
+                .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+
+            nManager.notify(System.currentTimeMillis().toInt(), builder.build())
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     @androidx.compose.runtime.Composable
     fun resolveImageModel(modelStr: String?): Any {
         if (modelStr.isNullOrBlank()) return "ic_placeholder" // Fallback placeholder

@@ -25,6 +25,117 @@ class AttendanceAlarmWorker(
             com.example.data.repository.FirebaseSyncManager.initialize(context)
             val db = FirebaseFirestore.getInstance()
             val sharedPrefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+
+            // 9:00 AM Daily leaves and weekoffs posting
+            val cal = Calendar.getInstance()
+            val hr = cal.get(Calendar.HOUR_OF_DAY)
+            if (hr >= 9) {
+                val sdfYmd = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+                val todayYmd = sdfYmd.format(java.util.Date())
+                val lastLeavesPostDate = sharedPrefs.getString("last_leaves_webhook_posted_date", "")
+                if (lastLeavesPostDate != todayYmd) {
+                    try {
+                        val galleryPrefs = context.getSharedPreferences("mobile_gallery_prefs", Context.MODE_PRIVATE)
+                        val urlStr = galleryPrefs.getString("whatsapp_webhook_url", "") ?: ""
+                        val enabled = galleryPrefs.getBoolean("whatsapp_enable", false)
+                        val sparePhoneEnabled = galleryPrefs.getBoolean("whatsapp_spare_phone_enable", false)
+                        
+                        if ((enabled && urlStr.isNotBlank()) || sparePhoneEnabled) {
+                            val leavesCol = db.collection("leave_applications")
+                                .get()
+                                .await()
+                            
+                            val approvedToday = mutableListOf<String>()
+                            for (doc in leavesCol.documents) {
+                                val sDate = doc.getString("startDateString") ?: doc.getString("startDate") ?: ""
+                                val eDate = doc.getString("endDateString") ?: doc.getString("endDate") ?: ""
+                                val empName = doc.getString("userName") ?: doc.getString("employeeName") ?: ""
+                                val type = doc.getString("leaveType") ?: "Leave"
+                                val statusVal = doc.getString("status") ?: ""
+                                
+                                if (statusVal.equals("Approved", ignoreCase = true) && 
+                                    todayYmd >= sDate && todayYmd <= eDate && empName.isNotBlank()
+                                ) {
+                                    approvedToday.add("• $empName ($type)")
+                                }
+                            }
+                            
+                            val isSunday = cal.get(Calendar.DAY_OF_WEEK) == Calendar.SUNDAY
+                            val isSaturday = cal.get(Calendar.DAY_OF_WEEK) == Calendar.SATURDAY
+                            
+                            val weekoffs = mutableListOf<String>()
+                            if (isSunday) {
+                                weekoffs.add("• Sunday Weekly Off (All staff)")
+                            } else if (isSaturday) {
+                                weekoffs.add("• Saturday (Half day/Off for some groups)")
+                            } else {
+                                weekoffs.add("• Regular Working Day")
+                            }
+                            
+                            val leavesText = if (approvedToday.isNotEmpty()) {
+                                approvedToday.joinToString("\n")
+                            } else {
+                                "• No approved leaves today"
+                            }
+                            
+                            val weekoffsText = weekoffs.joinToString("\n")
+                            
+                            val message = """
+                                *Daily Leaves & Weekoffs*
+                                📅 *Date:* $todayYmd
+                                
+                                🌴 *Approved Leaves:*
+                                $leavesText
+                                
+                                ℹ *Weekoffs:*
+                                $weekoffsText
+                            """.trimIndent()
+                            
+                            if (sparePhoneEnabled) {
+                                Log.d("AttendanceWorker", "Spare phone automation active: posting daily summary notification")
+                                com.example.util.AppUtils.postWhatsAppAutomationNotification(
+                                    context,
+                                    "[WhatsApp Automation] Daily Summary",
+                                    message
+                                )
+                            }
+                            
+                            if (enabled && urlStr.isNotBlank()) {
+                                val url = java.net.URL(urlStr)
+                                val conn = url.openConnection() as java.net.HttpURLConnection
+                                conn.requestMethod = "POST"
+                                conn.connectTimeout = 5000
+                                conn.readTimeout = 5000
+                                conn.doOutput = true
+                                conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                                
+                                val escapedMessage = message.replace("\n", "\\n").replace("\"", "\\\"")
+                                val json = """
+                                    {
+                                        "text": "$escapedMessage",
+                                        "message": "$escapedMessage",
+                                        "date": "$todayYmd",
+                                        "type": "daily_summary"
+                                    }
+                                """.trimIndent()
+                                
+                                conn.outputStream.use { os ->
+                                    val input = json.toByteArray(Charsets.UTF_8)
+                                    os.write(input, 0, input.size)
+                                }
+                                val code = conn.responseCode
+                                Log.d("AttendanceWorker", "Daily 9:00am leaves webhook push completed with code: $code")
+                                conn.disconnect()
+                            }
+                        }
+                        
+                        sharedPrefs.edit().putString("last_leaves_webhook_posted_date", todayYmd).apply()
+                    } catch (e: Exception) {
+                        Log.e("AttendanceWorker", "Failed daily leaves webhook dispatch", e)
+                    }
+                }
+            }
+
             val username = sharedPrefs.getString("logged_in_username", null) ?: return Result.success()
 
             val todayDate = getTodayDateString()

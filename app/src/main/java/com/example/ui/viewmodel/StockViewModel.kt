@@ -68,19 +68,31 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
     private val _whatsAppEnable = MutableStateFlow(false)
     val whatsAppEnable: StateFlow<Boolean> = _whatsAppEnable.asStateFlow()
 
+    private val _whatsappSparePhoneEnable = MutableStateFlow(false)
+    val whatsappSparePhoneEnable: StateFlow<Boolean> = _whatsappSparePhoneEnable.asStateFlow()
+
+    private val _whatsappTargetPhone = MutableStateFlow("")
+    val whatsappTargetPhone: StateFlow<String> = _whatsappTargetPhone.asStateFlow()
+
     fun loadWhatsAppSettings(context: Context) {
         val prefs = context.getSharedPreferences("mobile_gallery_prefs", Context.MODE_PRIVATE)
         _whatsAppWebhookUrl.value = prefs.getString("whatsapp_webhook_url", "") ?: ""
         _whatsAppEnable.value = prefs.getBoolean("whatsapp_enable", false)
+        _whatsappSparePhoneEnable.value = prefs.getBoolean("whatsapp_spare_phone_enable", false)
+        _whatsappTargetPhone.value = prefs.getString("whatsapp_target_phone", "") ?: ""
     }
 
-    fun saveWhatsAppSettings(context: Context, url: String, enabled: Boolean) {
+    fun saveWhatsAppSettings(context: Context, url: String, enabled: Boolean, sparePhoneEnabled: Boolean, targetPhone: String) {
         _whatsAppWebhookUrl.value = url
         _whatsAppEnable.value = enabled
+        _whatsappSparePhoneEnable.value = sparePhoneEnabled
+        _whatsappTargetPhone.value = targetPhone
         val prefs = context.getSharedPreferences("mobile_gallery_prefs", Context.MODE_PRIVATE)
         prefs.edit()
             .putString("whatsapp_webhook_url", url)
             .putBoolean("whatsapp_enable", enabled)
+            .putBoolean("whatsapp_spare_phone_enable", sparePhoneEnabled)
+            .putString("whatsapp_target_phone", targetPhone)
             .apply()
     }
 
@@ -88,8 +100,21 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
         val prefs = context.getSharedPreferences("mobile_gallery_prefs", Context.MODE_PRIVATE)
         val urlStr = prefs.getString("whatsapp_webhook_url", "") ?: ""
         val enabled = prefs.getBoolean("whatsapp_enable", false)
+        val sparePhoneEnabled = prefs.getBoolean("whatsapp_spare_phone_enable", false)
         
-        val message = "Employee *$employeeName* marked attendance ($activity) at *$timeStr* - Status: $status"
+        val todayStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
+        val isCheckingIn = activity.lowercase().contains("in") || status.lowercase().contains("present") && !activity.lowercase().contains("out")
+        val verbOption = if (isCheckingIn) "Check-In" else "Check-Out"
+        val message = """
+            *Employee:* $employeeName
+            📅 *Date:* $todayStr
+            ⏱ *$verbOption:* $timeStr
+        """.trimIndent()
+        
+        if (sparePhoneEnabled) {
+            val title = "[WhatsApp Automation] Check-In"
+            com.example.util.AppUtils.postWhatsAppAutomationNotification(context, title, message)
+        }
         
         if (enabled && urlStr.isNotBlank()) {
             viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
@@ -102,10 +127,11 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                     conn.doOutput = true
                     conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
                     
+                    val escapedMessage = message.replace("\n", "\\n").replace("\"", "\\\"")
                     val json = """
                         {
-                            "text": "$message",
-                            "message": "$message",
+                            "text": "$escapedMessage",
+                            "message": "$escapedMessage",
                             "employeeName": "$employeeName",
                             "time": "$timeStr",
                             "status": "$status",

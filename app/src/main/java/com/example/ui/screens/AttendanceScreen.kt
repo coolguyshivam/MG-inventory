@@ -155,9 +155,13 @@ fun AttendanceScreen(viewModel: StockViewModel) {
 
     val whatsAppWebhookUrl by viewModel.whatsAppWebhookUrl.collectAsState()
     val whatsAppEnable by viewModel.whatsAppEnable.collectAsState()
+    val whatsappSparePhoneEnable by viewModel.whatsappSparePhoneEnable.collectAsState()
+    val whatsappTargetPhone by viewModel.whatsappTargetPhone.collectAsState()
 
     var tempWebhookUrl by remember(whatsAppWebhookUrl) { mutableStateOf(whatsAppWebhookUrl) }
     var tempWhatsAppEnable by remember(whatsAppEnable) { mutableStateOf(whatsAppEnable) }
+    var tempSparePhoneEnable by remember(whatsappSparePhoneEnable) { mutableStateOf(whatsappSparePhoneEnable) }
+    var tempTargetPhone by remember(whatsappTargetPhone) { mutableStateOf(whatsappTargetPhone) }
 
     LaunchedEffect(Unit) {
         viewModel.loadWhatsAppSettings(context)
@@ -1530,21 +1534,90 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                         tint = MaterialTheme.colorScheme.primary
                     )
                     Text(
-                        text = "WhatsApp Notifications",
+                        text = "WhatsApp Dispatcher",
                         fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.titleLarge
                     )
                 }
             },
             text = {
+                val scrollState = rememberScrollState()
                 Column(
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(scrollState)
+                        .padding(vertical = 4.dp)
                 ) {
                     Text(
-                        text = "Enable automated notification messages when an employee checks in or checks out. Configure your group webhook API endpoint below:",
+                        text = "Configure how your attendance logs (Check-Ins/Outs) and Daily Leaves/Week-offs summary are posted to WhatsApp.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                    // Section 1: Spare Phone Automation (Recommended)
+                    Text(
+                        text = "📱 Spare Phone Automation Mode",
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    
+                    Text(
+                        text = "Pushes specialized local Android notifications with formatted texts containing check-ins (instant) and leaves summary (daily at 9:00 AM). Automation utilities like MacroDroid or Tasker can capture these notifications to auto-post messages to WhatsApp.",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f))
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Enable Spare Automation",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Text(
+                                text = "Post automation-ready local alerts",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = tempSparePhoneEnable,
+                            onCheckedChange = { tempSparePhoneEnable = it }
+                        )
+                    }
+
+                    OutlinedTextField(
+                        value = tempTargetPhone,
+                        onValueChange = { tempTargetPhone = it },
+                        label = { Text("Target WhatsApp Number") },
+                        placeholder = { Text("e.g. +919876543210") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        supportingText = {
+                            Text("Optional target direct number (with country code e.g. +91...)")
+                        }
+                    )
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                    // Section 2: Webhook Dispatcher
+                    Text(
+                        text = "🌐 Webhook Gateway Integration (Alternative)",
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.secondary
                     )
 
                     OutlinedTextField(
@@ -1570,7 +1643,7 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Enable Automatic Push",
+                                text = "Enable Webhook Push",
                                 fontWeight = FontWeight.Bold,
                                 style = MaterialTheme.typography.bodyMedium
                             )
@@ -1587,7 +1660,7 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                     }
 
                     Text(
-                        text = "* If you do not have a webhook setup, you can also easily manually share any check-in stamp with WhatsApp directly by clicking on any card item in the history/list.",
+                        text = "* Manual Share: You can also manually share any entry to WhatsApp anytime by tapping on any card below and choosing manual WhatsApp send.",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                     )
@@ -1596,8 +1669,14 @@ fun AttendanceScreen(viewModel: StockViewModel) {
             confirmButton = {
                 Button(
                     onClick = {
-                        viewModel.saveWhatsAppSettings(context, tempWebhookUrl, tempWhatsAppEnable)
-                        Toast.makeText(context, "WhatsApp Settings Saved Successfully!", Toast.LENGTH_SHORT).show()
+                        viewModel.saveWhatsAppSettings(
+                            context, 
+                            tempWebhookUrl, 
+                            tempWhatsAppEnable, 
+                            tempSparePhoneEnable, 
+                            tempTargetPhone
+                        )
+                        Toast.makeText(context, "WhatsApp Dispatch Config Saved!", Toast.LENGTH_SHORT).show()
                         showWhatsAppSettingsDialog = false
                     },
                     shape = RoundedCornerShape(8.dp)
@@ -2058,48 +2137,65 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            // Action 1: Generic WhatsApp Share via Intent (Manual Share)
+                                         ) {
+                                                              // Action 1: Generic WhatsApp Share via Intent (Manual Share)
                                             Button(
                                                 onClick = {
-                                                    val shareText = StringBuilder().apply {
-                                                        append("📢 *Attendance Update* 📢\n\n")
-                                                        append("🆔 *Employee:* ${stamp.userName}\n")
+                                                    val simpleTimeSdf = SimpleDateFormat("hh:mm a", Locale.getDefault())
+                                                    val shareText = java.lang.StringBuilder().apply {
+                                                        append("*Employee:* ${stamp.userName}\n")
                                                         append("📅 *Date:* ${stamp.dateString}\n")
-                                                        append("📍 *Status:* ${stamp.status}\n")
                                                         if (stamp.checkInTime > 0L) {
-                                                            append("⏱ *Check-In:* ${SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(stamp.checkInTime))}\n")
-                                                            stamp.checkInLocationSpec?.let { append("📍 *In Location:* $it\n") }
+                                                            append("⏱ *Check-In:* ${simpleTimeSdf.format(Date(stamp.checkInTime))}\n")
                                                         }
                                                         if (stamp.checkOutTime > 0L) {
-                                                            append("⏱ *Check-Out:* ${SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(stamp.checkOutTime))}\n")
-                                                            stamp.checkOutLocationSpec?.let { append("📍 *Out Location:* $it\n") }
+                                                            append("⏱ *Check-Out:* ${simpleTimeSdf.format(Date(stamp.checkOutTime))}\n")
                                                         }
                                                         if (!stamp.notes.isNullOrBlank()) {
                                                             append("📝 *Notes:* ${stamp.notes}\n")
                                                         }
                                                     }.toString()
 
-                                                    val sendIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                                        type = "text/plain"
-                                                        putExtra(android.content.Intent.EXTRA_TEXT, shareText)
-                                                        setPackage("com.whatsapp")
-                                                    }
-                                                    try {
-                                                        context.startActivity(sendIntent)
-                                                    } catch (e: Exception) {
-                                                        // Fallback to general sharing or show error toast
+                                                    val targetNum = whatsappTargetPhone.trim()
+                                                    if (targetNum.isNotBlank()) {
+                                                        val cleanNum = targetNum.replace("[^0-9+]".toRegex(), "")
+                                                        val escapedText = android.net.Uri.encode(shareText)
+                                                        val directUrl = "https://api.whatsapp.com/send?phone=$cleanNum&text=$escapedText"
+                                                        val directIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                                                            data = android.net.Uri.parse(directUrl)
+                                                            setPackage("com.whatsapp")
+                                                        }
                                                         try {
-                                                            val generalIntent = android.content.Intent.createChooser(
-                                                                android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                                                    type = "text/plain"
-                                                                    putExtra(android.content.Intent.EXTRA_TEXT, shareText)
-                                                                },
-                                                                "Share Attendance Log"
-                                                            )
-                                                            context.startActivity(generalIntent)
-                                                        } catch (e2: Exception) {
-                                                            Toast.makeText(context, "No sharing apps found", Toast.LENGTH_SHORT).show()
+                                                            context.startActivity(directIntent)
+                                                        } catch (e: Exception) {
+                                                            try {
+                                                                val fallbackIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(directUrl))
+                                                                context.startActivity(fallbackIntent)
+                                                            } catch (e2: Exception) {
+                                                                Toast.makeText(context, "Could not open direct WhatsApp conversation", Toast.LENGTH_SHORT).show()
+                                                            }
+                                                        }
+                                                    } else {
+                                                        val sendIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                                            type = "text/plain"
+                                                            putExtra(android.content.Intent.EXTRA_TEXT, shareText)
+                                                            setPackage("com.whatsapp")
+                                                        }
+                                                        try {
+                                                            context.startActivity(sendIntent)
+                                                        } catch (e: Exception) {
+                                                            try {
+                                                                val generalIntent = android.content.Intent.createChooser(
+                                                                    android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                                                        type = "text/plain"
+                                                                        putExtra(android.content.Intent.EXTRA_TEXT, shareText)
+                                                                    },
+                                                                    "Share Attendance Log"
+                                                                )
+                                                                context.startActivity(generalIntent)
+                                                            } catch (e2: Exception) {
+                                                                Toast.makeText(context, "No sharing apps found", Toast.LENGTH_SHORT).show()
+                                                            }
                                                         }
                                                     }
                                                 },
