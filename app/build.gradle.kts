@@ -59,7 +59,11 @@ android {
       signingConfig = signingConfigs.getByName("release")
     }
     debug {
-      signingConfig = signingConfigs.getByName("debugConfig")
+      if (keystoreFile.exists() || file(System.getProperty("user.home") + "/.android/debug.keystore").exists()) {
+        signingConfig = signingConfigs.getByName("debugConfig")
+      } else {
+        signingConfig = signingConfigs.getByName("debug")
+      }
     }
   }
   compileOptions {
