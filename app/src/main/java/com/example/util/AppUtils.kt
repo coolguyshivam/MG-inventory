@@ -179,67 +179,28 @@ object AppUtils {
             return
         }
 
+        // Map placeholders to ultra high-res versions, and maximize default Unsplash values
+        val resolvedSource = when (imageSource) {
+            "ic_phone_blue" -> "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=2560&q=95"
+            "ic_phone_amber" -> "https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?auto=format&fit=crop&w=2560&q=95"
+            "ic_watch" -> "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=2560&q=95"
+            "ic_tablet" -> "https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?auto=format&fit=crop&w=2560&q=95"
+            else -> {
+                if (imageSource.contains("images.unsplash.com")) {
+                    imageSource.replace(Regex("w=\\d+"), "w=2560").replace(Regex("q=\\d+"), "q=95")
+                } else {
+                    imageSource
+                }
+            }
+        }
+
         // Show immediate feedback to user
-        val isRemote = imageSource.startsWith("http://") || imageSource.startsWith("https://")
-        Toast.makeText(context, if (isRemote) "Downloading photo..." else "Saving photo...", Toast.LENGTH_SHORT).show()
+        val isRemote = resolvedSource.startsWith("http://") || resolvedSource.startsWith("https://")
+        Toast.makeText(context, if (isRemote) "Downloading original quality photo..." else "Saving photo...", Toast.LENGTH_SHORT).show()
 
         // Offload execution to IO Dispatcher to prevent main thread blocking
         backgroundScope.launch {
             try {
-                val bitmap: Bitmap? = when {
-                    isRemote -> {
-                        try {
-                            val url = java.net.URL(imageSource)
-                            val conn = url.openConnection() as java.net.HttpURLConnection
-                            conn.connectTimeout = 10000
-                            conn.readTimeout = 10000
-                            conn.doInput = true
-                            conn.connect()
-                            if (conn.responseCode == 200) {
-                                conn.inputStream.use { stream ->
-                                    BitmapFactory.decodeStream(stream)
-                                }
-                            } else {
-                                null
-                            }
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                            null
-                        }
-                    }
-                    imageSource.length > 100 && !imageSource.startsWith("http") && !imageSource.startsWith("content://") && !imageSource.startsWith("file://") -> {
-                        val pureBase64 = if (imageSource.startsWith("data:image")) {
-                            val index = imageSource.indexOf(",")
-                            if (index != -1) imageSource.substring(index + 1) else imageSource
-                        } else {
-                            imageSource
-                        }
-                        val bytes = android.util.Base64.decode(pureBase64, android.util.Base64.NO_WRAP)
-                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                    }
-                    imageSource.startsWith("content://") || imageSource.startsWith("file://") -> {
-                        val uri = Uri.parse(imageSource)
-                        context.contentResolver.openInputStream(uri)?.use { stream ->
-                            BitmapFactory.decodeStream(stream)
-                        }
-                    }
-                    else -> {
-                        val file = File(imageSource)
-                        if (file.exists()) {
-                            BitmapFactory.decodeFile(file.absolutePath)
-                        } else {
-                            null
-                        }
-                    }
-                }
-                
-                if (bitmap == null) {
-                    kotlinx.coroutines.withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Error: Could not decode or download image.", Toast.LENGTH_SHORT).show()
-                    }
-                    return@launch
-                }
-
                 val filename = "inventory_saved_${System.currentTimeMillis()}.jpg"
                 var fos: OutputStream? = null
                 var insertedUri: Uri? = null
@@ -255,14 +216,6 @@ object AppUtils {
                     insertedUri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
                     if (insertedUri != null) {
                         fos = resolver.openOutputStream(insertedUri)
-                        if (fos != null) {
-                            fos.use {
-                                bitmap.compress(Bitmap.CompressFormat.JPEG, 100, it)
-                            }
-                        }
-                        contentValues.clear()
-                        contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
-                        resolver.update(insertedUri, contentValues, null, null)
                     }
                 } else {
                     val imagesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
@@ -271,36 +224,94 @@ object AppUtils {
                     val image = File(appDir, filename)
                     fos = FileOutputStream(image)
                     insertedUri = Uri.fromFile(image)
-                    fos.use {
-                        bitmap.compress(Bitmap.CompressFormat.JPEG, 100, it)
+                }
+
+                if (insertedUri == null || fos == null) {
+                    throw Exception("Could not initialize gallery stream channel")
+                }
+
+                // Copy stream data bit-for-bit directly, bypassing intermediate Bitmap downsampling/re-encoding
+                fos.use { outputStream ->
+                    when {
+                        isRemote -> {
+                            val url = java.net.URL(resolvedSource)
+                            val conn = url.openConnection() as java.net.HttpURLConnection
+                            conn.connectTimeout = 15000
+                            conn.readTimeout = 15000
+                            conn.doInput = true
+                            conn.useCaches = true
+                            conn.connect()
+                            if (conn.responseCode == 200) {
+                                conn.inputStream.use { inputStream ->
+                                    inputStream.buffered(1024 * 64).use { bufferedInput ->
+                                        bufferedInput.copyTo(outputStream)
+                                    }
+                                }
+                            } else {
+                                throw Exception("Download server returned code ${conn.responseCode}")
+                            }
+                        }
+                        resolvedSource.length > 100 && !resolvedSource.startsWith("http") && !resolvedSource.startsWith("content://") && !resolvedSource.startsWith("file://") -> {
+                            val pureBase64 = if (resolvedSource.startsWith("data:image")) {
+                                val index = resolvedSource.indexOf(",")
+                                if (index != -1) resolvedSource.substring(index + 1) else resolvedSource
+                            } else {
+                                resolvedSource
+                            }
+                            val bytes = android.util.Base64.decode(pureBase64, android.util.Base64.NO_WRAP)
+                            outputStream.write(bytes)
+                        }
+                        resolvedSource.startsWith("content://") || resolvedSource.startsWith("file://") -> {
+                            val uri = Uri.parse(resolvedSource)
+                            context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                                inputStream.buffered(1024 * 64).use { bufferedInput ->
+                                    bufferedInput.copyTo(outputStream)
+                                }
+                            } ?: throw Exception("Could not load original source input stream")
+                        }
+                        else -> {
+                            val file = File(resolvedSource)
+                            if (file.exists()) {
+                                file.inputStream().use { inputStream ->
+                                    inputStream.buffered(1024 * 64).use { bufferedInput ->
+                                        bufferedInput.copyTo(outputStream)
+                                    }
+                                }
+                            } else {
+                                throw Exception("Local document file not found at: $resolvedSource")
+                            }
+                        }
                     }
                 }
 
-                if (insertedUri != null) {
-                    val path = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).absolutePath + "/Inventory/" + filename
-                    } else {
-                        File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "Inventory/$filename").absolutePath
+                // finalize IS_PENDING state on Android Q+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val resolver = context.contentResolver
+                    val contentValues = ContentValues().apply {
+                        put(MediaStore.MediaColumns.IS_PENDING, 0)
                     }
-                    android.media.MediaScannerConnection.scanFile(
-                        context,
-                        arrayOf(path),
-                        arrayOf("image/jpeg"),
-                        null
-                    )
-                    
-                    kotlinx.coroutines.withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Saved directly to Pictures/Inventory Gallery!", Toast.LENGTH_LONG).show()
-                    }
+                    resolver.update(insertedUri, contentValues, null, null)
+                }
+
+                val path = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).absolutePath + "/Inventory/" + filename
                 } else {
-                    kotlinx.coroutines.withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Failed to capture media storage channel.", Toast.LENGTH_SHORT).show()
-                    }
+                    File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "Inventory/$filename").absolutePath
+                }
+                android.media.MediaScannerConnection.scanFile(
+                    context,
+                    arrayOf(path),
+                    arrayOf("image/jpeg"),
+                    null
+                )
+                
+                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Saved in original full quality directly to Pictures/Inventory Gallery!", Toast.LENGTH_LONG).show()
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
                 kotlinx.coroutines.withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Save Failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Download Failed: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -406,10 +417,10 @@ object AppUtils {
         if (modelStr.isNullOrBlank()) return "ic_placeholder" // Fallback placeholder
         
         val target = when (modelStr) {
-            "ic_phone_blue" -> "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=400&q=80"
-            "ic_phone_amber" -> "https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?auto=format&fit=crop&w=400&q=80"
-            "ic_watch" -> "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=400&q=80"
-            "ic_tablet" -> "https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?auto=format&fit=crop&w=400&q=80"
+            "ic_phone_blue" -> "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=1200&q=88"
+            "ic_phone_amber" -> "https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?auto=format&fit=crop&w=1200&q=88"
+            "ic_watch" -> "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1200&q=88"
+            "ic_tablet" -> "https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?auto=format&fit=crop&w=1200&q=88"
             else -> modelStr
         }
 

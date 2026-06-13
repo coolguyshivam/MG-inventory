@@ -29,7 +29,7 @@ android {
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
   defaultConfig {
-    applicationId = "com.aistudio.inventorymanagement.qkrwnb"
+    applicationId = "com.aistudio.inventorymanagement.v2"
     minSdk = 24
     targetSdk = 36
     
