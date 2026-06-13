@@ -36,7 +36,7 @@ android {
     // Auto-increment versionCode using the build timestamp to enable smooth, seamless direct APK updates
     val buildTimeSeconds = (System.currentTimeMillis() / 1000).toInt()
     versionCode = buildTimeSeconds - 1735689600 // Epoch offset of January 1, 2025
-    versionName = "1.0.${versionCode}"
+    versionName = "0.0.1"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -65,7 +65,11 @@ android {
       signingConfig = signingConfigs.getByName("release")
     }
     debug {
-      signingConfig = signingConfigs.getByName("debugConfig")
+      if (keystoreFile.exists() || file(System.getProperty("user.home") + "/.android/debug.keystore").exists()) {
+        signingConfig = signingConfigs.getByName("debugConfig")
+      } else {
+        signingConfig = signingConfigs.getByName("debug")
+      }
     }
   }
   compileOptions {

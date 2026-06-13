@@ -391,6 +391,15 @@ fun LoginScreen(viewModel: StockViewModel) {
                 }
                 }
             }
+
+            Text(
+                text = "v${com.example.BuildConfig.VERSION_NAME}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f),
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
+                modifier = Modifier.padding(top = 8.dp)
+            )
         }
 
 

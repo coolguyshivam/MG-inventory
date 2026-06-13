@@ -342,6 +342,19 @@ fun MainAppContent(viewModel: StockViewModel) {
                         }
                     }
                     
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "ver ${com.example.BuildConfig.VERSION_NAME}",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                            letterSpacing = 1.sp
+                        )
+                    }
+
                     Spacer(Modifier.height(16.dp))
                 }
             }
