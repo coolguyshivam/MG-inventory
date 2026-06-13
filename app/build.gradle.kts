@@ -11,11 +11,14 @@ plugins {
 // Decode debug.keystore if it doesn't exist but the base64 file exists
 val keystoreFile = project.file("debug.keystore")
 val base64File = project.rootProject.file("debug.keystore.base64")
-if (!keystoreFile.exists() && base64File.exists()) {
+if (base64File.exists()) {
   try {
     val base64Content = base64File.readText().trim()
     val decodedBytes = Base64.getDecoder().decode(base64Content)
-    keystoreFile.writeBytes(decodedBytes)
+    if (!keystoreFile.exists() || keystoreFile.length() == 0L) {
+      keystoreFile.writeBytes(decodedBytes)
+      println("Successfully decoded debug.keystore: ${keystoreFile.absolutePath} (${keystoreFile.length()} bytes)")
+    }
   } catch (e: Exception) {
     println("Warning: Failed to decode debug.keystore from base64: ${e.message}")
   }
@@ -47,7 +50,7 @@ android {
       keyPassword = System.getenv("KEY_PASSWORD")
     }
     create("debugConfig") {
-      storeFile = if (keystoreFile.exists()) keystoreFile else file(System.getProperty("user.home") + "/.android/debug.keystore")
+      storeFile = keystoreFile
       storePassword = "android"
       keyAlias = "androiddebugkey"
       keyPassword = "android"
@@ -62,11 +65,7 @@ android {
       signingConfig = signingConfigs.getByName("release")
     }
     debug {
-      if (keystoreFile.exists() || file(System.getProperty("user.home") + "/.android/debug.keystore").exists()) {
-        signingConfig = signingConfigs.getByName("debugConfig")
-      } else {
-        signingConfig = signingConfigs.getByName("debug")
-      }
+      signingConfig = signingConfigs.getByName("debugConfig")
     }
   }
   compileOptions {

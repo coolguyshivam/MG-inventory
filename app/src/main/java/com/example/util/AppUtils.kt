@@ -404,80 +404,46 @@ object AppUtils {
     @androidx.compose.runtime.Composable
     fun resolveImageModel(modelStr: String?): Any {
         if (modelStr.isNullOrBlank()) return "ic_placeholder" // Fallback placeholder
-        val context = androidx.compose.ui.platform.LocalContext.current
-        return androidx.compose.runtime.produceState<Any>(initialValue = "ic_placeholder", modelStr) {
-            val target = when (modelStr) {
-                "ic_phone_blue" -> "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=400&q=80"
-                "ic_phone_amber" -> "https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?auto=format&fit=crop&w=400&q=80"
-                "ic_watch" -> "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=400&q=80"
-                "ic_tablet" -> "https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?auto=format&fit=crop&w=400&q=80"
-                else -> modelStr
-            }
-            if (target.startsWith("http://") || target.startsWith("https://")) {
-                // Instantly check if we have an offline downscaled Base64 version of this URL cached on disk
-                val cacheKey = "url_${md5(target)}"
-                val memoryCached = imageCache[cacheKey]
-                if (memoryCached != null) {
-                    value = memoryCached
-                } else {
-                    val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        try {
-                            val cacheFile = File(context.cacheDir, "img_b64_cache_" + md5(target))
-                            if (cacheFile.exists()) {
-                                val cachedText = cacheFile.readText()
-                                if (cachedText.startsWith("data:image")) {
-                                    val index = cachedText.indexOf(",")
-                                    val pureBase64 = if (index != -1) cachedText.substring(index + 1) else cachedText
-                                    android.util.Base64.decode(pureBase64, android.util.Base64.NO_WRAP)
-                                } else {
-                                    null
-                                }
-                            } else {
-                                null
-                            }
-                        } catch (e: Exception) {
-                            null
-                        }
-                    }
-                    if (result != null) {
-                        imageCache[cacheKey] = result
-                        value = result
+        
+        val target = when (modelStr) {
+            "ic_phone_blue" -> "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=400&q=80"
+            "ic_phone_amber" -> "https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?auto=format&fit=crop&w=400&q=80"
+            "ic_watch" -> "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=400&q=80"
+            "ic_tablet" -> "https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?auto=format&fit=crop&w=400&q=80"
+            else -> modelStr
+        }
+
+        // 1. Return direct HTTP/HTTPS URLs and local content/file URIs instantly. 
+        // Coil natively handles asynchronous loading, memory caching, and disk caching with flawless speed.
+        if (target.startsWith("http://") || target.startsWith("https://") || target.startsWith("content://") || target.startsWith("file://")) {
+            return target
+        }
+
+        // 2. Resolve Base64 strings with memory-cache acceleration
+        val cacheKey = "b64_${target.length}_${target.hashCode()}"
+        val cached = imageCache[cacheKey]
+        if (cached != null) {
+            return cached
+        }
+
+        return androidx.compose.runtime.produceState<Any>(initialValue = "ic_placeholder", target) {
+            val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    val pureBase64 = if (target.startsWith("data:image")) {
+                        val index = target.indexOf(",")
+                        if (index != -1) target.substring(index + 1) else target
                     } else {
-                        // Not cached yet. Return direct HTTP target as fallback, and trigger background downloader caching
-                        value = target
-                        backgroundScope.launch {
-                            try {
-                                downloadUrlToBase64(context, target)
-                            } catch (e: Exception) {
-                                // Downloader catch
-                            }
-                        }
+                        target
                     }
+                    val decodedBytes = android.util.Base64.decode(pureBase64, android.util.Base64.NO_WRAP)
+                    imageCache[cacheKey] = decodedBytes
+                    decodedBytes
+                } catch (e: Exception) {
+                    null
                 }
-            } else if (target.length > 100 && !target.startsWith("content://") && !target.startsWith("file://")) {
-                val cacheKey = "${target.length}_${target.take(128)}"
-                val cached = imageCache[cacheKey]
-                if (cached != null) {
-                    value = cached
-                } else {
-                    // Instantly decode Base64 to memory on an IO thread. No slow disk write/read.
-                    val byteArray = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        try {
-                            val pureBase64 = if (target.startsWith("data:image")) {
-                                val index = target.indexOf(",")
-                                if (index != -1) target.substring(index + 1) else target
-                            } else {
-                                target
-                            }
-                            android.util.Base64.decode(pureBase64, android.util.Base64.NO_WRAP)
-                        } catch (e: Exception) {
-                            null
-                        }
-                    }
-                    val result = byteArray ?: target
-                    imageCache[cacheKey] = result
-                    value = result
-                }
+            }
+            if (result != null) {
+                value = result
             } else {
                 value = target
             }
@@ -593,24 +559,12 @@ object AppUtils {
                 val parts = photoUriString.split(",")
                 val uploadResults = parts.map { part ->
                     val trimmed = part.trim()
-                    if (trimmed.startsWith("file://")) {
+                    if (trimmed.startsWith("file://") || trimmed.length > 100) {
                         try {
-                            val cleanPath = trimmed.removePrefix("file://")
-                            val file = File(cleanPath)
-                            if (file.exists()) {
-                                val bytes = file.readBytes()
-                                val base64Str = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-                                val storageService = com.example.data.cloud.CloudStorageFactory.getStorageService(context)
-                                if (storageService is com.example.data.cloud.FirebaseStorageService) {
-                                    val cloudUrl = storageService.uploadPhoto(base64Str)
-                                    if (cloudUrl.startsWith("http")) {
-                                        cloudUrl
-                                    } else {
-                                        trimmed
-                                    }
-                                } else {
-                                    trimmed
-                                }
+                            val storageService = com.example.data.cloud.CloudStorageFactory.getStorageService(context)
+                            val cloudUrl = storageService.uploadPhoto(trimmed)
+                            if (cloudUrl.startsWith("http")) {
+                                cloudUrl
                             } else {
                                 trimmed
                             }

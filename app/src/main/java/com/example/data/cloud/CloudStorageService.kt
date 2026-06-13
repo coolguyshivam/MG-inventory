@@ -91,7 +91,7 @@ abstract class BaseCloudStorageService : CloudStorageService {
  */
 class FirebaseStorageService(private val context: Context) : BaseCloudStorageService() {
     override suspend fun uploadPhoto(base64Str: String): String {
-        if (base64Str.startsWith("http") || base64Str.startsWith("gs://") || base64Str.startsWith("ic_") || base64Str.startsWith("file://") || base64Str.isBlank()) {
+        if (base64Str.startsWith("http") || base64Str.startsWith("gs://") || base64Str.startsWith("ic_") || base64Str.isBlank()) {
             return base64Str
         }
 
@@ -100,7 +100,17 @@ class FirebaseStorageService(private val context: Context) : BaseCloudStorageSer
         }
 
         return try {
-            val compressedBytes = compressImage(base64Str)
+            val compressedBytes = if (base64Str.startsWith("file://")) {
+                val cleanPath = base64Str.removePrefix("file://")
+                val file = File(cleanPath)
+                if (file.exists()) {
+                    file.readBytes()
+                } else {
+                    return base64Str
+                }
+            } else {
+                compressImage(base64Str)
+            }
             
             // Get configurable Storage Bucket configuration
             val bucket = try { BuildConfig.FIREBASE_STORAGE_BUCKET } catch (e: Exception) { "" }
