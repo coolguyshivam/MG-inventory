@@ -97,7 +97,7 @@ fun TransactionsScreen(viewModel: StockViewModel) {
             val urisArray = if (currentUris.isNullOrBlank()) emptyList() else currentUris.split(",")
             
             val newUrisStr = uris.mapNotNull { uri ->
-                com.example.util.AppUtils.uriToBase64(context, uri)
+                com.example.util.AppUtils.uriToHighResLocalFile(context, uri)
             }
             
             if (urisArray.size + newUrisStr.size <= 10) {
@@ -117,12 +117,12 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                 val currentUris = viewModel.photoUriInput.value
                 val urisArray = if (currentUris.isNullOrBlank()) emptyList() else currentUris.split(",")
                 if (urisArray.size < 10) {
-                    val base64 = com.example.util.AppUtils.uriToBase64(context, uri)
-                    if (base64 != null) {
-                        viewModel.photoUriInput.value = (urisArray + base64).joinToString(",")
+                    val localUri = com.example.util.AppUtils.uriToHighResLocalFile(context, uri)
+                    if (localUri != null) {
+                        viewModel.photoUriInput.value = (urisArray + localUri).joinToString(",")
                         Toast.makeText(context, "Camera Snapshot Attached & Sync-optimized!", Toast.LENGTH_SHORT).show()
                     } else {
-                        Toast.makeText(context, "Error: Failed to compress snapshot.", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Error: Failed to save high fidelity snapshot.", Toast.LENGTH_SHORT).show()
                     }
                 } else {
                     Toast.makeText(context, "Maximum 10 photos allowed", Toast.LENGTH_SHORT).show()

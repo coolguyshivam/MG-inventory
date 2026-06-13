@@ -23,6 +23,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import android.util.Log
+import com.example.data.repository.InventoryRepository
+import com.example.data.repository.FirebaseSyncManager
 
 object AppUtils {
 
@@ -410,7 +413,48 @@ object AppUtils {
                 "ic_tablet" -> "https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?auto=format&fit=crop&w=400&q=80"
                 else -> modelStr
             }
-            if (target.length > 100 && !target.startsWith("http") && !target.startsWith("content://") && !target.startsWith("file://")) {
+            if (target.startsWith("http://") || target.startsWith("https://")) {
+                // Instantly check if we have an offline downscaled Base64 version of this URL cached on disk
+                val cacheKey = "url_${md5(target)}"
+                val memoryCached = imageCache[cacheKey]
+                if (memoryCached != null) {
+                    value = memoryCached
+                } else {
+                    val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        try {
+                            val cacheFile = File(context.cacheDir, "img_b64_cache_" + md5(target))
+                            if (cacheFile.exists()) {
+                                val cachedText = cacheFile.readText()
+                                if (cachedText.startsWith("data:image")) {
+                                    val index = cachedText.indexOf(",")
+                                    val pureBase64 = if (index != -1) cachedText.substring(index + 1) else cachedText
+                                    android.util.Base64.decode(pureBase64, android.util.Base64.NO_WRAP)
+                                } else {
+                                    null
+                                }
+                            } else {
+                                null
+                            }
+                        } catch (e: Exception) {
+                            null
+                        }
+                    }
+                    if (result != null) {
+                        imageCache[cacheKey] = result
+                        value = result
+                    } else {
+                        // Not cached yet. Return direct HTTP target as fallback, and trigger background downloader caching
+                        value = target
+                        backgroundScope.launch {
+                            try {
+                                downloadUrlToBase64(context, target)
+                            } catch (e: Exception) {
+                                // Downloader catch
+                            }
+                        }
+                    }
+                }
+            } else if (target.length > 100 && !target.startsWith("content://") && !target.startsWith("file://")) {
                 val cacheKey = "${target.length}_${target.take(128)}"
                 val cached = imageCache[cacheKey]
                 if (cached != null) {
@@ -438,6 +482,105 @@ object AppUtils {
                 value = target
             }
         }.value
+    }
+
+    fun uriToHighResLocalFile(context: Context, uri: Uri): String? {
+        return try {
+            val dir = File(context.filesDir, "photos")
+            if (!dir.exists()) dir.mkdirs()
+            
+            val filename = "pic_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}.jpg"
+            val file = File(dir, filename)
+            
+            // Acquire dimensions to scale slightly if larger than crisp Full HD bounds (2048px)
+            val options = BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
+            }
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                BitmapFactory.decodeStream(stream, null, options)
+            }
+            
+            val maxDimension = 2048
+            var sampleSize = 1
+            if (options.outHeight > maxDimension || options.outWidth > maxDimension) {
+                val halfHeight = options.outHeight / 2
+                val halfWidth = options.outWidth / 2
+                while (halfHeight / sampleSize >= maxDimension && halfWidth / sampleSize >= maxDimension) {
+                    sampleSize *= 2
+                }
+            }
+            
+            val decodeOptions = BitmapFactory.Options().apply {
+                inSampleSize = sampleSize
+                inJustDecodeBounds = false
+            }
+            val bitmap = context.contentResolver.openInputStream(uri)?.use { stream ->
+                BitmapFactory.decodeStream(stream, null, decodeOptions)
+            } ?: return null
+            
+            val scaledBitmap = if (bitmap.width > maxDimension || bitmap.height > maxDimension) {
+                val ratio = bitmap.width.toFloat() / bitmap.height.toFloat()
+                val (w, h) = if (ratio > 1) {
+                    Pair(maxDimension, (maxDimension / ratio).toInt())
+                } else {
+                    Pair((maxDimension * ratio).toInt(), maxDimension)
+                }
+                Bitmap.createScaledBitmap(bitmap, w, h, true)
+            } else {
+                bitmap
+            }
+            
+            FileOutputStream(file).use { out ->
+                scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 92, out) // 92% is excellent, extremely crisp full-resolution quality
+            }
+            "file://${file.absolutePath}"
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    fun migrateExistingDbBase64Photos(repository: InventoryRepository? = null) {
+        backgroundScope.launch {
+            try {
+                if (!FirebaseSyncManager.isConfigured()) return@launch
+                val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                
+                // Migrate Inventory Items
+                val itemsSnap = db.collection("inventory_items").get().await()
+                for (doc in itemsSnap.documents) {
+                    val photoUri = doc.getString("photoUri") ?: continue
+                    if (photoUri.length > 2000 && !photoUri.startsWith("http") && !photoUri.startsWith("file://")) {
+                        // It is a Base64 string!
+                        val uploaded = uploadPhotoToFirebaseStorage(photoUri)
+                        if (uploaded.startsWith("http")) {
+                            db.collection("inventory_items").document(doc.id)
+                                .update("photoUri", uploaded)
+                                .await()
+                            Log.d("AppUtils", "Migrated legacy base64 in inventory_items for ${doc.id} to cloud URL: $uploaded")
+                        }
+                    }
+                }
+
+                // Migrate History Events
+                val historySnap = db.collection("history_events").get().await()
+                for (doc in historySnap.documents) {
+                    val photoUri = doc.getString("photoUri") ?: continue
+                    if (photoUri.length > 2000 && !photoUri.startsWith("http") && !photoUri.startsWith("file://")) {
+                        // It is a Base64 string!
+                        val uploaded = uploadPhotoToFirebaseStorage(photoUri)
+                        if (uploaded.startsWith("http")) {
+                            db.collection("history_events").document(doc.id)
+                                .update("photoUri", uploaded)
+                                .await()
+                            Log.d("AppUtils", "Migrated legacy base64 in history_events for ${doc.id} to cloud URL: $uploaded")
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("AppUtils", "Failed migrating legacy photos", e)
+            }
+        }
     }
 
     private val backgroundScope = CoroutineScope(Dispatchers.IO + SupervisorJob())

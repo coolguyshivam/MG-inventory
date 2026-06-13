@@ -37,7 +37,7 @@ abstract class BaseCloudStorageService : CloudStorageService {
         return uploadedParts.joinToString(",")
     }
 
-    protected fun compressImage(base64Str: String, maxDimension: Int = 600): ByteArray {
+    protected fun compressImage(base64Str: String, maxDimension: Int = 2048): ByteArray {
         val pureBase64 = if (base64Str.startsWith("data:image")) {
             val index = base64Str.indexOf(",")
             if (index != -1) base64Str.substring(index + 1) else base64Str
@@ -81,7 +81,7 @@ abstract class BaseCloudStorageService : CloudStorageService {
         }
         
         val out = ByteArrayOutputStream()
-        scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 70, out) // 70% quality keeps visual fidelity crisp yet files lightweight
+        scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 90, out) // 90% quality preserves visual fidelity crisp and high-resolution
         return out.toByteArray()
     }
 }

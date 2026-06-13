@@ -360,6 +360,15 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
 
     // --- Search autofit tracking (Rule 7 logic & reactivity) ---
     init {
+        // Run background migration to identify legacy large Base64 photos in DB and upload them to Cloud Storage automatically
+        viewModelScope.launch {
+            try {
+                com.example.util.AppUtils.migrateExistingDbBase64Photos(repository)
+            } catch (e: Exception) {
+                // Safe migration catch
+            }
+        }
+
         // Seed initial admin user eagerly so biometric and standard logins are fully functional instantly
         viewModelScope.launch {
             try {
