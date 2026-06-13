@@ -516,26 +516,115 @@ object AppUtils {
         return localParts.joinToString(",")
     }
 
-    fun downloadUrlToBase64(urlStr: String): String {
+    fun downloadUrlToBase64(context: Context?, urlStr: String): String {
+        val actualContext = context ?: appContext
+        val cacheFile = if (actualContext != null) {
+            try {
+                File(actualContext.cacheDir, "img_b64_cache_" + md5(urlStr))
+            } catch (e: Exception) {
+                null
+            }
+        } else {
+            null
+        }
+
+        if (cacheFile != null && cacheFile.exists()) {
+            try {
+                val cached = cacheFile.readText()
+                if (cached.startsWith("data:image")) {
+                    android.util.Log.d("AppUtils", "Loaded image base64 from disk cache for: $urlStr")
+                    return cached
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
         return try {
             val url = java.net.URL(urlStr)
             val connection = url.openConnection() as java.net.HttpURLConnection
             connection.doInput = true
-            connection.connectTimeout = 6000
-            connection.readTimeout = 6000
+            connection.connectTimeout = 8000
+            connection.readTimeout = 8000
             connection.connect()
             if (connection.responseCode == 200) {
                 val input = connection.inputStream
                 val bytes = input.readBytes()
-                val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-                    .replace("\n", "").replace("\r", "").replace(" ", "")
-                "data:image/jpeg;base64,$base64"
+                
+                // Downscale & compress to JPEG with 70% quality (Option 2)
+                val maxDimension = 600
+                val options = BitmapFactory.Options().apply {
+                    inJustDecodeBounds = true
+                }
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+                
+                var sampleSize = 1
+                if (options.outHeight > maxDimension || options.outWidth > maxDimension) {
+                    val halfHeight = options.outHeight / 2
+                    val halfWidth = options.outWidth / 2
+                    while (halfHeight / sampleSize >= maxDimension && halfWidth / sampleSize >= maxDimension) {
+                        sampleSize *= 2
+                    }
+                }
+                
+                val decodeOptions = BitmapFactory.Options().apply {
+                    inSampleSize = sampleSize
+                    inJustDecodeBounds = false
+                }
+                val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOptions)
+                
+                val finalBitmap = if (bitmap != null && (bitmap.width > maxDimension || bitmap.height > maxDimension)) {
+                    val ratio = bitmap.width.toFloat() / bitmap.height.toFloat()
+                    val (w, h) = if (ratio > 1) {
+                        (maxDimension to (maxDimension / ratio).toInt())
+                    } else {
+                        (((maxDimension * ratio).toInt()) to maxDimension)
+                    }
+                    Bitmap.createScaledBitmap(bitmap, w, h, true)
+                } else {
+                    bitmap
+                }
+                
+                val finalBase64 = if (finalBitmap != null) {
+                    val out = ByteArrayOutputStream()
+                    finalBitmap.compress(Bitmap.CompressFormat.JPEG, 70, out)
+                    val compressedBytes = out.toByteArray()
+                    val base64 = android.util.Base64.encodeToString(compressedBytes, android.util.Base64.NO_WRAP)
+                        .replace("\n", "").replace("\r", "").replace(" ", "")
+                    "data:image/jpeg;base64,$base64"
+                } else {
+                    val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                        .replace("\n", "").replace("\r", "").replace(" ", "")
+                    "data:image/jpeg;base64,$base64"
+                }
+                
+                // Save to cache
+                if (cacheFile != null) {
+                    try {
+                        cacheFile.writeText(finalBase64)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+                
+                finalBase64
             } else {
                 urlStr
             }
         } catch (e: Exception) {
             e.printStackTrace()
             urlStr
+        }
+    }
+
+    fun prefetchImage(context: Context?, urlStr: String) {
+        if (urlStr.isBlank() || !urlStr.startsWith("http")) return
+        backgroundScope.launch {
+            try {
+                downloadUrlToBase64(context, urlStr)
+            } catch (e: Exception) {
+                // Preprefetch silent catch
+            }
         }
     }
 
@@ -551,11 +640,11 @@ object AppUtils {
         }
 
         if (targetUrl != null) {
-            return downloadUrlToBase64(targetUrl)
+            return downloadUrlToBase64(context, targetUrl)
         }
 
         if (cleanSource.startsWith("http") || cleanSource.startsWith("https")) {
-            return downloadUrlToBase64(cleanSource)
+            return downloadUrlToBase64(context, cleanSource)
         }
 
         if (cleanSource.length > 100 && !cleanSource.startsWith("content://") && !cleanSource.startsWith("file://")) {

@@ -39,6 +39,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -363,6 +365,14 @@ fun HistoryScreen(viewModel: StockViewModel) {
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 items(filteredEvents, key = { it.id }) { event ->
+                    val itemContext = androidx.compose.ui.platform.LocalContext.current
+                    LaunchedEffect(event.photoUri) {
+                        event.photoUri?.split(",")?.filter { it.isNotBlank() }?.forEach { photo ->
+                            if (photo.startsWith("http")) {
+                                com.example.util.AppUtils.prefetchImage(itemContext, photo)
+                            }
+                        }
+                    }
                     var isExpanded by remember { mutableStateOf(false) }
                     HistoryRowItem(
                         event = event,
@@ -783,11 +793,19 @@ fun printHistoryEvent(context: android.content.Context, event: HistoryEvent) {
                 "REFUND POLICY: All sales are final. Unopened items may be considered for exchange/credit within 24 hours only at the discretion of the store."
             }
             
-            val imgTags = event.photoUri?.split(",")?.filter { it.isNotBlank() && (!it.startsWith("ic_") || it in listOf("ic_phone_blue", "ic_phone_amber", "ic_watch", "ic_tablet")) }?.map {
-                com.example.util.AppUtils.convertImageToWebviewBase64(context, it)
-            }?.joinToString("") {
-                "<img src='$it' style='max-width: 47%; max-height: 480px; object-fit: contain; margin-top: 10px; margin-right: 10px; border: 1.5px solid #bbb; border-radius: 4px; padding: 3px;'/>"
-            } ?: ""
+            val rawPhotosList = event.photoUri?.split(",")?.filter { it.isNotBlank() && (!it.startsWith("ic_") || it in listOf("ic_phone_blue", "ic_phone_amber", "ic_watch", "ic_tablet")) } ?: emptyList()
+            
+            // Map each photo to an async deferred task for parallel download & decompression (Option 3)
+            val base64Deferreds = rawPhotosList.map { photo ->
+                async {
+                    com.example.util.AppUtils.convertImageToWebviewBase64(context, photo)
+                }
+            }
+            val loadedBase64List = base64Deferreds.map { it.await() }
+            
+            val imgTags = loadedBase64List.joinToString("") { base64 ->
+                "<img src='$base64' style='max-width: 47%; max-height: 480px; object-fit: contain; margin-top: 10px; margin-right: 10px; border: 1.5px solid #bbb; border-radius: 4px; padding: 3px;'/>"
+            }
 
             val prefs = context.getSharedPreferences("mobile_gallery_prefs", android.content.Context.MODE_PRIVATE)
             val printPrice = prefs.getBoolean("print_price_in_pdf", false)
@@ -1046,9 +1064,13 @@ fun printHistoryEventCustom(
             val sdf = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
             val date = sdf.format(Date(event.timestamp))
             
-            val loadedPhotos = selectedPhotos.map {
-                com.example.util.AppUtils.convertImageToWebviewBase64(context, it)
+            // Map selected photos to async deferred tasks for parallel download & decompression (Option 3)
+            val base64Deferreds = selectedPhotos.map { photo ->
+                async {
+                    com.example.util.AppUtils.convertImageToWebviewBase64(context, photo)
+                }
             }
+            val loadedPhotos = base64Deferreds.map { it.await() }
 
             val declarationTitle = when (event.actionType) {
                 "PURCHASE" -> "Purchase Declaration"
