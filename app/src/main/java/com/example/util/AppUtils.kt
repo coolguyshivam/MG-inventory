@@ -92,11 +92,34 @@ object AppUtils {
 
     fun uriToBase64(context: Context, uri: Uri): String? {
         return try {
-            val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
-            val bitmap = BitmapFactory.decodeStream(inputStream) ?: return null
-            
-            // Resize to maximum dimension of 600px for lightning-fast uploads and minimal document footprint
             val maxDimension = 600
+            
+            // Acquire dimensions only to calculate sample size
+            val options = BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
+            }
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                BitmapFactory.decodeStream(stream, null, options)
+            }
+            
+            var sampleSize = 1
+            if (options.outHeight > maxDimension || options.outWidth > maxDimension) {
+                val halfHeight = options.outHeight / 2
+                val halfWidth = options.outWidth / 2
+                while (halfHeight / sampleSize >= maxDimension && halfWidth / sampleSize >= maxDimension) {
+                    sampleSize *= 2
+                }
+            }
+            
+            // Decode with optimal sample size
+            val decodeOptions = BitmapFactory.Options().apply {
+                inSampleSize = sampleSize
+                inJustDecodeBounds = false
+            }
+            val bitmap = context.contentResolver.openInputStream(uri)?.use { stream ->
+                BitmapFactory.decodeStream(stream, null, decodeOptions)
+            } ?: return null
+            
             val scaledBitmap = if (bitmap.width > maxDimension || bitmap.height > maxDimension) {
                 val ratio = bitmap.width.toFloat() / bitmap.height.toFloat()
                 val (w, h) = if (ratio > 1) {
@@ -148,95 +171,135 @@ object AppUtils {
     }
 
     fun saveImageToGallery(context: Context, imageSource: String) {
-        try {
-            val bitmap: Bitmap? = when {
-                imageSource.length > 100 && !imageSource.startsWith("http") && !imageSource.startsWith("content://") && !imageSource.startsWith("file://") -> {
-                    val pureBase64 = if (imageSource.startsWith("data:image")) {
-                        val index = imageSource.indexOf(",")
-                        if (index != -1) imageSource.substring(index + 1) else imageSource
-                    } else {
-                        imageSource
-                    }
-                    val bytes = android.util.Base64.decode(pureBase64, android.util.Base64.NO_WRAP)
-                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                }
-                imageSource.startsWith("content://") || imageSource.startsWith("file://") -> {
-                    val uri = Uri.parse(imageSource)
-                    val stream: InputStream? = context.contentResolver.openInputStream(uri)
-                    BitmapFactory.decodeStream(stream)
-                }
-                else -> {
-                    val file = File(imageSource)
-                    if (file.exists()) {
-                        BitmapFactory.decodeFile(file.absolutePath)
-                    } else {
-                        null
-                    }
-                }
-            }
-            
-            if (bitmap == null) {
-                Toast.makeText(context, "Error: Could not decode image to save.", Toast.LENGTH_SHORT).show()
-                return
-            }
+        if (imageSource.isBlank()) {
+            Toast.makeText(context, "Error: Image source is empty", Toast.LENGTH_SHORT).show()
+            return
+        }
 
-            val filename = "inventory_saved_${System.currentTimeMillis()}.jpg"
-            var fos: OutputStream? = null
-            var insertedUri: Uri? = null
+        // Show immediate feedback to user
+        val isRemote = imageSource.startsWith("http://") || imageSource.startsWith("https://")
+        Toast.makeText(context, if (isRemote) "Downloading photo..." else "Saving photo...", Toast.LENGTH_SHORT).show()
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val resolver = context.contentResolver
-                val contentValues = ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
-                    put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Inventory")
-                    put(MediaStore.MediaColumns.IS_PENDING, 1)
-                }
-                insertedUri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
-                if (insertedUri != null) {
-                    fos = resolver.openOutputStream(insertedUri)
-                    if (fos != null) {
-                        fos.use {
-                            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, it)
+        // Offload execution to IO Dispatcher to prevent main thread blocking
+        backgroundScope.launch {
+            try {
+                val bitmap: Bitmap? = when {
+                    isRemote -> {
+                        try {
+                            val url = java.net.URL(imageSource)
+                            val conn = url.openConnection() as java.net.HttpURLConnection
+                            conn.connectTimeout = 10000
+                            conn.readTimeout = 10000
+                            conn.doInput = true
+                            conn.connect()
+                            if (conn.responseCode == 200) {
+                                conn.inputStream.use { stream ->
+                                    BitmapFactory.decodeStream(stream)
+                                }
+                            } else {
+                                null
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                            null
                         }
                     }
-                    contentValues.clear()
-                    contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
-                    resolver.update(insertedUri, contentValues, null, null)
+                    imageSource.length > 100 && !imageSource.startsWith("http") && !imageSource.startsWith("content://") && !imageSource.startsWith("file://") -> {
+                        val pureBase64 = if (imageSource.startsWith("data:image")) {
+                            val index = imageSource.indexOf(",")
+                            if (index != -1) imageSource.substring(index + 1) else imageSource
+                        } else {
+                            imageSource
+                        }
+                        val bytes = android.util.Base64.decode(pureBase64, android.util.Base64.NO_WRAP)
+                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    }
+                    imageSource.startsWith("content://") || imageSource.startsWith("file://") -> {
+                        val uri = Uri.parse(imageSource)
+                        context.contentResolver.openInputStream(uri)?.use { stream ->
+                            BitmapFactory.decodeStream(stream)
+                        }
+                    }
+                    else -> {
+                        val file = File(imageSource)
+                        if (file.exists()) {
+                            BitmapFactory.decodeFile(file.absolutePath)
+                        } else {
+                            null
+                        }
+                    }
                 }
-            } else {
-                val imagesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
-                val appDir = File(imagesDir, "Inventory")
-                if (!appDir.exists()) appDir.mkdirs()
-                val image = File(appDir, filename)
-                fos = FileOutputStream(image)
-                insertedUri = Uri.fromFile(image)
-                fos.use {
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, 100, it)
-                }
-            }
-
-            if (insertedUri != null) {
-                Toast.makeText(context, "Saved directly to Pictures/Inventory Gallery!", Toast.LENGTH_LONG).show()
                 
-                // Alert the system media scanner
-                val path = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).absolutePath + "/Inventory/" + filename
-                } else {
-                    File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "Inventory/$filename").absolutePath
+                if (bitmap == null) {
+                    kotlinx.coroutines.withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "Error: Could not decode or download image.", Toast.LENGTH_SHORT).show()
+                    }
+                    return@launch
                 }
-                android.media.MediaScannerConnection.scanFile(
-                    context,
-                    arrayOf(path),
-                    arrayOf("image/jpeg"),
-                    null
-                )
-            } else {
-                Toast.makeText(context, "Failed to capture media storage channel.", Toast.LENGTH_SHORT).show()
+
+                val filename = "inventory_saved_${System.currentTimeMillis()}.jpg"
+                var fos: OutputStream? = null
+                var insertedUri: Uri? = null
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val resolver = context.contentResolver
+                    val contentValues = ContentValues().apply {
+                        put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
+                        put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+                        put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Inventory")
+                        put(MediaStore.MediaColumns.IS_PENDING, 1)
+                    }
+                    insertedUri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+                    if (insertedUri != null) {
+                        fos = resolver.openOutputStream(insertedUri)
+                        if (fos != null) {
+                            fos.use {
+                                bitmap.compress(Bitmap.CompressFormat.JPEG, 100, it)
+                            }
+                        }
+                        contentValues.clear()
+                        contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                        resolver.update(insertedUri, contentValues, null, null)
+                    }
+                } else {
+                    val imagesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+                    val appDir = File(imagesDir, "Inventory")
+                    if (!appDir.exists()) appDir.mkdirs()
+                    val image = File(appDir, filename)
+                    fos = FileOutputStream(image)
+                    insertedUri = Uri.fromFile(image)
+                    fos.use {
+                        bitmap.compress(Bitmap.CompressFormat.JPEG, 100, it)
+                    }
+                }
+
+                if (insertedUri != null) {
+                    val path = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).absolutePath + "/Inventory/" + filename
+                    } else {
+                        File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "Inventory/$filename").absolutePath
+                    }
+                    android.media.MediaScannerConnection.scanFile(
+                        context,
+                        arrayOf(path),
+                        arrayOf("image/jpeg"),
+                        null
+                    )
+                    
+                    kotlinx.coroutines.withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "Saved directly to Pictures/Inventory Gallery!", Toast.LENGTH_LONG).show()
+                    }
+                } else {
+                    kotlinx.coroutines.withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "Failed to capture media storage channel.", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Save Failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Toast.makeText(context, "Save Failed: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 

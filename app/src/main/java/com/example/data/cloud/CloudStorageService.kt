@@ -37,7 +37,7 @@ abstract class BaseCloudStorageService : CloudStorageService {
         return uploadedParts.joinToString(",")
     }
 
-    protected fun compressImage(base64Str: String, maxDimension: Int = 800): ByteArray {
+    protected fun compressImage(base64Str: String, maxDimension: Int = 600): ByteArray {
         val pureBase64 = if (base64Str.startsWith("data:image")) {
             val index = base64Str.indexOf(",")
             if (index != -1) base64Str.substring(index + 1) else base64Str
@@ -45,7 +45,28 @@ abstract class BaseCloudStorageService : CloudStorageService {
             base64Str
         }
         val bytes = Base64.decode(pureBase64, Base64.NO_WRAP)
-        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return bytes
+        
+        // 1. Decode bounds to compute sample size
+        val options = BitmapFactory.Options().apply {
+            inJustDecodeBounds = true
+        }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+        
+        var sampleSize = 1
+        if (options.outHeight > maxDimension || options.outWidth > maxDimension) {
+            val halfHeight = options.outHeight / 2
+            val halfWidth = options.outWidth / 2
+            while (halfHeight / sampleSize >= maxDimension && halfWidth / sampleSize >= maxDimension) {
+                sampleSize *= 2
+            }
+        }
+        
+        // 2. Decode with sample size to save massive memory and time
+        val decodeOptions = BitmapFactory.Options().apply {
+            inSampleSize = sampleSize
+            inJustDecodeBounds = false
+        }
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOptions) ?: return bytes
         
         val scaledBitmap = if (bitmap.width > maxDimension || bitmap.height > maxDimension) {
             val ratio = bitmap.width.toFloat() / bitmap.height.toFloat()
@@ -60,7 +81,7 @@ abstract class BaseCloudStorageService : CloudStorageService {
         }
         
         val out = ByteArrayOutputStream()
-        scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 75, out)
+        scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 70, out) // 70% quality keeps visual fidelity crisp yet files lightweight
         return out.toByteArray()
     }
 }
