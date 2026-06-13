@@ -9,8 +9,8 @@ plugins {
 }
 
 // Decode debug.keystore if it doesn't exist but the base64 file exists
-val keystoreFile = file("${rootDir}/debug.keystore")
-val base64File = file("${rootDir}/debug.keystore.base64")
+val keystoreFile = project.file("debug.keystore")
+val base64File = project.rootProject.file("debug.keystore.base64")
 if (!keystoreFile.exists() && base64File.exists()) {
   try {
     val base64Content = base64File.readText().trim()

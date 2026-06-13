@@ -322,10 +322,21 @@ object AppUtils {
                 if (cached != null) {
                     value = cached
                 } else {
-                    val file = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        base64ToLocalFile(context, target)
+                    // Instantly decode Base64 to memory on an IO thread. No slow disk write/read.
+                    val byteArray = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        try {
+                            val pureBase64 = if (target.startsWith("data:image")) {
+                                val index = target.indexOf(",")
+                                if (index != -1) target.substring(index + 1) else target
+                            } else {
+                                target
+                            }
+                            android.util.Base64.decode(pureBase64, android.util.Base64.NO_WRAP)
+                        } catch (e: Exception) {
+                            null
+                        }
                     }
-                    val result = file ?: target
+                    val result = byteArray ?: target
                     imageCache[cacheKey] = result
                     value = result
                 }
@@ -337,30 +348,54 @@ object AppUtils {
 
     private val backgroundScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    fun uploadPhotoInBackground(itemId: String, localPhotoUri: String, collectionName: String = "inventory_items") {
-        if (localPhotoUri.isBlank() || !localPhotoUri.startsWith("file://")) return
+    fun uploadPhotoInBackground(itemId: String, photoUriString: String, collectionName: String = "inventory_items") {
+        if (photoUriString.isBlank()) return
         backgroundScope.launch {
             try {
                 val context = appContext ?: return@launch
-                val file = File(localPhotoUri.removePrefix("file://"))
-                if (!file.exists()) return@launch
-                
-                val bytes = file.readBytes()
-                val base64Str = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-                
-                val storageService = com.example.data.cloud.CloudStorageFactory.getStorageService(context)
-                if (storageService is com.example.data.cloud.FirebaseStorageService) {
-                    val cloudUrl = storageService.uploadPhoto(base64Str)
-                    if (cloudUrl.startsWith("http")) {
-                        val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
-                        db.collection(collectionName).document(itemId)
-                            .update("photoUri", cloudUrl)
-                            .await()
-                        android.util.Log.d("AppUtils", "Successfully uploaded photo in background for $itemId to $cloudUrl in $collectionName")
+                val parts = photoUriString.split(",")
+                val uploadResults = parts.map { part ->
+                    val trimmed = part.trim()
+                    if (trimmed.startsWith("file://")) {
+                        try {
+                            val cleanPath = trimmed.removePrefix("file://")
+                            val file = File(cleanPath)
+                            if (file.exists()) {
+                                val bytes = file.readBytes()
+                                val base64Str = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                                val storageService = com.example.data.cloud.CloudStorageFactory.getStorageService(context)
+                                if (storageService is com.example.data.cloud.FirebaseStorageService) {
+                                    val cloudUrl = storageService.uploadPhoto(base64Str)
+                                    if (cloudUrl.startsWith("http")) {
+                                        cloudUrl
+                                    } else {
+                                        trimmed
+                                    }
+                                } else {
+                                    trimmed
+                                }
+                            } else {
+                                trimmed
+                            }
+                        } catch (ex: Exception) {
+                            android.util.Log.e("AppUtils", "Failed uploading individual background photo: $trimmed", ex)
+                            trimmed
+                        }
+                    } else {
+                        trimmed
                     }
                 }
+                
+                val finalPhotoUriString = uploadResults.joinToString(",")
+                if (finalPhotoUriString != photoUriString) {
+                    val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                    db.collection(collectionName).document(itemId)
+                        .update("photoUri", finalPhotoUriString)
+                        .await()
+                    android.util.Log.d("AppUtils", "Successfully uploaded background photos for $itemId in $collectionName: $finalPhotoUriString")
+                }
             } catch (e: Exception) {
-                android.util.Log.e("AppUtils", "Failed background photo upload for item $itemId", e)
+                android.util.Log.e("AppUtils", "Failed overall background photo upload for item $itemId", e)
             }
         }
     }

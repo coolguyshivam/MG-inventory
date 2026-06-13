@@ -183,7 +183,7 @@ class InventoryRepository {
         )
         db.collection("history_events").document(history.id).set(history).await()
         
-        if (uploadedPhotoUri != null && uploadedPhotoUri.startsWith("file://")) {
+        if (uploadedPhotoUri != null && uploadedPhotoUri.contains("file://")) {
             com.example.util.AppUtils.uploadPhotoInBackground(item.id, uploadedPhotoUri, "inventory_items")
             com.example.util.AppUtils.uploadPhotoInBackground(history.id, uploadedPhotoUri, "history_events")
         }
@@ -232,7 +232,7 @@ class InventoryRepository {
         )
         db.collection("history_events").document(history.id).set(history).await()
         
-        if (uploadedPhotoUri != null && uploadedPhotoUri.startsWith("file://")) {
+        if (uploadedPhotoUri != null && uploadedPhotoUri.contains("file://")) {
             com.example.util.AppUtils.uploadPhotoInBackground(history.id, uploadedPhotoUri, "history_events")
         }
 
@@ -273,7 +273,7 @@ class InventoryRepository {
                 underRepair = false
             )
             db.collection("inventory_items").document(item.id).set(item).await()
-            if (uploadedPhotoUri != null && uploadedPhotoUri.startsWith("file://")) {
+            if (uploadedPhotoUri != null && uploadedPhotoUri.contains("file://")) {
                 com.example.util.AppUtils.uploadPhotoInBackground(item.id, uploadedPhotoUri, "inventory_items")
             }
         }
@@ -295,7 +295,7 @@ class InventoryRepository {
         )
         db.collection("history_events").document(history.id).set(history).await()
         
-        if (uploadedPhotoUri != null && uploadedPhotoUri.startsWith("file://")) {
+        if (uploadedPhotoUri != null && uploadedPhotoUri.contains("file://")) {
             com.example.util.AppUtils.uploadPhotoInBackground(history.id, uploadedPhotoUri, "history_events")
         }
 
@@ -355,7 +355,7 @@ class InventoryRepository {
         )
         db.collection("history_events").document(history.id).set(history).await()
         
-        if (uploadedPhotoUri != null && uploadedPhotoUri.startsWith("file://")) {
+        if (uploadedPhotoUri != null && uploadedPhotoUri.contains("file://")) {
             com.example.util.AppUtils.uploadPhotoInBackground(item.id, uploadedPhotoUri, "inventory_items")
             com.example.util.AppUtils.uploadPhotoInBackground(history.id, uploadedPhotoUri, "history_events")
         }
@@ -444,7 +444,7 @@ class InventoryRepository {
         )
         db.collection("history_events").document(history.id).set(history).await()
         
-        if (uploadedPhotoUri != null && uploadedPhotoUri.startsWith("file://")) {
+        if (uploadedPhotoUri != null && uploadedPhotoUri.contains("file://")) {
             com.example.util.AppUtils.uploadPhotoInBackground(finalItem.id, uploadedPhotoUri, "inventory_items")
             com.example.util.AppUtils.uploadPhotoInBackground(history.id, uploadedPhotoUri, "history_events")
         }
