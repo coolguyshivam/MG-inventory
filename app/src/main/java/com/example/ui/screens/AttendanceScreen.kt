@@ -542,7 +542,12 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                                         ) {
                                             Column(modifier = Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                                 AsyncImage(
-                                                    model = AppUtils.resolveImageModel(targetTodayRecord.checkInSelfieBase64),
+                                                    model = coil.request.ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+                                                        .data(AppUtils.resolveImageModel(targetTodayRecord.checkInSelfieBase64, thumbnail = true))
+                                                        .crossfade(true)
+                                                        .size(180)
+                                                        .precision(coil.size.Precision.INEXACT)
+                                                        .build(),
                                                     contentDescription = "Check-In Selfie",
                                                     modifier = Modifier
                                                         .size(60.dp)
@@ -566,7 +571,12 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                                         ) {
                                             Column(modifier = Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                                 AsyncImage(
-                                                    model = AppUtils.resolveImageModel(targetTodayRecord.checkOutSelfieBase64),
+                                                    model = coil.request.ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+                                                        .data(AppUtils.resolveImageModel(targetTodayRecord.checkOutSelfieBase64, thumbnail = true))
+                                                        .crossfade(true)
+                                                        .size(180)
+                                                        .precision(coil.size.Precision.INEXACT)
+                                                        .build(),
                                                     contentDescription = "Check-Out Selfie",
                                                     modifier = Modifier
                                                         .size(60.dp)
@@ -2070,7 +2080,12 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                                                 Text("Check-In Selfie", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                                                 Spacer(Modifier.height(4.dp))
                                                 AsyncImage(
-                                                    model = AppUtils.resolveImageModel(stamp.checkInSelfieBase64),
+                                                    model = coil.request.ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+                                                        .data(AppUtils.resolveImageModel(stamp.checkInSelfieBase64, thumbnail = true))
+                                                        .crossfade(true)
+                                                        .size(300)
+                                                        .precision(coil.size.Precision.INEXACT)
+                                                        .build(),
                                                     contentDescription = null,
                                                     modifier = Modifier
                                                         .size(110.dp)
@@ -2086,7 +2101,12 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                                                 Text("Check-Out Selfie", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                                                 Spacer(Modifier.height(4.dp))
                                                 AsyncImage(
-                                                    model = AppUtils.resolveImageModel(stamp.checkOutSelfieBase64),
+                                                    model = coil.request.ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+                                                        .data(AppUtils.resolveImageModel(stamp.checkOutSelfieBase64, thumbnail = true))
+                                                        .crossfade(true)
+                                                        .size(300)
+                                                        .precision(coil.size.Precision.INEXACT)
+                                                        .build(),
                                                     contentDescription = null,
                                                     modifier = Modifier
                                                         .size(110.dp)

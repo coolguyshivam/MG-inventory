@@ -28,6 +28,15 @@ interface CloudStorageService {
  * before delegating the final byte upload to the target provider.
  */
 abstract class BaseCloudStorageService : CloudStorageService {
+    protected fun getWebpFormat(): Bitmap.CompressFormat {
+        return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            Bitmap.CompressFormat.WEBP_LOSSY
+        } else {
+            @Suppress("DEPRECATION")
+            Bitmap.CompressFormat.WEBP
+        }
+    }
+
     override suspend fun processAndUploadPhotos(photoUriString: String?): String? {
         if (photoUriString.isNullOrBlank()) return null
         val parts = photoUriString.split(",")
@@ -81,7 +90,7 @@ abstract class BaseCloudStorageService : CloudStorageService {
         }
         
         val out = ByteArrayOutputStream()
-        scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 90, out) // 90% quality preserves visual fidelity crisp and high-resolution
+        scaledBitmap.compress(getWebpFormat(), 85, out) // 85% WebP preserves visual fidelity crisp and high-resolution at a fraction of JPEG file size
         return out.toByteArray()
     }
 }
@@ -104,7 +113,48 @@ class FirebaseStorageService(private val context: Context) : BaseCloudStorageSer
                 val cleanPath = base64Str.removePrefix("file://")
                 val file = File(cleanPath)
                 if (file.exists()) {
-                    file.readBytes()
+                    try {
+                        val bytes = file.readBytes()
+                        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+                        
+                        val maxDimension = 2048
+                        var sampleSize = 1
+                        if (options.outHeight > maxDimension || options.outWidth > maxDimension) {
+                            val halfHeight = options.outHeight / 2
+                            val halfWidth = options.outWidth / 2
+                            while (halfHeight / sampleSize >= maxDimension && halfWidth / sampleSize >= maxDimension) {
+                                sampleSize *= 2
+                            }
+                        }
+                        
+                        val decodeOptions = BitmapFactory.Options().apply {
+                            inSampleSize = sampleSize
+                            inJustDecodeBounds = false
+                        }
+                        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOptions)
+                        if (bitmap != null) {
+                            val scaledBitmap = if (bitmap.width > maxDimension || bitmap.height > maxDimension) {
+                                val ratio = bitmap.width.toFloat() / bitmap.height.toFloat()
+                                val (w, h) = if (ratio > 1) {
+                                    Pair(maxDimension, (maxDimension / ratio).toInt())
+                                } else {
+                                    Pair((maxDimension * ratio).toInt(), maxDimension)
+                                }
+                                Bitmap.createScaledBitmap(bitmap, w, h, true)
+                            } else {
+                                bitmap
+                            }
+                            val out = ByteArrayOutputStream()
+                            scaledBitmap.compress(getWebpFormat(), 85, out)
+                            out.toByteArray()
+                        } else {
+                            bytes
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        file.readBytes()
+                    }
                 } else {
                     return base64Str
                 }

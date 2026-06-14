@@ -1381,7 +1381,12 @@ fun CustomPrintDialog(
                                             .background(Color.Gray)
                                     ) {
                                         coil.compose.AsyncImage(
-                                            model = com.example.util.AppUtils.resolveImageModel(photo),
+                                            model = coil.request.ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+                                                .data(com.example.util.AppUtils.resolveImageModel(photo, thumbnail = true))
+                                                .crossfade(true)
+                                                .size(160)
+                                                .precision(coil.size.Precision.INEXACT)
+                                                .build(),
                                             contentDescription = null,
                                             modifier = Modifier.fillMaxSize(),
                                             contentScale = androidx.compose.ui.layout.ContentScale.Crop

@@ -36,6 +36,15 @@ object AppUtils {
         appContext = context.applicationContext
     }
 
+    fun getWebpFormat(): Bitmap.CompressFormat {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Bitmap.CompressFormat.WEBP_LOSSY
+        } else {
+            @Suppress("DEPRECATION")
+            Bitmap.CompressFormat.WEBP
+        }
+    }
+
     private const val ENCRYPTION_KEY = "MG_GALLERY_SECURE_SALT_KEY"
 
     fun hashPassword(password: String): String {
@@ -136,7 +145,7 @@ object AppUtils {
             }
             
             val outputStream = ByteArrayOutputStream()
-            scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 75, outputStream)
+            scaledBitmap.compress(getWebpFormat(), 75, outputStream)
             val bytes = outputStream.toByteArray()
             android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
         } catch (e: Exception) {
@@ -413,15 +422,31 @@ object AppUtils {
     }
 
     @androidx.compose.runtime.Composable
-    fun resolveImageModel(modelStr: String?): Any {
+    fun resolveImageModel(modelStr: String?, thumbnail: Boolean = false): Any {
         if (modelStr.isNullOrBlank()) return "ic_placeholder" // Fallback placeholder
         
-        val target = when (modelStr) {
-            "ic_phone_blue" -> "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=1200&q=88"
-            "ic_phone_amber" -> "https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?auto=format&fit=crop&w=1200&q=88"
-            "ic_watch" -> "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1200&q=88"
-            "ic_tablet" -> "https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?auto=format&fit=crop&w=1200&q=88"
-            else -> modelStr
+        val target = if (thumbnail) {
+            when (modelStr) {
+                "ic_phone_blue" -> "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=400&q=75"
+                "ic_phone_amber" -> "https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?auto=format&fit=crop&w=400&q=75"
+                "ic_watch" -> "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=400&q=75"
+                "ic_tablet" -> "https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?auto=format&fit=crop&w=400&q=75"
+                else -> {
+                    if (modelStr.contains("images.unsplash.com")) {
+                        modelStr.replace(Regex("w=\\d+"), "w=400").replace(Regex("q=\\d+"), "q=75")
+                    } else {
+                        modelStr
+                    }
+                }
+            }
+        } else {
+            when (modelStr) {
+                "ic_phone_blue" -> "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=1200&q=88"
+                "ic_phone_amber" -> "https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?auto=format&fit=crop&w=1200&q=88"
+                "ic_watch" -> "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1200&q=88"
+                "ic_tablet" -> "https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?auto=format&fit=crop&w=1200&q=88"
+                else -> modelStr
+            }
         }
 
         // 1. Return direct HTTP/HTTPS URLs and local content/file URIs instantly. 
@@ -466,7 +491,7 @@ object AppUtils {
             val dir = File(context.filesDir, "photos")
             if (!dir.exists()) dir.mkdirs()
             
-            val filename = "pic_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}.jpg"
+            val filename = "pic_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}.webp"
             val file = File(dir, filename)
             
             // Acquire dimensions to scale slightly if larger than crisp Full HD bounds (2048px)
@@ -508,7 +533,7 @@ object AppUtils {
             }
             
             FileOutputStream(file).use { out ->
-                scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 92, out) // 92% is excellent, extremely crisp full-resolution quality
+                scaledBitmap.compress(getWebpFormat(), 88, out) // 88% WebP is extremely crisp and lightweight
             }
             "file://${file.absolutePath}"
         } catch (e: Exception) {
@@ -695,15 +720,15 @@ object AppUtils {
                 
                 val finalBase64 = if (finalBitmap != null) {
                     val out = ByteArrayOutputStream()
-                    finalBitmap.compress(Bitmap.CompressFormat.JPEG, 70, out)
+                    finalBitmap.compress(getWebpFormat(), 75, out)
                     val compressedBytes = out.toByteArray()
                     val base64 = android.util.Base64.encodeToString(compressedBytes, android.util.Base64.NO_WRAP)
                         .replace("\n", "").replace("\r", "").replace(" ", "")
-                    "data:image/jpeg;base64,$base64"
+                    "data:image/webp;base64,$base64"
                 } else {
                     val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
                         .replace("\n", "").replace("\r", "").replace(" ", "")
-                    "data:image/jpeg;base64,$base64"
+                    "data:image/webp;base64,$base64"
                 }
                 
                 // Save to cache
@@ -760,7 +785,7 @@ object AppUtils {
             return if (cleanBase64.startsWith("data:image")) {
                 cleanBase64
             } else {
-                "data:image/jpeg;base64,$cleanBase64"
+                "data:image/webp;base64,$cleanBase64"
             }
         }
 
@@ -772,10 +797,10 @@ object AppUtils {
                     val bitmap = BitmapFactory.decodeStream(stream)
                     if (bitmap != null) {
                         val out = ByteArrayOutputStream()
-                        bitmap.compress(Bitmap.CompressFormat.JPEG, 70, out)
+                        bitmap.compress(getWebpFormat(), 75, out)
                         val base64 = android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
                             .replace("\n", "").replace("\r", "").replace(" ", "")
-                        return "data:image/jpeg;base64,$base64"
+                        return "data:image/webp;base64,$base64"
                     }
                 }
             } catch (e: Exception) {
@@ -788,10 +813,10 @@ object AppUtils {
                     val bitmap = BitmapFactory.decodeFile(file.absolutePath)
                     if (bitmap != null) {
                         val out = ByteArrayOutputStream()
-                        bitmap.compress(Bitmap.CompressFormat.JPEG, 70, out)
+                        bitmap.compress(getWebpFormat(), 75, out)
                         val base64 = android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
                             .replace("\n", "").replace("\r", "").replace(" ", "")
-                        return "data:image/jpeg;base64,$base64"
+                        return "data:image/webp;base64,$base64"
                     }
                 }
             } catch (e: Exception) {

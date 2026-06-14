@@ -746,7 +746,12 @@ fun InventoryCardItem(
                     val firstPhoto = item.photoUri?.split(",")?.firstOrNull()
                     if (firstPhoto != null && firstPhoto.isNotBlank() && (!firstPhoto.startsWith("ic_") || firstPhoto in listOf("ic_phone_blue", "ic_phone_amber", "ic_watch", "ic_tablet"))) {
                         coil.compose.AsyncImage(
-                            model = com.example.util.AppUtils.resolveImageModel(firstPhoto),
+                            model = coil.request.ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+                                .data(com.example.util.AppUtils.resolveImageModel(firstPhoto, thumbnail = true))
+                                .crossfade(true)
+                                .size(240)
+                                .precision(coil.size.Precision.INEXACT)
+                                .build(),
                             contentDescription = "Item Photo",
                             modifier = Modifier.fillMaxSize(),
                             contentScale = androidx.compose.ui.layout.ContentScale.Crop
@@ -971,7 +976,12 @@ fun InventoryCardItem(
                                             .clickable { onPhotoClick(photos) }
                                     ) {
                                         coil.compose.AsyncImage(
-                                            model = com.example.util.AppUtils.resolveImageModel(uri),
+                                            model = coil.request.ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+                                                .data(com.example.util.AppUtils.resolveImageModel(uri, thumbnail = true))
+                                                .crossfade(true)
+                                                .size(240)
+                                                .precision(coil.size.Precision.INEXACT)
+                                                .build(),
                                             contentDescription = "Additional Photo $index",
                                             modifier = Modifier.fillMaxSize(),
                                             contentScale = androidx.compose.ui.layout.ContentScale.Crop
