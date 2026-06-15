@@ -24,6 +24,9 @@ import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -49,6 +52,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+
+val ColorsAmber = Color(0xFFF59E0B)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -88,6 +93,8 @@ fun TransactionsScreen(viewModel: StockViewModel) {
 
     // Real Camera and Gallery integration launchers
     val tempCameraUriState = remember { mutableStateOf<Uri?>(null) }
+    val coroutineScope = rememberCoroutineScope()
+    var isProcessingPhotos by remember { mutableStateOf(false) }
 
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetMultipleContents()
@@ -96,16 +103,50 @@ fun TransactionsScreen(viewModel: StockViewModel) {
             val currentUris = viewModel.photoUriInput.value
             val urisArray = if (currentUris.isNullOrBlank()) emptyList() else currentUris.split(",")
             
-            val newUrisStr = uris.mapNotNull { uri ->
-                com.example.util.AppUtils.uriToHighResLocalFile(context, uri)
-            }
-            
-            if (urisArray.size + newUrisStr.size <= 10) {
-                viewModel.photoUriInput.value = (urisArray + newUrisStr).joinToString(",")
-                Toast.makeText(context, "Gallery Images Attached & Sync-optimized!", Toast.LENGTH_SHORT).show()
+            val totalSelected = uris.size
+            val acceptedUris = if (urisArray.size + totalSelected > 10) {
+                Toast.makeText(
+                    context,
+                    "The photos selected are more than 10. Only first 10 will be uploaded.",
+                    Toast.LENGTH_LONG
+                ).show()
+                val remainingSlots = (10 - urisArray.size).coerceAtLeast(0)
+                uris.take(remainingSlots)
             } else {
-                Toast.makeText(context, "Maximum 10 photos allowed total", Toast.LENGTH_SHORT).show()
+                uris
             }
+
+            if (acceptedUris.isNotEmpty()) {
+                isProcessingPhotos = true
+                coroutineScope.launch {
+                    val newUrisStr = withContext(Dispatchers.IO) {
+                        acceptedUris.mapNotNull { uri ->
+                            com.example.util.AppUtils.uriToHighResLocalFile(context, uri)
+                        }
+                    }
+                    isProcessingPhotos = false
+                    if (newUrisStr.isNotEmpty()) {
+                        viewModel.photoUriInput.value = (urisArray + newUrisStr).joinToString(",")
+                        Toast.makeText(context, "Gallery Images Attached & Sync-optimized!", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Failed to prepare high fidelity files.", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+    }
+
+    fun createTempImageUri(): Uri? {
+        return try {
+            val directory = File(context.cacheDir, "camera_photos")
+            if (!directory.exists()) {
+                directory.mkdirs()
+            }
+            val tempFile = File.createTempFile("photo_${System.currentTimeMillis()}", ".jpg", directory)
+            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", tempFile)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
         }
     }
 
@@ -133,17 +174,23 @@ fun TransactionsScreen(viewModel: StockViewModel) {
         }
     }
 
-    fun createTempImageUri(): Uri? {
-        return try {
-            val directory = File(context.cacheDir, "camera_photos")
-            if (!directory.exists()) {
-                directory.mkdirs()
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            val uri = createTempImageUri()
+            if (uri != null) {
+                tempCameraUriState.value = uri
+                try {
+                    cameraLauncher.launch(uri)
+                } catch (e: Exception) {
+                    Toast.makeText(context, "No camera app found or camera launch failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                }
+            } else {
+                Toast.makeText(context, "Error: Failed to create temporary file for picture.", Toast.LENGTH_SHORT).show()
             }
-            val tempFile = File.createTempFile("photo_${System.currentTimeMillis()}", ".jpg", directory)
-            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", tempFile)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
+        } else {
+            Toast.makeText(context, "Camera permission is required to take a transaction photo.", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -902,22 +949,34 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    val uri = createTempImageUri()
-                                    if (uri != null) {
-                                        tempCameraUriState.value = uri
-                                        try {
-                                            cameraLauncher.launch(uri)
-                                        } catch (e: Exception) {
-                                            android.widget.Toast.makeText(context, "No camera app found", android.widget.Toast.LENGTH_SHORT).show()
-                                        }
+                                    val currentUris = viewModel.photoUriInput.value
+                                    val urisArray = if (currentUris.isNullOrBlank()) emptyList() else currentUris.split(",")
+                                    
+                                    if (urisArray.size >= 10) {
+                                        Toast.makeText(context, "Maximum 10 photos allowed", Toast.LENGTH_SHORT).show()
                                     } else {
-                                        val currentUris = viewModel.photoUriInput.value
-                                        val urisArray = if (currentUris.isNullOrBlank()) emptyList() else currentUris.split(",")
-                                        if (urisArray.size < 10) {
-                                            viewModel.photoUriInput.value = (urisArray + "camera_snapshot.jpg").joinToString(",")
-                                            android.widget.Toast.makeText(context, "Clicked Photo via Camera (Demo)!", android.widget.Toast.LENGTH_SHORT).show()
+                                        val hasCameraPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+                                            context, android.Manifest.permission.CAMERA
+                                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+                                        if (hasCameraPermission) {
+                                            val uri = createTempImageUri()
+                                            if (uri != null) {
+                                                tempCameraUriState.value = uri
+                                                try {
+                                                    cameraLauncher.launch(uri)
+                                                } catch (e: Exception) {
+                                                    Toast.makeText(
+                                                        context, 
+                                                        "No camera app found or initialization failed: ${e.localizedMessage}", 
+                                                        Toast.LENGTH_LONG
+                                                    ).show()
+                                                }
+                                            } else {
+                                                Toast.makeText(context, "Error: Failed to create temporary file for picture.", Toast.LENGTH_SHORT).show()
+                                            }
                                         } else {
-                                            android.widget.Toast.makeText(context, "Maximum 10 photos allowed", android.widget.Toast.LENGTH_SHORT).show()
+                                            cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
                                         }
                                     }
                                     showPhotoChooserDialog = false
@@ -1196,7 +1255,44 @@ fun TransactionsScreen(viewModel: StockViewModel) {
             }
         )
     }
+
+    if (isProcessingPhotos) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.6f))
+                .clickable(enabled = false) {},
+            contentAlignment = Alignment.Center
+        ) {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.padding(24.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    CircularProgressIndicator(
+                        color = themeColorAndLabel.first
+                    )
+                    Text(
+                        text = "Optimizing & Attaching Images...",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Please wait, scaling high-res photos for lightning-fast sync.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
 }
 }
 
-val ColorsAmber = Color(0xFFF59E0B)
