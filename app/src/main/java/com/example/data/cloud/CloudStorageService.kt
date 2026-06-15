@@ -46,7 +46,7 @@ abstract class BaseCloudStorageService : CloudStorageService {
         return uploadedParts.joinToString(",")
     }
 
-    protected fun compressImage(base64Str: String, maxDimension: Int = 2048): ByteArray {
+    protected fun compressImage(base64Str: String, maxDimension: Int = 1024): ByteArray {
         val pureBase64 = if (base64Str.startsWith("data:image")) {
             val index = base64Str.indexOf(",")
             if (index != -1) base64Str.substring(index + 1) else base64Str
@@ -90,7 +90,7 @@ abstract class BaseCloudStorageService : CloudStorageService {
         }
         
         val out = ByteArrayOutputStream()
-        scaledBitmap.compress(getWebpFormat(), 85, out) // 85% WebP preserves visual fidelity crisp and high-resolution at a fraction of JPEG file size
+        scaledBitmap.compress(getWebpFormat(), 80, out) // 80% WebP preserves visual fidelity crisp and high-resolution at a fraction of JPEG file size
         return out.toByteArray()
     }
 }
@@ -118,7 +118,7 @@ class FirebaseStorageService(private val context: Context) : BaseCloudStorageSer
                         val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
                         
-                        val maxDimension = 2048
+                        val maxDimension = 1024
                         var sampleSize = 1
                         if (options.outHeight > maxDimension || options.outWidth > maxDimension) {
                             val halfHeight = options.outHeight / 2
@@ -146,7 +146,7 @@ class FirebaseStorageService(private val context: Context) : BaseCloudStorageSer
                                 bitmap
                             }
                             val out = ByteArrayOutputStream()
-                            scaledBitmap.compress(getWebpFormat(), 85, out)
+                            scaledBitmap.compress(getWebpFormat(), 80, out)
                             out.toByteArray()
                         } else {
                             bytes
@@ -184,11 +184,16 @@ class FirebaseStorageService(private val context: Context) : BaseCloudStorageSer
                 }
             }
 
-            val filename = "${AppCloudConfig.STORAGE_FOLDER_PHOTOS}/${UUID.randomUUID()}.jpg"
+            val filename = "${AppCloudConfig.STORAGE_FOLDER_PHOTOS}/${UUID.randomUUID()}.webp"
             val ref = storage.reference.child(filename)
             
+            // Build standard image/webp content-type metadata so CDN can stream/cache properly
+            val metadata = com.google.firebase.storage.StorageMetadata.Builder()
+                .setContentType("image/webp")
+                .build()
+            
             // Execute cloud upload and retrieve download URL
-            ref.putBytes(compressedBytes).await()
+            ref.putBytes(compressedBytes, metadata).await()
             ref.downloadUrl.await().toString()
         } catch (e: Exception) {
             Log.e("FirebaseStorageService", "Failed uploading to Firebase Storage, falling back to local file. Error: ${e.message}")

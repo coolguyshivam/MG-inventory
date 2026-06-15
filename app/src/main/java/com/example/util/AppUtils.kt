@@ -502,7 +502,7 @@ object AppUtils {
                 BitmapFactory.decodeStream(stream, null, options)
             }
             
-            val maxDimension = 2048
+            val maxDimension = 1024
             var sampleSize = 1
             if (options.outHeight > maxDimension || options.outWidth > maxDimension) {
                 val halfHeight = options.outHeight / 2
@@ -533,7 +533,7 @@ object AppUtils {
             }
             
             FileOutputStream(file).use { out ->
-                scaledBitmap.compress(getWebpFormat(), 88, out) // 88% WebP is extremely crisp and lightweight
+                scaledBitmap.compress(getWebpFormat(), 80, out) // 80% WebP is extremely crisp and lightweight
             }
             "file://${file.absolutePath}"
         } catch (e: Exception) {

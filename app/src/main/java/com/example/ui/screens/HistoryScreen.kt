@@ -365,14 +365,6 @@ fun HistoryScreen(viewModel: StockViewModel) {
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 items(filteredEvents, key = { it.id }) { event ->
-                    val itemContext = androidx.compose.ui.platform.LocalContext.current
-                    LaunchedEffect(event.photoUri) {
-                        event.photoUri?.split(",")?.filter { it.isNotBlank() }?.forEach { photo ->
-                            if (photo.startsWith("http")) {
-                                com.example.util.AppUtils.prefetchImage(itemContext, photo)
-                            }
-                        }
-                    }
                     var isExpanded by remember { mutableStateOf(false) }
                     HistoryRowItem(
                         event = event,
