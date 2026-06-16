@@ -28,13 +28,8 @@ interface CloudStorageService {
  * before delegating the final byte upload to the target provider.
  */
 abstract class BaseCloudStorageService : CloudStorageService {
-    protected fun getWebpFormat(): Bitmap.CompressFormat {
-        return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-            Bitmap.CompressFormat.WEBP_LOSSY
-        } else {
-            @Suppress("DEPRECATION")
-            Bitmap.CompressFormat.WEBP
-        }
+    protected fun getJpegFormat(): Bitmap.CompressFormat {
+        return Bitmap.CompressFormat.JPEG
     }
 
     override suspend fun processAndUploadPhotos(photoUriString: String?): String? {
@@ -90,7 +85,7 @@ abstract class BaseCloudStorageService : CloudStorageService {
         }
         
         val out = ByteArrayOutputStream()
-        scaledBitmap.compress(getWebpFormat(), 80, out) // 80% WebP preserves visual fidelity crisp and high-resolution at a fraction of JPEG file size
+        scaledBitmap.compress(getJpegFormat(), 75, out) // 75% JPEG preserves high visual quality while optimized for fast cloud uploads
         return out.toByteArray()
     }
 }
@@ -146,7 +141,7 @@ class FirebaseStorageService(private val context: Context) : BaseCloudStorageSer
                                 bitmap
                             }
                             val out = ByteArrayOutputStream()
-                            scaledBitmap.compress(getWebpFormat(), 80, out)
+                            scaledBitmap.compress(getJpegFormat(), 75, out)
                             out.toByteArray()
                         } else {
                             bytes
@@ -184,12 +179,12 @@ class FirebaseStorageService(private val context: Context) : BaseCloudStorageSer
                 }
             }
 
-            val filename = "${AppCloudConfig.STORAGE_FOLDER_PHOTOS}/${UUID.randomUUID()}.webp"
+            val filename = "${AppCloudConfig.STORAGE_FOLDER_PHOTOS}/${UUID.randomUUID()}.jpg"
             val ref = storage.reference.child(filename)
             
-            // Build standard image/webp content-type metadata so CDN can stream/cache properly
+            // Build standard image/jpeg content-type metadata so CDN can stream/cache properly
             val metadata = com.google.firebase.storage.StorageMetadata.Builder()
-                .setContentType("image/webp")
+                .setContentType("image/jpeg")
                 .build()
             
             // Execute cloud upload and retrieve download URL
