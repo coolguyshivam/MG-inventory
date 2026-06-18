@@ -452,24 +452,8 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
             }
         }
         
-        viewModelScope.launch {
-            try {
-                nameInput.collect { typedName ->
-                    val nameStr = typedName.trim()
-                    if (nameStr.isNotEmpty()) {
-                        val all = allParties.value
-                        val party = all.find { it.name.equals(nameStr, ignoreCase = true) }
-                        if (party != null) {
-                            if (phoneInput.value.isBlank()) phoneInput.value = party.phoneNumber
-                            if (aadhaarInput.value.isBlank()) aadhaarInput.value = party.aadhaarNumber
-                            if (addressInput.value.isBlank() && party.address.isNotBlank()) addressInput.value = party.address
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
+        // Automatic background party selection on name typing is disabled to allow users to type freely.
+        // It should only be selected when explicitly chosen from the dropdown list or selection dialog.
     }
 
     // --- History Page State ---

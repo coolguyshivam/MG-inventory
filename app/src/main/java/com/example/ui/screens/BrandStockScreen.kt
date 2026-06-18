@@ -196,77 +196,159 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                 }
             }
 
-            // Brand selection chips scroll
+            // Brand & Warehouse selection filters (Compact layout to reduce vertical empty space)
             item {
-                val scrollState = rememberScrollState()
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(scrollState)
-                        .padding(vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    FilterChip(
-                        selected = selectedBrand == null,
-                        onClick = { selectedBrand = null },
-                        label = { Text("All Brands") },
-                        leadingIcon = if (selectedBrand == null) {
-                            { Icon(Icons.Default.Check, "Selected", modifier = Modifier.size(16.dp)) }
-                        } else null,
-                        modifier = Modifier.testTag("brand_chip_all")
-                    )
-                    
-                    brands.forEach { brandName ->
-                        val isSelected = selectedBrand == brandName
-                        FilterChip(
-                            selected = isSelected,
-                            onClick = { selectedBrand = brandName },
-                            label = { Text(brandName) },
-                            leadingIcon = if (isSelected) {
-                                { Icon(Icons.Default.Check, "Selected", modifier = Modifier.size(16.dp)) }
-                            } else null,
-                            modifier = Modifier.testTag("brand_chip_$brandName")
-                        )
-                    }
-                }
-            }
-
-            // Warehouse selector row (make filter both or single warehouse)
-            item {
-                Row(
+                Card(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+                    ),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
                 ) {
-                    Text(
-                        text = "Warehouse:",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(end = 4.dp)
-                    )
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Brand Selection Label and Scrollable Chips Row
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.BrandingWatermark,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "Brand:",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
 
-                    val warehouses = listOf("Combined", "G", "O")
-                    warehouses.forEach { wh ->
-                        val isSelected = selectedWarehouse == wh
-                        ElevatedAssistChip(
-                            onClick = { selectedWarehouse = wh },
-                            label = {
-                                Text(
-                                    text = if (wh == "Combined") "Both Warehouses" else "Warehouse $wh",
-                                    fontWeight = FontWeight.SemiBold
+                        val scrollState = rememberScrollState()
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(scrollState),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            FilterChip(
+                                selected = selectedBrand == null,
+                                onClick = { selectedBrand = null },
+                                label = { Text("All Brands", fontSize = 12.sp) },
+                                leadingIcon = if (selectedBrand == null) {
+                                    { Icon(Icons.Default.Check, "Selected", modifier = Modifier.size(14.dp)) }
+                                } else null,
+                                modifier = Modifier.height(28.dp).testTag("brand_chip_all")
+                            )
+                            
+                            brands.forEach { brandName ->
+                                val isSelected = selectedBrand == brandName
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = { selectedBrand = brandName },
+                                    label = { Text(brandName, fontSize = 12.sp) },
+                                    leadingIcon = if (isSelected) {
+                                        { Icon(Icons.Default.Check, "Selected", modifier = Modifier.size(14.dp)) }
+                                    } else null,
+                                    modifier = Modifier.height(28.dp).testTag("brand_chip_$brandName")
                                 )
-                            },
-                            colors = AssistChipDefaults.elevatedAssistChipColors(
-                                containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
-                                labelColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-                            ),
-                            border = if (isSelected) BorderStroke(1.2.dp, MaterialTheme.colorScheme.primary) else null,
-                            modifier = Modifier.testTag("warehouse_filter_chip_$wh")
-                        )
+                            }
+                        }
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+
+                        // Warehouse Dropdown Filter Row (Any / Both options)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.FilterList,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = "Warehouse Filter:",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            var expandedWhMenu by remember { mutableStateOf(false) }
+                            Box {
+                                OutlinedButton(
+                                    onClick = { expandedWhMenu = true },
+                                    shape = RoundedCornerShape(8.dp),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.1f),
+                                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                    ),
+                                    modifier = Modifier.height(30.dp).testTag("warehouse_filter_dropdown_button")
+                                ) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = when (selectedWarehouse) {
+                                                "Combined" -> "Both Warehouses"
+                                                else -> "Warehouse $selectedWarehouse"
+                                            },
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp
+                                        )
+                                        Icon(
+                                            imageVector = Icons.Default.ArrowDropDown,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+
+                                DropdownMenu(
+                                    expanded = expandedWhMenu,
+                                    onDismissRequest = { expandedWhMenu = false }
+                                ) {
+                                    listOf("Combined", "G", "O").forEach { wh ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(
+                                                    text = if (wh == "Combined") "Both Warehouses" else "Warehouse $wh",
+                                                    fontWeight = if (selectedWarehouse == wh) FontWeight.ExtraBold else FontWeight.Normal,
+                                                    fontSize = 13.sp
+                                                )
+                                            },
+                                            onClick = {
+                                                selectedWarehouse = wh
+                                                expandedWhMenu = false
+                                            },
+                                            leadingIcon = if (selectedWarehouse == wh) {
+                                                { Icon(Icons.Default.Check, null, modifier = Modifier.size(14.dp)) }
+                                            } else null,
+                                            modifier = Modifier.testTag("dropdown_warehouse_$wh")
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

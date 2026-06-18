@@ -615,7 +615,61 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                         supportingText = if (nameError != null) { { Text(nameError, color = MaterialTheme.colorScheme.error) } } else null
                     )
 
-                    // Empty space or placeholder to match parent alignment if required
+                    // Autocomplete name dropdown (Only displays suggestions if name has content & is focused)
+                    val filteredDropdownParties = remember(name, combinedParties) {
+                        if (name.isBlank() || name.length < 2) {
+                            emptyList()
+                        } else {
+                            combinedParties.filter { it.name.contains(name, ignoreCase = true) }
+                        }
+                    }
+
+                    if (nameFocused && filteredDropdownParties.isNotEmpty()) {
+                        DropdownMenu(
+                            expanded = true,
+                            onDismissRequest = { /* Allow typing or dismissing */ },
+                            properties = androidx.compose.ui.window.PopupProperties(focusable = false),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 240.dp)
+                        ) {
+                            filteredDropdownParties.forEach { party ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            Text(
+                                                text = party.name,
+                                                fontWeight = FontWeight.Bold,
+                                                style = MaterialTheme.typography.bodyMedium
+                                            )
+                                            if (party.phoneNumber.isNotBlank()) {
+                                                Text(
+                                                    text = "📞 ${party.phoneNumber}",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                    },
+                                    onClick = {
+                                        viewModel.nameInput.value = party.name
+                                        viewModel.phoneInput.value = party.phoneNumber
+                                        viewModel.aadhaarInput.value = party.aadhaarNumber ?: ""
+                                        viewModel.addressInput.value = party.address
+                                        
+                                        // Reset touched states so we don't trigger validation warnings
+                                        nameTouched.value = false
+                                        phoneTouched.value = false
+                                        aadhaarTouched.value = false
+                                        addressTouched.value = false
+                                        
+                                        nameFocused = false
+                                    },
+                                    modifier = Modifier.testTag("dropdown_name_select_${party.name}")
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
