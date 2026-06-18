@@ -41,6 +41,7 @@ object AppCloudConfig {
     const val COLL_ATTENDANCE_NOTIFICATIONS = "attendance_notifications"
     const val COLL_BRAND_STOCK_ITEMS = "brand_stock_items_v2"
     const val COLL_BRAND_STOCK_TRANSACTIONS = "brand_stock_transactions_v2"
+    const val COLL_BRAND_VARIANTS = "brand_variants_v2"
 
     // --- Cloud Storage Folders & Subpaths ---
     // Modify the photo upload directory paths easily.

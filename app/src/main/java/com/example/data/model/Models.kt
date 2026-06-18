@@ -127,5 +127,13 @@ data class BrandStockTransaction(
     val notes: String? = null
 )
 
+data class BrandVariant(
+    val id: String = UUID.randomUUID().toString(),
+    val brand: String = "",
+    val modelName: String = "", // e.g., "Oppo Reno 11 Pro"
+    val specs: String = "",     // e.g., "12GB/256GB"
+    val color: String = ""      // e.g., "Wave Green"
+)
+
 
 

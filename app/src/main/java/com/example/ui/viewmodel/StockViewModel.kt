@@ -1442,6 +1442,50 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
     suspend fun findBrandStockItemByImei(imei: String): com.example.data.model.BrandStockItem? {
         return repository.getBrandStockItemByImei(imei)
     }
+
+    // Standard pre-defined item variants
+    val brandVariants: StateFlow<List<com.example.data.model.BrandVariant>> = repository.allBrandVariants
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun addBrandVariant(
+        brand: String,
+        modelName: String,
+        specs: String,
+        color: String,
+        onResult: (Boolean) -> Unit
+    ) {
+        viewModelScope.launch {
+            val variant = com.example.data.model.BrandVariant(
+                brand = brand,
+                modelName = modelName.trim(),
+                specs = specs.trim(),
+                color = color.trim()
+            )
+            val success = repository.addBrandVariant(variant)
+            onResult(success)
+        }
+    }
+
+    fun deleteBrandVariant(id: String, onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val success = repository.deleteBrandVariant(id)
+            onResult(success)
+        }
+    }
+
+    fun deleteBrandStockItem(id: String, onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val success = repository.deleteBrandStockItem(id)
+            onResult(success)
+        }
+    }
+
+    fun deleteBrandTransaction(id: String, onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val success = repository.deleteBrandTransaction(id)
+            onResult(success)
+        }
+    }
 }
 
 // Simple Factory provider

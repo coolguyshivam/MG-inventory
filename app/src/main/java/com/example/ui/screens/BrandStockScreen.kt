@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -42,8 +43,11 @@ fun BrandStockScreen(viewModel: StockViewModel) {
     val stockItems by viewModel.brandStockItems.collectAsStateWithLifecycle()
     val transactions by viewModel.brandStockTransactions.collectAsStateWithLifecycle()
     val currentUser by viewModel.loggedInUser.collectAsStateWithLifecycle()
+    val brandVariants by viewModel.brandVariants.collectAsStateWithLifecycle()
 
-    var activeSubTab by remember { mutableStateOf(0) } // 0 = Active Stock, 1 = Audit Transaction Logs
+    val isAdmin = currentUser?.role?.equals("Admin", ignoreCase = true) == true
+
+    var activeSubTab by remember { mutableStateOf(0) } // 0 = Active Stock, 1 = Audit Transaction Logs, 2 = Model Presets
     
     // Filters
     val brands = listOf("Oppo", "Vivo", "Samsung", "OnePlus", "Realme", "Motorola", "Infinix", "Tecno", "Apple", "Google", "Redmi", "Others")
@@ -54,6 +58,17 @@ fun BrandStockScreen(viewModel: StockViewModel) {
     // Dialog state
     var showAddStockDialog by remember { mutableStateOf(false) }
     var showSellStockDialog by remember { mutableStateOf(false) }
+    var showAddVariantDialog by remember { mutableStateOf(false) }
+
+    // Scanner state
+    var showQrScannerDialog by remember { mutableStateOf(false) }
+    var qrScannerCallback by remember { mutableStateOf<((String) -> Unit)?>(null) }
+    var scannerModeInOrOut by remember { mutableStateOf(true) } // true = In, false = Out
+
+    // Delete confirmation dialogs
+    var itemToDelete by remember { mutableStateOf<BrandStockItem?>(null) }
+    var transactionToDelete by remember { mutableStateOf<BrandStockTransaction?>(null) }
+    var variantToDelete by remember { mutableStateOf<com.example.data.model.BrandVariant?>(null) }
     
     // Status feedback state
     var statusMessage by remember { mutableStateOf<String?>(null) }
@@ -83,6 +98,12 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                     tx.operator.contains(searchQuery, ignoreCase = true)
             matchesBrand && matchesWarehouse && matchesSearch
         }.sortedByDescending { tx -> tx.dateInMillis }
+    }
+
+    val filteredVariants = remember(brandVariants, selectedBrand) {
+        brandVariants.filter { v ->
+            selectedBrand == null || v.brand.equals(selectedBrand, ignoreCase = true)
+        }.sortedBy { v -> v.modelName }
     }
 
     // IMEI Lifetime Tracker Logic - builds history from active stock items and transaction logs!
@@ -166,6 +187,12 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                         text = { Text("Transit / Audit Logs", fontWeight = FontWeight.Bold) },
                         icon = { Icon(Icons.Default.ReceiptLong, "Audit logs transaction list") }
                     )
+                    Tab(
+                        selected = activeSubTab == 2,
+                        onClick = { activeSubTab = 2 },
+                        text = { Text("Model Presets", fontWeight = FontWeight.Bold) },
+                        icon = { Icon(Icons.Default.Category, "Predefined item variants model presets") }
+                    )
                 }
             }
 
@@ -246,23 +273,49 @@ fun BrandStockScreen(viewModel: StockViewModel) {
 
             // Search Bar input field
             item {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    label = { Text("Search by IMEI, variant, color...") },
-                    leadingIcon = { Icon(Icons.Default.Search, null) },
-                    trailingIcon = if (searchQuery.isNotEmpty()) {
-                        {
-                            IconButton(onClick = { searchQuery = "" }) {
-                                Icon(Icons.Default.Close, "Clear search query")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        label = { Text("Search by IMEI, variant, color...") },
+                        leadingIcon = { Icon(Icons.Default.Search, null) },
+                        trailingIcon = if (searchQuery.isNotEmpty()) {
+                            {
+                                IconButton(onClick = { searchQuery = "" }) {
+                                    Icon(Icons.Default.Close, "Clear search query")
+                                }
                             }
-                        }
-                    } else null,
-                    singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("brand_stock_search_bar")
-                )
+                        } else null,
+                        singleLine = true,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("brand_stock_search_bar")
+                    )
+
+                    IconButton(
+                        onClick = {
+                            scannerModeInOrOut = false
+                            qrScannerCallback = { scannedResult ->
+                                searchQuery = scannedResult
+                                showQrScannerDialog = false
+                            }
+                            showQrScannerDialog = true
+                        },
+                        modifier = Modifier
+                            .size(52.dp)
+                            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.QrCode,
+                            contentDescription = "Scan IMEI Barcode",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
             }
 
             // IMEI Track & Trace timeline timeline panel (Triggered dynamically!)
@@ -405,80 +458,127 @@ fun BrandStockScreen(viewModel: StockViewModel) {
 
             // Summary Statistics Badge Card
             item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-                    )
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        horizontalArrangement = Arrangement.SpaceAround,
-                        verticalAlignment = Alignment.CenterVertically
+                if (activeSubTab == 2) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                        )
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Total Stock", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("$totalInStock units", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceAround,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("Total Presets Created", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("${brandVariants.size} models", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                            }
+                            VerticalDivider(modifier = Modifier.height(30.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("Filtered Presets", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("${filteredVariants.size} variants", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                            }
                         }
-                        VerticalDivider(modifier = Modifier.height(30.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Warehouse G", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("$gCount units", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                        }
-                        VerticalDivider(modifier = Modifier.height(30.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Warehouse O", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("$oCount units", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                    }
+                } else {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceAround,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("Total Stock", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("$totalInStock units", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                            }
+                            VerticalDivider(modifier = Modifier.height(30.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("Warehouse G", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("$gCount units", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                            }
+                            VerticalDivider(modifier = Modifier.height(30.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("Warehouse O", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("$oCount units", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                            }
                         }
                     }
                 }
             }
 
-            // Action Buttons Row (IN-Flow & OUT-Flow)
+            // Action Buttons Row (IN-Flow & OUT-Flow) or "Add Model Preset" button
             item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
+                if (activeSubTab == 2) {
                     Button(
-                        onClick = { showAddStockDialog = true },
+                        onClick = { showAddVariantDialog = true },
                         shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                         modifier = Modifier
-                            .weight(1f)
+                            .fillMaxWidth()
                             .height(48.dp)
-                            .testTag("btn_brand_stock_in"),
-                        contentPadding = PaddingValues(0.dp)
+                            .testTag("btn_add_brand_variant_preset"),
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Icon(Icons.Default.ArrowUpward, "Inward")
-                            Text("Stock In (Purchase)", fontWeight = FontWeight.Bold)
+                            Icon(Icons.Default.Add, "Add model preset")
+                            Text("Define Model Variant Preset", fontWeight = FontWeight.Bold)
                         }
                     }
-
-                    Button(
-                        onClick = { showSellStockDialog = true },
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935)),
+                } else {
+                    Row(
                         modifier = Modifier
-                            .weight(1f)
-                            .height(48.dp)
-                            .testTag("btn_brand_stock_out"),
-                        contentPadding = PaddingValues(0.dp)
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        Button(
+                            onClick = { showAddStockDialog = true },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp)
+                                .testTag("btn_brand_stock_in"),
+                            contentPadding = PaddingValues(0.dp)
                         ) {
-                            Icon(Icons.Default.ArrowDownward, "Outward")
-                            Text("Stock Out (Sale)", fontWeight = FontWeight.Bold)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(Icons.Default.ArrowUpward, "Inward")
+                                Text("Stock In (Purchase)", fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        Button(
+                            onClick = { showSellStockDialog = true },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935)),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp)
+                                .testTag("btn_brand_stock_out"),
+                            contentPadding = PaddingValues(0.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(Icons.Default.ArrowDownward, "Outward")
+                                Text("Stock Out (Sale)", fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
@@ -554,10 +654,12 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                     }
                 } else {
                     items(filteredStockItems) { item ->
-                        BrandStockItemCard(item)
+                        BrandStockItemCard(item, isAdmin) {
+                            itemToDelete = item
+                        }
                     }
                 }
-            } else {
+            } else if (activeSubTab == 1) {
                 // AUDIT LOG TRANSACTIONS
                 if (filteredTransactions.isEmpty()) {
                     item {
@@ -587,7 +689,91 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                     }
                 } else {
                     items(filteredTransactions) { tx ->
-                        BrandTransactionCard(tx)
+                        BrandTransactionCard(tx, isAdmin) {
+                            transactionToDelete = tx
+                        }
+                    }
+                }
+            } else {
+                // MODEL PRESET VARIANTS
+                if (filteredVariants.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 40.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Category,
+                                    contentDescription = "No variant presets",
+                                    modifier = Modifier.size(60.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                                )
+                                Text(
+                                    text = "No model variant presets found for this brand.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = "Tap 'Define Model Variant Preset' above to create one.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    items(filteredVariants) { preset ->
+                        Card(
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(14.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
+                                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(preset.brand.uppercase(), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
+                                    }
+                                    Text(preset.modelName, fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleMedium)
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        SuggestionChip(
+                                            onClick = {},
+                                            label = { Text("Specs: ${preset.specs}", fontSize = 10.sp) }
+                                        )
+                                        SuggestionChip(
+                                            onClick = {},
+                                            label = { Text("Color: ${preset.color}", fontSize = 10.sp) }
+                                        )
+                                    }
+                                }
+                                if (isAdmin) {
+                                    IconButton(
+                                        onClick = { variantToDelete = preset },
+                                        colors = IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                                    ) {
+                                        Icon(Icons.Default.Delete, "Delete model preset variant")
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -659,11 +845,69 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                         }
                     }
 
+                    // Presets autocompletion
+                    val matchingPresets = remember(brandVariants, addBrand) {
+                        brandVariants.filter { it.brand.equals(addBrand, ignoreCase = true) }
+                    }
+                    var expandedPresetDropdown by remember { mutableStateOf(false) }
+
+                    if (matchingPresets.isNotEmpty()) {
+                        Box {
+                            OutlinedButton(
+                                onClick = { expandedPresetDropdown = true },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f),
+                                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("⚡ Autofill from Presets (${matchingPresets.size})", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    Icon(Icons.Default.ArrowDropDown, null)
+                                }
+                            }
+                            DropdownMenu(
+                                expanded = expandedPresetDropdown,
+                                onDismissRequest = { expandedPresetDropdown = false },
+                                modifier = Modifier.fillMaxWidth(0.7f)
+                            ) {
+                                matchingPresets.forEach { preset ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Column {
+                                                Text(preset.modelName, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                Text("${preset.specs} | ${preset.color}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline, fontSize = 11.sp)
+                                            }
+                                        },
+                                        onClick = {
+                                            addVariant = "${preset.modelName} ${preset.specs}".trim()
+                                            addColor = preset.color
+                                            expandedPresetDropdown = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        Text(
+                            text = "💡 Tip: Go to the 'Model Presets' tab to save presets of $addBrand and autofill these instantly.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.secondary,
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(horizontal = 4.dp)
+                        )
+                    }
+
                     // Variant input
                     OutlinedTextField(
                         value = addVariant,
                         onValueChange = { addVariant = it },
-                        label = { Text("Model Variant (e.g. 8GB/128GB)") },
+                        label = { Text("Model Variant (e.g. Reno 11 Pro 12GB/256GB)") },
                         singleLine = true,
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.fillMaxWidth().testTag("add_brand_variant")
@@ -679,16 +923,42 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                         modifier = Modifier.fillMaxWidth().testTag("add_brand_color")
                     )
 
-                    // IMEI input
-                    OutlinedTextField(
-                        value = addImei,
-                        onValueChange = { addImei = it.trim() },
-                        label = { Text("Unique IMEI / Serial Number") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.fillMaxWidth().testTag("add_brand_imei")
-                    )
+                    // IMEI input with QR scanner shortcut
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = addImei,
+                            onValueChange = { addImei = it.trim() },
+                            label = { Text("Unique IMEI / Serial Number") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(1f).testTag("add_brand_imei")
+                        )
+
+                        IconButton(
+                            onClick = {
+                                scannerModeInOrOut = true
+                                qrScannerCallback = { scannedResult ->
+                                    addImei = scannedResult
+                                    showQrScannerDialog = false
+                                }
+                                showQrScannerDialog = true
+                            },
+                            modifier = Modifier
+                                .size(52.dp)
+                                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.QrCode,
+                                contentDescription = "Scan IMEI Barcode",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
 
                     // Warehouse selection radio buttons
                     Text("Target Warehouse:", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
@@ -808,16 +1078,42 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                         )
                     }
 
-                    // IMEI field
-                    OutlinedTextField(
-                        value = sellImei,
-                        onValueChange = { sellImei = it.trim() },
-                        label = { Text("Enter/Scan unique device IMEI") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.fillMaxWidth().testTag("sell_brand_imei")
-                    )
+                    // IMEI field with QR scanner shortcut
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = sellImei,
+                            onValueChange = { sellImei = it.trim() },
+                            label = { Text("Enter/Scan unique device IMEI") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(1f).testTag("sell_brand_imei")
+                        )
+
+                        IconButton(
+                            onClick = {
+                                scannerModeInOrOut = false
+                                qrScannerCallback = { scannedResult ->
+                                    sellImei = scannedResult
+                                    showQrScannerDialog = false
+                                }
+                                showQrScannerDialog = true
+                            },
+                            modifier = Modifier
+                                .size(52.dp)
+                                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.QrCode,
+                                contentDescription = "Scan IMEI Barcode",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
 
                     // Autocomplete indicators
                     if (checkingImei) {
@@ -930,10 +1226,380 @@ fun BrandStockScreen(viewModel: StockViewModel) {
             }
         )
     }
+
+    // Deletion Dialogs & Scanner Overlay
+
+    itemToDelete?.let { item ->
+        AlertDialog(
+            onDismissRequest = { itemToDelete = null },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Default.Warning, "Warning", tint = MaterialTheme.colorScheme.error)
+                    Text("Delete Stock Item?", fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Are you sure you want to delete this active stock item?")
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text("Brand: ${item.brand}", fontWeight = FontWeight.Bold)
+                            Text("Variant: ${item.variant}")
+                            Text("IMEI: ${item.imei}", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    Text("This action is destructive and irreversible. Only authorized Admin users can perform this deletion.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val currentImei = item.imei
+                        viewModel.deleteBrandStockItem(item.id) { success ->
+                            if (success) {
+                                statusMessage = "Successfully deleted stock item with IMEI: $currentImei"
+                                isErrorStatus = false
+                            } else {
+                                statusMessage = "Failed to delete item. Please verify permissions."
+                                isErrorStatus = true
+                            }
+                            itemToDelete = null
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete Forever")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { itemToDelete = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    transactionToDelete?.let { tx ->
+        AlertDialog(
+            onDismissRequest = { transactionToDelete = null },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Default.Warning, "Warning", tint = MaterialTheme.colorScheme.error)
+                    Text("Delete Transaction Log?", fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Are you sure you want to delete this historical transaction entry?")
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text("Brand: ${tx.brand} | Type: ${tx.type}", fontWeight = FontWeight.Bold)
+                            Text("Variant: ${tx.variant}")
+                            Text("IMEI: ${tx.imei}", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    Text("Warning: Deleting transaction logs does not automatically replenish or revert current physical warehouse stock.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val currentImei = tx.imei
+                        viewModel.deleteBrandTransaction(tx.id) { success ->
+                            if (success) {
+                                statusMessage = "Successfully deleted transaction log of IMEI: $currentImei"
+                                isErrorStatus = false
+                            } else {
+                                statusMessage = "Failed to delete log. Please verify permissions."
+                                isErrorStatus = true
+                            }
+                            transactionToDelete = null
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete Log")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { transactionToDelete = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    variantToDelete?.let { preset ->
+        AlertDialog(
+            onDismissRequest = { variantToDelete = null },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Default.Warning, "Warning", tint = MaterialTheme.colorScheme.error)
+                    Text("Delete Model Preset?", fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Are you sure you want to delete this predefined product preset? This will remove it from the autofill options on 'Stock In'.")
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.2f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text("Model: ${preset.modelName}", fontWeight = FontWeight.Bold)
+                            Text("Specs/Variant: ${preset.specs}")
+                            Text("Color: ${preset.color}")
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val model = preset.modelName
+                        viewModel.deleteBrandVariant(preset.id) { success ->
+                            if (success) {
+                                statusMessage = "Successfully deleted model preset: $model"
+                                isErrorStatus = false
+                            } else {
+                                statusMessage = "Failed to delete model preset."
+                                isErrorStatus = true
+                            }
+                            variantToDelete = null
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete Preset")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { variantToDelete = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showAddVariantDialog) {
+        var presetModel by remember { mutableStateOf("") }
+        var presetSpecs by remember { mutableStateOf("8GB/128GB") }
+        var presetColor by remember { mutableStateOf("") }
+        var isPresetSubmitting by remember { mutableStateOf(false) }
+        var presetError by remember { mutableStateOf<String?>(null) }
+
+        AlertDialog(
+            onDismissRequest = { if (!isPresetSubmitting) showAddVariantDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Default.Category, "Category", tint = MaterialTheme.colorScheme.primary)
+                    Text("Define Model Preset", fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Save standard configurations details for $selectedBrand to instantly autofill them when recording purchases.")
+
+                    if (presetError != null) {
+                        Text(presetError!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                    }
+
+                    OutlinedTextField(
+                        value = presetModel,
+                        onValueChange = { presetModel = it },
+                        label = { Text("Model Name (e.g., Reno 11 Pro)") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth().testTag("preset_model_input")
+                    )
+
+                    OutlinedTextField(
+                        value = presetSpecs,
+                        onValueChange = { presetSpecs = it },
+                        label = { Text("RAM / Storage (e.g., 12GB/256GB)") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth().testTag("preset_specs_input")
+                    )
+
+                    OutlinedTextField(
+                        value = presetColor,
+                        onValueChange = { presetColor = it },
+                        label = { Text("Standard Color (e.g., Pearl White)") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth().testTag("preset_color_input")
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (presetModel.isBlank() || presetSpecs.isBlank() || presetColor.isBlank()) {
+                            presetError = "All fields are required to establish a valid model preset."
+                            return@Button
+                        }
+                        isPresetSubmitting = true
+                        val useBrand = selectedBrand ?: "Others"
+                        viewModel.addBrandVariant(
+                            brand = useBrand,
+                            modelName = presetModel.trim(),
+                            specs = presetSpecs.trim(),
+                            color = presetColor.trim()
+                        ) { success ->
+                            isPresetSubmitting = false
+                            if (success) {
+                                statusMessage = "Successfully created new model preset for '$presetModel' under $useBrand"
+                                isErrorStatus = false
+                                showAddVariantDialog = false
+                            } else {
+                                presetError = "Could not register preset. Please try again."
+                            }
+                        }
+                    },
+                    enabled = !isPresetSubmitting
+                ) {
+                    if (isPresetSubmitting) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White)
+                    } else {
+                        Text("Save Preset")
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showAddVariantDialog = false },
+                    enabled = !isPresetSubmitting
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showQrScannerDialog) {
+        var manualText by remember { mutableStateOf("") }
+        var simulationProgress by remember { mutableStateOf(false) }
+
+        AlertDialog(
+            onDismissRequest = { showQrScannerDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Default.QrCode, null, tint = MaterialTheme.colorScheme.primary)
+                    Text("Intelligent Barcode Scanner", fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Position the smartphone barcode / QR code or IMEI label inside the viewfinder rectangle below.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center
+                    )
+
+                    // Viewfinder box representing camera feed
+                    Box(
+                        modifier = Modifier
+                            .size(200.dp, 120.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color.Black)
+                            .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.QrCode,
+                            contentDescription = "Active scanning grid",
+                            tint = Color(0xFF4CAF50),
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(2.dp)
+                                .background(Color(0xFF4CAF50))
+                                .align(Alignment.Center)
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Button(
+                            onClick = {
+                                simulationProgress = true
+                                val sampleImeis = listOf("869374028301824", "358201948201048", "990000862471854", "448201940182745", "352019482019402")
+                                val picked = sampleImeis.random()
+                                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                                    simulationProgress = false
+                                    qrScannerCallback?.invoke(picked)
+                                }, 800)
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                            enabled = !simulationProgress
+                        ) {
+                            if (simulationProgress) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Scanning...")
+                            } else {
+                                Text("Trigger Simulated Laser Scan")
+                            }
+                        }
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                    Text("Or, key in IMEI/Serial code manually here:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+
+                    OutlinedTextField(
+                        value = manualText,
+                        onValueChange = { manualText = it },
+                        placeholder = { Text("e.g. 869304859203847") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth().testTag("manual_imei_scanner_input")
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (manualText.isNotBlank()) {
+                            qrScannerCallback?.invoke(manualText.trim())
+                        }
+                    },
+                    enabled = manualText.isNotBlank()
+                ) {
+                    Text("Apply Code")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showQrScannerDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 }
 
 @Composable
-fun BrandStockItemCard(item: BrandStockItem) {
+fun BrandStockItemCard(
+    item: BrandStockItem,
+    isAdmin: Boolean = false,
+    onDelete: (() -> Unit)? = null
+) {
     val dateStr = remember(item.addedDate) {
         SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(item.addedDate))
     }
@@ -967,21 +1633,40 @@ fun BrandStockItemCard(item: BrandStockItem) {
                     )
                 }
 
-                // Warehouse badge
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(
-                            if (item.warehouse.equals("G", ignoreCase = true)) Color(0xFFE0F7FA) else Color(0xFFFFF3E0)
-                        )
-                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text(
-                        text = "Warehouse ${item.warehouse.uppercase()}",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp,
-                        color = if (item.warehouse.equals("G", ignoreCase = true)) Color(0xFF006064) else Color(0xFFE65100)
-                    )
+                    // Warehouse badge
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(
+                                if (item.warehouse.equals("G", ignoreCase = true)) Color(0xFFE0F7FA) else Color(0xFFFFF3E0)
+                            )
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "Warehouse ${item.warehouse.uppercase()}",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp,
+                            color = if (item.warehouse.equals("G", ignoreCase = true)) Color(0xFF006064) else Color(0xFFE65100)
+                        )
+                    }
+
+                    if (isAdmin && onDelete != null) {
+                        IconButton(
+                            onClick = onDelete,
+                            modifier = Modifier.size(32.dp),
+                            colors = IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Delete from stock",
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
                 }
             }
 
@@ -1042,7 +1727,11 @@ fun BrandStockItemCard(item: BrandStockItem) {
 }
 
 @Composable
-fun BrandTransactionCard(tx: BrandStockTransaction) {
+fun BrandTransactionCard(
+    tx: BrandStockTransaction,
+    isAdmin: Boolean = false,
+    onDelete: (() -> Unit)? = null
+) {
     val dateStr = remember(tx.dateInMillis) {
         SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(tx.dateInMillis))
     }
@@ -1088,13 +1777,32 @@ fun BrandTransactionCard(tx: BrandStockTransaction) {
                     }
                 }
 
-                // Warehouse badge
-                Text(
-                    text = "Warehouse ${tx.warehouse.uppercase()}",
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Warehouse badge
+                    Text(
+                        text = "Warehouse ${tx.warehouse.uppercase()}",
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    if (isAdmin && onDelete != null) {
+                        IconButton(
+                            onClick = onDelete,
+                            modifier = Modifier.size(32.dp),
+                            colors = IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Delete transaction",
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
             }
 
             // Specs

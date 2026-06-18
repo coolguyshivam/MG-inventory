@@ -106,6 +106,15 @@ class InventoryRepository {
         awaitClose { sub.remove() }
     }
 
+    val allBrandVariants: Flow<List<com.example.data.model.BrandVariant>> = callbackFlow {
+        val sub = db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_VARIANTS).addSnapshotListener { snap, err ->
+            if (snap != null) {
+                trySend(snap.documents.mapNotNull { it.toObject(com.example.data.model.BrandVariant::class.java) })
+            }
+        }
+        awaitClose { sub.remove() }
+    }
+
     suspend fun getBrandStockItemByImei(imei: String): com.example.data.model.BrandStockItem? {
         val cleaned = imei.trim()
         if (cleaned.isBlank()) return null
@@ -171,6 +180,58 @@ class InventoryRepository {
             db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_STOCK_TRANSACTIONS)
                 .document(tx.id)
                 .set(tx)
+                .await()
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    suspend fun addBrandVariant(variant: com.example.data.model.BrandVariant): Boolean {
+        return try {
+            db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_VARIANTS)
+                .document(variant.id)
+                .set(variant)
+                .await()
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    suspend fun deleteBrandVariant(id: String): Boolean {
+        return try {
+            db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_VARIANTS)
+                .document(id)
+                .delete()
+                .await()
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    suspend fun deleteBrandStockItem(id: String): Boolean {
+        return try {
+            db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_STOCK_ITEMS)
+                .document(id)
+                .delete()
+                .await()
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    suspend fun deleteBrandTransaction(id: String): Boolean {
+        return try {
+            db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_STOCK_TRANSACTIONS)
+                .document(id)
+                .delete()
                 .await()
             true
         } catch (e: Exception) {
