@@ -1942,7 +1942,9 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Text("Model: ${preset.modelName}", fontWeight = FontWeight.Bold)
                             Text("Specs/Variant: ${preset.specs}")
-                            Text("Color: ${preset.color}")
+                            if (preset.color.isNotBlank()) {
+                                Text("Color: ${preset.color}")
+                            }
                         }
                     }
                 }
