@@ -85,350 +85,507 @@ fun BrandStockScreen(viewModel: StockViewModel) {
         }.sortedByDescending { tx -> tx.dateInMillis }
     }
 
-    Column(
+    // IMEI Lifetime Tracker Logic - builds history from active stock items and transaction logs!
+    val imeiQuery = searchQuery.trim()
+    val trackRecords = remember(imeiQuery, stockItems, transactions) {
+        if (imeiQuery.isNotBlank() && imeiQuery.length >= 4) {
+            val activeMatch = stockItems.firstOrNull { it.imei.equals(imeiQuery, ignoreCase = true) }
+            val matchingTxs = transactions.filter { it.imei.equals(imeiQuery, ignoreCase = true) }.sortedBy { it.dateInMillis }
+            
+            if (activeMatch != null || matchingTxs.isNotEmpty()) {
+                val brandName = activeMatch?.brand ?: matchingTxs.firstOrNull()?.brand ?: "Unknown"
+                val variantName = activeMatch?.variant ?: matchingTxs.firstOrNull()?.variant ?: "Unknown"
+                val colorName = activeMatch?.color ?: matchingTxs.firstOrNull()?.color ?: "Unknown"
+                Triple(activeMatch, matchingTxs, BrandStockItem(brand = brandName, variant = variantName, color = colorName, imei = imeiQuery))
+            } else {
+                null
+            }
+        } else {
+            null
+        }
+    }
+
+    // Summary Statistics calculations based on selected/filtered items
+    val totalInStock = filteredStockItems.size
+    val gCount = filteredStockItems.count { it.warehouse.equals("G", ignoreCase = true) }
+    val oCount = filteredStockItems.count { it.warehouse.equals("O", ignoreCase = true) }
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // Module Title Header
-        Card(
+        LazyColumn(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
-            ),
-            shape = RoundedCornerShape(16.dp)
+                .fillMaxSize()
+                .testTag("brand_stock_lazy_column"),
+            contentPadding = PaddingValues(16.dp, 16.dp, 16.dp, 80.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Column(
-                modifier = Modifier.padding(16.dp)
-            ) {
+            // Elegant Simple Header (Title) - Branding card removed
+            item {
                 Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Inventory2,
-                        contentDescription = "Brand Inventory",
+                        imageVector = Icons.Default.Inventory,
+                        contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(28.dp)
                     )
-                    Column {
-                        Text(
-                            text = "Brand-wise Stock Manager",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                        Text(
-                            text = "Independent multi-warehouse inventory module managed by sales heads",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                        )
-                    }
+                    Text(
+                        text = "Warehouse Stock Manager",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
                 }
             }
-        }
 
-        // Sub-Tab Toggle Selection: Active Stock vs Audit Logs
-        TabRow(
-            selectedTabIndex = activeSubTab,
-            containerColor = Color.Transparent,
-            contentColor = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        ) {
-            Tab(
-                selected = activeSubTab == 0,
-                onClick = { activeSubTab = 0 },
-                text = { Text("Active Stock", fontWeight = FontWeight.Bold) },
-                icon = { Icon(Icons.Default.PhoneAndroid, "Active Inventory List") }
-            )
-            Tab(
-                selected = activeSubTab == 1,
-                onClick = { activeSubTab = 1 },
-                text = { Text("Transit / Audit Logs", fontWeight = FontWeight.Bold) },
-                icon = { Icon(Icons.Default.ReceiptLong, "Audit logs transaction list") }
-            )
-        }
+            // Sub-Tab Row options
+            item {
+                TabRow(
+                    selectedTabIndex = activeSubTab,
+                    containerColor = Color.Transparent,
+                    contentColor = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Tab(
+                        selected = activeSubTab == 0,
+                        onClick = { activeSubTab = 0 },
+                        text = { Text("Active Stock", fontWeight = FontWeight.Bold) },
+                        icon = { Icon(Icons.Default.PhoneAndroid, "Active Inventory List") }
+                    )
+                    Tab(
+                        selected = activeSubTab == 1,
+                        onClick = { activeSubTab = 1 },
+                        text = { Text("Transit / Audit Logs", fontWeight = FontWeight.Bold) },
+                        icon = { Icon(Icons.Default.ReceiptLong, "Audit logs transaction list") }
+                    )
+                }
+            }
 
-        // Horizontal Filters Section (Brands & Warehouses)
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 12.dp, bottom = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            // Horizontal scrolling row of brand chips
-            val scrollState = rememberScrollState()
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(scrollState)
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // "All Brands" selector representation
-                FilterChip(
-                    selected = selectedBrand == null,
-                    onClick = { selectedBrand = null },
-                    label = { Text("All Brands") },
-                    leadingIcon = if (selectedBrand == null) {
-                        { Icon(Icons.Default.Check, "Selected", modifier = Modifier.size(16.dp)) }
-                    } else null,
-                    modifier = Modifier.testTag("brand_chip_all")
-                )
-                
-                brands.forEach { brandName ->
-                    val isSelected = selectedBrand == brandName
+            // Brand selection chips scroll
+            item {
+                val scrollState = rememberScrollState()
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(scrollState)
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     FilterChip(
-                        selected = isSelected,
-                        onClick = { selectedBrand = brandName },
-                        label = { Text(brandName) },
-                        leadingIcon = if (isSelected) {
+                        selected = selectedBrand == null,
+                        onClick = { selectedBrand = null },
+                        label = { Text("All Brands") },
+                        leadingIcon = if (selectedBrand == null) {
                             { Icon(Icons.Default.Check, "Selected", modifier = Modifier.size(16.dp)) }
                         } else null,
-                        modifier = Modifier.testTag("brand_chip_$brandName")
+                        modifier = Modifier.testTag("brand_chip_all")
                     )
-                }
-            }
-
-            // Warehouse selector row
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Warehouse:",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(end = 4.dp)
-                )
-
-                val warehouses = listOf("Combined", "G", "O")
-                warehouses.forEach { wh ->
-                    val isSelected = selectedWarehouse == wh
-                    ElevatedAssistChip(
-                        onClick = { selectedWarehouse = wh },
-                        label = {
-                            Text(
-                                text = if (wh == "Combined") "Combined (G & O)" else "Warehouse $wh",
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        },
-                        colors = AssistChipDefaults.elevatedAssistChipColors(
-                            containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
-                            labelColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-                        ),
-                        border = if (isSelected) BorderStroke(1.2.dp, MaterialTheme.colorScheme.primary) else null,
-                        modifier = Modifier.testTag("warehouse_filter_chip_$wh")
-                    )
-                }
-            }
-
-            // Text search input
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                label = { Text("Search by IMEI, variant, color...") },
-                leadingIcon = { Icon(Icons.Default.Search, null) },
-                trailingIcon = if (searchQuery.isNotEmpty()) {
-                    {
-                        IconButton(onClick = { searchQuery = "" }) {
-                            Icon(Icons.Default.Close, "Clear search query")
-                        }
+                    
+                    brands.forEach { brandName ->
+                        val isSelected = selectedBrand == brandName
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = { selectedBrand = brandName },
+                            label = { Text(brandName) },
+                            leadingIcon = if (isSelected) {
+                                { Icon(Icons.Default.Check, "Selected", modifier = Modifier.size(16.dp)) }
+                            } else null,
+                            modifier = Modifier.testTag("brand_chip_$brandName")
+                        )
                     }
-                } else null,
-                singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .testTag("brand_stock_search_bar")
-            )
-        }
-
-        // Summary Statistics Badge
-        val totalInStock = filteredStockItems.size
-        val gCount = filteredStockItems.count { it.warehouse.equals("G", ignoreCase = true) }
-        val oCount = filteredStockItems.count { it.warehouse.equals("O", ignoreCase = true) }
-        
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 6.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-            )
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(12.dp),
-                horizontalArrangement = Arrangement.SpaceAround,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Total Selected", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("$totalInStock units", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
-                }
-                VerticalDivider(modifier = Modifier.height(30.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Warehouse G", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("$gCount units", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                }
-                VerticalDivider(modifier = Modifier.height(30.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Warehouse O", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("$oCount units", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                }
-            }
-        }
-
-        // Action Buttons Row (IN-Flow & OUT-Flow)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Button(
-                onClick = { showAddStockDialog = true },
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
-                modifier = Modifier
-                    .weight(1f)
-                    .height(48.dp)
-                    .testTag("btn_brand_stock_in"),
-                contentPadding = PaddingValues(0.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(Icons.Default.ArrowUpward, "Inward")
-                    Text("Stock In (Purchase)", fontWeight = FontWeight.Bold)
                 }
             }
 
-            Button(
-                onClick = { showSellStockDialog = true },
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935)),
-                modifier = Modifier
-                    .weight(1f)
-                    .height(48.dp)
-                    .testTag("btn_brand_stock_out"),
-                contentPadding = PaddingValues(0.dp)
-            ) {
+            // Warehouse selector row (make filter both or single warehouse)
+            item {
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(Icons.Default.ArrowDownward, "Outward")
-                    Text("Stock Out (Sale)", fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-
-        // Feedback Status Message Banner
-        if (statusMessage != null) {
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = if (isErrorStatus) MaterialTheme.colorScheme.errorContainer else Color(0xFFE8F5E9)
-                ),
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = statusMessage!!,
-                        color = if (isErrorStatus) MaterialTheme.colorScheme.onErrorContainer else Color(0xFF1B5E20),
+                        text = "Warehouse:",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1f)
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(end = 4.dp)
                     )
-                    IconButton(
-                        onClick = { statusMessage = null },
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Close Banner",
-                            tint = if (isErrorStatus) MaterialTheme.colorScheme.onErrorContainer else Color(0xFF1B5E20)
+
+                    val warehouses = listOf("Combined", "G", "O")
+                    warehouses.forEach { wh ->
+                        val isSelected = selectedWarehouse == wh
+                        ElevatedAssistChip(
+                            onClick = { selectedWarehouse = wh },
+                            label = {
+                                Text(
+                                    text = if (wh == "Combined") "Both Warehouses" else "Warehouse $wh",
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            },
+                            colors = AssistChipDefaults.elevatedAssistChipColors(
+                                containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                                labelColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                            ),
+                            border = if (isSelected) BorderStroke(1.2.dp, MaterialTheme.colorScheme.primary) else null,
+                            modifier = Modifier.testTag("warehouse_filter_chip_$wh")
                         )
                     }
                 }
             }
-        }
 
-        // Content List (Active Stock vs Audit Logs)
-        if (activeSubTab == 0) {
-            // STOCK LIST VIEW
-            if (filteredStockItems.isEmpty()) {
-                Box(
+            // Search Bar input field
+            item {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = { Text("Search by IMEI, variant, color...") },
+                    leadingIcon = { Icon(Icons.Default.Search, null) },
+                    trailingIcon = if (searchQuery.isNotEmpty()) {
+                        {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Close, "Clear search query")
+                            }
+                        }
+                    } else null,
+                    singleLine = true,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Icon(Icons.Default.Smartphone, "No phones available", modifier = Modifier.size(60.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
-                        Text(
-                            text = "No stock items matching selection.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        .testTag("brand_stock_search_bar")
+                )
+            }
+
+            // IMEI Track & Trace timeline timeline panel (Triggered dynamically!)
+            if (trackRecords != null) {
+                val activeObj = trackRecords.first
+                val matchTxs = trackRecords.second
+                val devInfo = trackRecords.third
+                
+                item {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)
+                        ),
+                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(Icons.Default.Timeline, "Tracking live imei details", tint = MaterialTheme.colorScheme.primary)
+                                    Text("IMEI Trace History Log", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleSmall)
+                                }
+                                
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(if (activeObj != null) Color(0xFFE8F5E9) else Color(0xFFFFEBEE))
+                                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = if (activeObj != null) "IN WAREHOUSE ${activeObj.warehouse}" else "DISPATCHED / OUT",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 10.sp,
+                                        color = if (activeObj != null) Color(0xFF2E7D32) else Color(0xFFC62828)
+                                    )
+                                }
+                            }
+
+                            Text(
+                                text = "Device: ${devInfo.brand.uppercase()} - ${devInfo.variant} (${devInfo.color})",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                            Text(
+                                text = "IMEI Trace: ${devInfo.imei}",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+                            )
+
+                            HorizontalDivider(color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.15f))
+
+                            // Timeline steps
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                val inTx = matchTxs.firstOrNull { it.type.equals("IN", ignoreCase = true) }
+                                val outTx = matchTxs.firstOrNull { it.type.equals("OUT", ignoreCase = true) }
+
+                                // 1. IN Record step
+                                if (inTx != null || activeObj != null) {
+                                    val opName = inTx?.operator ?: activeObj?.addedByUser ?: "Unknown"
+                                    val logDate = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(
+                                        Date(inTx?.dateInMillis ?: activeObj?.addedDate ?: System.currentTimeMillis())
+                                    )
+                                    val activeWh = inTx?.warehouse ?: activeObj?.warehouse ?: "G"
+                                    Row(
+                                        verticalAlignment = Alignment.Top,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.CheckCircle,
+                                            contentDescription = "Incoming intake record",
+                                            tint = Color(0xFF4CAF50),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Column {
+                                            Text("Intake / Purchase IN", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall, color = Color(0xFF2E7D32))
+                                            Text("Warehouse: Warehouse $activeWh  |  By: $opName", style = MaterialTheme.typography.labelSmall)
+                                            Text("Recorded: $logDate", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.5f))
+                                        }
+                                    }
+                                }
+
+                                // 2. OUT Record step
+                                if (outTx != null) {
+                                    val opName = outTx.operator
+                                    val logDate = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(outTx.dateInMillis))
+                                    Row(
+                                        verticalAlignment = Alignment.Top,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Cancel,
+                                            contentDescription = "Outgoing dispatch record",
+                                            tint = Color(0xFFE53935),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Column {
+                                            Text("Sale / Dispatch OUT", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall, color = Color(0xFFC62828))
+                                            Text("Warehouse: Warehouse ${outTx.warehouse}  |  By: $opName", style = MaterialTheme.typography.labelSmall)
+                                            Text("Notes: ${outTx.notes ?: "regular sale"}", style = MaterialTheme.typography.labelSmall)
+                                            Text("Recorded: $logDate", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.5f))
+                                        }
+                                    }
+                                } else if (activeObj == null && matchTxs.isNotEmpty()) {
+                                    Row(
+                                        verticalAlignment = Alignment.Top,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.RemoveCircle,
+                                            contentDescription = "Unavailable",
+                                            tint = MaterialTheme.colorScheme.outline,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Column {
+                                            Text("Inactive Status", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
+                                            Text("No longer resides in physical warehouse stock.", style = MaterialTheme.typography.labelSmall)
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
-            } else {
-                LazyColumn(
+            }
+
+            // Summary Statistics Badge Card
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceAround,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Total Stock", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("$totalInStock units", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                        }
+                        VerticalDivider(modifier = Modifier.height(30.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Warehouse G", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("$gCount units", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                        }
+                        VerticalDivider(modifier = Modifier.height(30.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Warehouse O", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("$oCount units", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                        }
+                    }
+                }
+            }
+
+            // Action Buttons Row (IN-Flow & OUT-Flow)
+            item {
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f),
-                    contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 80.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    Button(
+                        onClick = { showAddStockDialog = true },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .testTag("btn_brand_stock_in"),
+                        contentPadding = PaddingValues(0.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(Icons.Default.ArrowUpward, "Inward")
+                            Text("Stock In (Purchase)", fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    Button(
+                        onClick = { showSellStockDialog = true },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935)),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .testTag("btn_brand_stock_out"),
+                        contentPadding = PaddingValues(0.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(Icons.Default.ArrowDownward, "Outward")
+                            Text("Stock Out (Sale)", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            // Feedback Status Message Banner
+            if (statusMessage != null) {
+                item {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isErrorStatus) MaterialTheme.colorScheme.errorContainer else Color(0xFFE8F5E9)
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = statusMessage!!,
+                                color = if (isErrorStatus) MaterialTheme.colorScheme.onErrorContainer else Color(0xFF1B5E20),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1f)
+                            )
+                            IconButton(
+                                onClick = { statusMessage = null },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Close Banner",
+                                    tint = if (isErrorStatus) MaterialTheme.colorScheme.onErrorContainer else Color(0xFF1B5E20)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Actual List content
+            if (activeSubTab == 0) {
+                // ACTIVE STOCK ITEMS
+                if (filteredStockItems.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 40.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Smartphone,
+                                    contentDescription = "No phones in warehouse",
+                                    modifier = Modifier.size(60.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                                )
+                                Text(
+                                    text = "No active stock items match your criteria.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                } else {
                     items(filteredStockItems) { item ->
                         BrandStockItemCard(item)
                     }
                 }
-            }
-        } else {
-            // AUDIT TRANSACTION LOGS VIEW
-            if (filteredTransactions.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Icon(Icons.Default.ReceiptLong, "No history log", modifier = Modifier.size(60.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
-                        Text(
-                            text = "No intake or output transactions recorded.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
             } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 80.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
+                // AUDIT LOG TRANSACTIONS
+                if (filteredTransactions.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 40.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ReceiptLong,
+                                    contentDescription = "No receipts logged",
+                                    modifier = Modifier.size(60.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                                )
+                                Text(
+                                    text = "No intake or outflow transactions found.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                } else {
                     items(filteredTransactions) { tx ->
                         BrandTransactionCard(tx)
                     }
@@ -522,7 +679,7 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                         modifier = Modifier.fillMaxWidth().testTag("add_brand_color")
                     )
 
-                    // IMEI input (numbers only for strict compliance but text is okay too)
+                    // IMEI input
                     OutlinedTextField(
                         value = addImei,
                         onValueChange = { addImei = it.trim() },
