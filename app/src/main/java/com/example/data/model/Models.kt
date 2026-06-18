@@ -102,5 +102,30 @@ data class NotificationLog(
     val type: String = "INFO" // "INFO", "CHECK_IN", "CHECK_OUT"
 )
 
+data class BrandStockItem(
+    val id: String = UUID.randomUUID().toString(),
+    val imei: String = "",
+    val brand: String = "",
+    val variant: String = "",
+    val color: String = "",
+    val warehouse: String = "G", // "G" or "O"
+    val addedByUser: String = "",
+    val addedDate: Long = System.currentTimeMillis(),
+    val lastUpdated: Long = System.currentTimeMillis()
+)
+
+data class BrandStockTransaction(
+    val id: String = UUID.randomUUID().toString(),
+    val imei: String = "",
+    val brand: String = "",
+    val variant: String = "",
+    val color: String = "",
+    val warehouse: String = "G", // "G" or "O"
+    val type: String = "IN", // "IN" or "OUT"
+    val dateInMillis: Long = System.currentTimeMillis(),
+    val operator: String = "",
+    val notes: String? = null
+)
+
 
 

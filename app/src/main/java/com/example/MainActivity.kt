@@ -253,6 +253,23 @@ fun MainAppContent(viewModel: StockViewModel) {
                         )
                     }
 
+                    // Brand Stock Module (Accessible to All Operators and Sales Heads)
+                    NavigationDrawerItem(
+                        icon = { Icon(Icons.Default.Smartphone, contentDescription = null, modifier = Modifier.size(22.dp)) },
+                        label = { 
+                            Column {
+                                Text("Brand Stock Manager", fontWeight = FontWeight.Bold)
+                                Text("Independent brand-wise inventory", style = MaterialTheme.typography.bodySmall, fontSize = 10.sp)
+                            }
+                        },
+                        selected = activeTab == 7,
+                        onClick = {
+                            viewModel.setTab(7)
+                            coroutineScope.launch { drawerState.close() }
+                        },
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp).testTag("drawer_item_brand_stock")
+                    )
+
                     if (canManageUsers) {
                         HorizontalDivider(
                             modifier = Modifier.padding(vertical = 12.dp),
@@ -559,6 +576,7 @@ fun MainAppContent(viewModel: StockViewModel) {
                     4 -> AttendanceScreen(viewModel = viewModel)
                     5 -> UserManagementScreen(viewModel = viewModel)
                     6 -> com.example.ui.screens.LedgerScreen(viewModel = viewModel)
+                    7 -> BrandStockScreen(viewModel = viewModel)
                     else -> InventoryScreen(viewModel = viewModel)
                 }
             }

@@ -88,6 +88,97 @@ class InventoryRepository {
         awaitClose { sub.remove() }
     }
 
+    val allBrandStockItems: Flow<List<com.example.data.model.BrandStockItem>> = callbackFlow {
+        val sub = db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_STOCK_ITEMS).addSnapshotListener { snap, err ->
+            if (snap != null) {
+                trySend(snap.documents.mapNotNull { it.toObject(com.example.data.model.BrandStockItem::class.java) })
+            }
+        }
+        awaitClose { sub.remove() }
+    }
+
+    val allBrandStockTransactions: Flow<List<com.example.data.model.BrandStockTransaction>> = callbackFlow {
+        val sub = db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_STOCK_TRANSACTIONS).addSnapshotListener { snap, err ->
+            if (snap != null) {
+                trySend(snap.documents.mapNotNull { it.toObject(com.example.data.model.BrandStockTransaction::class.java) })
+            }
+        }
+        awaitClose { sub.remove() }
+    }
+
+    suspend fun getBrandStockItemByImei(imei: String): com.example.data.model.BrandStockItem? {
+        val cleaned = imei.trim()
+        if (cleaned.isBlank()) return null
+        return try {
+            val query = db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_STOCK_ITEMS)
+                .whereEqualTo("imei", cleaned)
+                .limit(1)
+                .get()
+                .await()
+            query.documents.firstOrNull()?.toObject(com.example.data.model.BrandStockItem::class.java)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    suspend fun addBrandStock(item: com.example.data.model.BrandStockItem, transaction: com.example.data.model.BrandStockTransaction): Boolean {
+        return try {
+            val existing = getBrandStockItemByImei(item.imei)
+            if (existing != null) {
+                return false // IMEI must be unique in active inventory
+            }
+            // Save active stock item
+            db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_STOCK_ITEMS)
+                .document(item.id)
+                .set(item)
+                .await()
+            
+            // Save transaction history log
+            db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_STOCK_TRANSACTIONS)
+                .document(transaction.id)
+                .set(transaction)
+                .await()
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    suspend fun sellBrandStock(imei: String, warehouse: String, operator: String, date: Long, notes: String? = null): Boolean {
+        return try {
+            val existing = getBrandStockItemByImei(imei) ?: return false // Not found
+            
+            // Delete active stock item from the active collection
+            db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_STOCK_ITEMS)
+                .document(existing.id)
+                .delete()
+                .await()
+            
+            // Log OUT transaction
+            val tx = com.example.data.model.BrandStockTransaction(
+                id = UUID.randomUUID().toString(),
+                imei = existing.imei,
+                brand = existing.brand,
+                variant = existing.variant,
+                color = existing.color,
+                warehouse = warehouse, // The actual warehouse sold from
+                type = "OUT",
+                dateInMillis = date,
+                operator = operator,
+                notes = notes
+            )
+            db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_STOCK_TRANSACTIONS)
+                .document(tx.id)
+                .set(tx)
+                .await()
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
     suspend fun getUserCount(): Int {
         return try {
             db.collection("users").get().await().size()

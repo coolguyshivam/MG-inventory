@@ -1380,6 +1380,68 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
             e.printStackTrace()
         }
     }
+
+    // --- Brand Stock Module Extension ---
+    val brandStockItems: StateFlow<List<com.example.data.model.BrandStockItem>> = repository.allBrandStockItems
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val brandStockTransactions: StateFlow<List<com.example.data.model.BrandStockTransaction>> = repository.allBrandStockTransactions
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun addBrandStockItem(
+        brand: String,
+        variant: String,
+        color: String,
+        imei: String,
+        warehouse: String,
+        date: Long,
+        onResult: (Boolean) -> Unit
+    ) {
+        viewModelScope.launch {
+            val creator = loggedInUser.value?.username ?: "Unknown"
+            val item = com.example.data.model.BrandStockItem(
+                imei = imei.trim(),
+                brand = brand,
+                variant = variant.trim(),
+                color = color.trim(),
+                warehouse = warehouse,
+                addedByUser = creator,
+                addedDate = date,
+                lastUpdated = System.currentTimeMillis()
+            )
+            val tx = com.example.data.model.BrandStockTransaction(
+                imei = imei.trim(),
+                brand = brand,
+                variant = variant.trim(),
+                color = color.trim(),
+                warehouse = warehouse,
+                type = "IN",
+                dateInMillis = date,
+                operator = creator,
+                notes = "Initial purchase intake"
+            )
+            val success = repository.addBrandStock(item, tx)
+            onResult(success)
+        }
+    }
+
+    fun sellBrandStockItem(
+        imei: String,
+        warehouse: String,
+        date: Long,
+        notes: String? = null,
+        onResult: (Boolean) -> Unit
+    ) {
+        viewModelScope.launch {
+            val seller = loggedInUser.value?.username ?: "Unknown"
+            val success = repository.sellBrandStock(imei.trim(), warehouse, seller, date, notes)
+            onResult(success)
+        }
+    }
+
+    suspend fun findBrandStockItemByImei(imei: String): com.example.data.model.BrandStockItem? {
+        return repository.getBrandStockItemByImei(imei)
+    }
 }
 
 // Simple Factory provider
