@@ -229,13 +229,13 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                     Tab(
                         selected = activeSubTab == 1,
                         onClick = { activeSubTab = 1 },
-                        text = { Text("Transit / Audit Logs", fontWeight = FontWeight.Bold) },
+                        text = { Text("Logs", fontWeight = FontWeight.Bold) },
                         icon = { Icon(Icons.Default.ReceiptLong, "Audit logs transaction list") }
                     )
                     Tab(
                         selected = activeSubTab == 2,
                         onClick = { activeSubTab = 2 },
-                        text = { Text("Model Presets", fontWeight = FontWeight.Bold) },
+                        text = { Text("Items", fontWeight = FontWeight.Bold) },
                         icon = { Icon(Icons.Default.Category, "Predefined item variants model presets") }
                     )
                 }
@@ -600,12 +600,12 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Total Presets Created", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Total Items Created", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text("${brandVariants.size} models", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
                             }
                             VerticalDivider(modifier = Modifier.height(30.dp), color = MaterialTheme.colorScheme.outlineVariant)
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Filtered Presets", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Filtered Items", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text("${filteredVariants.size} variants", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                             }
                         }
@@ -660,7 +660,7 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Icon(Icons.Default.Add, "Add model preset")
-                            Text("Define Model Variant Preset", fontWeight = FontWeight.Bold)
+                            Text("Add Items", fontWeight = FontWeight.Bold)
                         }
                     }
                 } else {
@@ -1296,12 +1296,12 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                                 )
                                 Text(
-                                    text = "No model variant presets found for this brand.",
+                                    text = "No items found for this brand.",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Text(
-                                    text = "Tap 'Define Model Variant Preset' above to create one.",
+                                    text = "Tap 'Add Items' above to create one.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.outline
                                 )
@@ -1475,7 +1475,7 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                         }
                     } else {
                         Text(
-                            text = "💡 Tip: Go to the 'Model Presets' tab to save presets of $addBrand and autofill these instantly.",
+                            text = "💡 Tip: Go to the 'Items' tab to save items of $addBrand and autofill these instantly.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.secondary,
                             fontSize = 11.sp,
@@ -1571,14 +1571,14 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                             inputError = "All fields (Variant, Color, IMEI) are required!"
                             return@Button
                         }
-                        // Validate if model/variant is available in Model Presets
+                        // Validate if model/variant is available in Items
                         val isValidPreset = brandVariants.any { 
                             it.brand.equals(addBrand, ignoreCase = true) && 
                             (it.modelName.equals(addVariant, ignoreCase = true) || 
                              "${it.modelName} ${it.specs}".trim().equals(addVariant, ignoreCase = true)) 
                         }
                         if (!isValidPreset) {
-                            inputError = "Error: Variant '$addVariant' is not defined in inventory Model Presets of $addBrand. It must be defined under Model Presets first!"
+                            inputError = "Error: Variant '$addVariant' is not defined in inventory Items of $addBrand. It must be defined under Items first!"
                             return@Button
                         }
                         isSubmitting = true
@@ -1765,7 +1765,7 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                             inputError = "You can only dispatch details of a valid IMEI from active stock!"
                             return@Button
                         }
-                        // Validate if variant is defined in pre-existing Model Presets
+                        // Validate if variant is defined in pre-existing Items
                         val targetItem = matchingItem!!
                         val isValidPresetForSell = brandVariants.any {
                             it.brand.equals(targetItem.brand, ignoreCase = true) &&
@@ -1773,7 +1773,7 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                              "${it.modelName} ${it.specs}".trim().equals(targetItem.variant, ignoreCase = true))
                         }
                         if (!isValidPresetForSell) {
-                            inputError = "Error: Variant '${targetItem.variant}' is not defined in inventory Model Presets. Cannot sell."
+                            inputError = "Error: Variant '${targetItem.variant}' is not defined in inventory Items. Cannot sell."
                             return@Button
                         }
 
@@ -1929,12 +1929,12 @@ fun BrandStockScreen(viewModel: StockViewModel) {
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(Icons.Default.Warning, "Warning", tint = MaterialTheme.colorScheme.error)
-                    Text("Delete Model Preset?", fontWeight = FontWeight.Bold)
+                    Text("Delete Item Definition?", fontWeight = FontWeight.Bold)
                 }
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Are you sure you want to delete this predefined product preset? This will remove it from the autofill options on 'Stock In'.")
+                    Text("Are you sure you want to delete this predefined item? This will remove it from the autofill options on 'Stock In'.")
                     Card(
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.2f)),
                         modifier = Modifier.fillMaxWidth()
@@ -1955,10 +1955,10 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                         val model = preset.modelName
                         viewModel.deleteBrandVariant(preset.id) { success ->
                             if (success) {
-                                statusMessage = "Successfully deleted model preset: $model"
+                                statusMessage = "Successfully deleted item definition: $model"
                                 isErrorStatus = false
                             } else {
-                                statusMessage = "Failed to delete model preset."
+                                statusMessage = "Failed to delete item definition."
                                 isErrorStatus = true
                             }
                             variantToDelete = null
@@ -1966,7 +1966,7 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) {
-                    Text("Delete Preset")
+                    Text("Delete Item")
                 }
             },
             dismissButton = {
@@ -2057,7 +2057,7 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                 Button(
                     onClick = {
                         if (presetModel.isBlank() || presetSpecs.isBlank()) {
-                            presetError = "Model name and specs/variant are required to establish a valid model preset."
+                            presetError = "Model name and specs/variant are required."
                             return@Button
                         }
                         isPresetSubmitting = true
@@ -2069,11 +2069,11 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                         ) { success ->
                             isPresetSubmitting = false
                             if (success) {
-                                statusMessage = "Successfully created new model preset for '$presetModel' under $presetBrand"
+                                statusMessage = "Successfully created new item: '$presetModel' under $presetBrand"
                                 isErrorStatus = false
                                 showAddVariantDialog = false
                             } else {
-                                presetError = "Could not register preset. Please try again."
+                                presetError = "Could not register item. Please try again."
                             }
                         }
                     },
@@ -2082,7 +2082,7 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                     if (isPresetSubmitting) {
                         CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White)
                     } else {
-                        Text("Save Preset")
+                        Text("Save Item")
                     }
                 }
             },
@@ -2181,32 +2181,6 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                             Icon(Icons.Default.CameraAlt, "Camera")
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Scan with Camera (Real Device)")
-                        }
-
-                        OutlinedButton(
-                            onClick = {
-                                simulationProgress = true
-                                val sampleImeis = listOf("869374028301824", "358201948201048", "990000862471854", "448201940182745", "352019482019402")
-                                val picked = sampleImeis.random()
-                                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                                    simulationProgress = false
-                                    qrScannerCallback?.invoke(picked)
-                                    showQrScannerDialog = false
-                                }, 800)
-                            },
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.secondary),
-                            enabled = !simulationProgress,
-                            modifier = Modifier.fillMaxWidth().testTag("btn_trigger_mock_scan")
-                        ) {
-                            if (simulationProgress) {
-                                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = MaterialTheme.colorScheme.secondary)
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Simulating Scan...")
-                            } else {
-                                Icon(Icons.Default.FlipToFront, null)
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Trigger Simulated Laser Scan")
-                            }
                         }
                     }
 

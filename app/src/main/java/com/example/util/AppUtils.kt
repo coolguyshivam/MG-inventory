@@ -416,7 +416,6 @@ object AppUtils {
         }
     }
 
-    @androidx.compose.runtime.Composable
     fun resolveImageModel(modelStr: String?, thumbnail: Boolean = false): Any {
         if (modelStr.isNullOrBlank()) return "ic_placeholder" // Fallback placeholder
         
@@ -457,28 +456,19 @@ object AppUtils {
             return cached
         }
 
-        return androidx.compose.runtime.produceState<Any>(initialValue = "ic_placeholder", target) {
-            val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                try {
-                    val pureBase64 = if (target.startsWith("data:image")) {
-                        val index = target.indexOf(",")
-                        if (index != -1) target.substring(index + 1) else target
-                    } else {
-                        target
-                    }
-                    val decodedBytes = android.util.Base64.decode(pureBase64, android.util.Base64.NO_WRAP)
-                    imageCache[cacheKey] = decodedBytes
-                    decodedBytes
-                } catch (e: Exception) {
-                    null
-                }
-            }
-            if (result != null) {
-                value = result
+        return try {
+            val pureBase64 = if (target.startsWith("data:image")) {
+                val index = target.indexOf(",")
+                if (index != -1) target.substring(index + 1) else target
             } else {
-                value = target
+                target
             }
-        }.value
+            val decodedBytes = android.util.Base64.decode(pureBase64, android.util.Base64.NO_WRAP)
+            imageCache[cacheKey] = decodedBytes
+            decodedBytes
+        } catch (e: Exception) {
+            target
+        }
     }
 
     fun uriToHighResLocalFile(context: Context, uri: Uri): String? {

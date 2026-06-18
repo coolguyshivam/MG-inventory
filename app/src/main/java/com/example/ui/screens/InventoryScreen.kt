@@ -56,6 +56,9 @@ fun InventoryScreen(viewModel: StockViewModel) {
     val canSeePrice by viewModel.canSeePrice.collectAsStateWithLifecycle()
     val canSell by viewModel.canSell.collectAsStateWithLifecycle()
 
+    val loggedInUser by viewModel.loggedInUser.collectAsStateWithLifecycle()
+    val isAdmin = remember(loggedInUser) { loggedInUser?.role == "Admin" }
+
     var showSortMenu by remember { mutableStateOf(false) }
 
     // Dialog state for "Dispatch to Repair"
@@ -397,6 +400,7 @@ fun InventoryScreen(viewModel: StockViewModel) {
                         isPriceRevealed = isRevealed,
                         isCardExpanded = isCardExpanded,
                         canManageInventory = canManageInventory,
+                        isAdmin = isAdmin,
                         canRepair = canRepair,
                         canDelete = canDelete,
                         canSeePrice = canSeePrice,
@@ -692,6 +696,7 @@ fun InventoryCardItem(
     isPriceRevealed: Boolean,
     isCardExpanded: Boolean,
     canManageInventory: Boolean,
+    isAdmin: Boolean = false,
     canRepair: Boolean,
     canDelete: Boolean,
     canSeePrice: Boolean,  // Rule 4
@@ -797,7 +802,7 @@ fun InventoryCardItem(
                                     expanded = expandedActionsMenu,
                                     onDismissRequest = { expandedActionsMenu = false }
                                 ) {
-                                    if (canManageInventory) {
+                                    if (isAdmin) {
                                         DropdownMenuItem(
                                             text = { Text("Edit details") },
                                             onClick = {
