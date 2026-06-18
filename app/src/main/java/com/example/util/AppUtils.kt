@@ -419,7 +419,7 @@ object AppUtils {
     fun resolveImageModel(modelStr: String?, thumbnail: Boolean = false): Any {
         if (modelStr.isNullOrBlank()) return "ic_placeholder" // Fallback placeholder
         
-        val target = if (thumbnail) {
+        var target = if (thumbnail) {
             when (modelStr) {
                 "ic_phone_blue" -> "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=400&q=75"
                 "ic_phone_amber" -> "https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?auto=format&fit=crop&w=400&q=75"
@@ -443,10 +443,25 @@ object AppUtils {
             }
         }
 
+        // Dynamically rewrite package directory paths in local file URIs to current package
+        val ctx = appContext
+        if (ctx != null && target != null) {
+            val currentPkg = ctx.packageName
+            if (target.contains("/data/user/0/") || target.contains("/data/data/")) {
+                target = target.replace(Regex("/data/user/0/[a-zA-Z0-9._-]+/"), "/data/user/0/$currentPkg/")
+                target = target.replace(Regex("/data/data/[a-zA-Z0-9._-]+/"), "/data/data/$currentPkg/")
+            }
+        }
+
         // 1. Return direct HTTP/HTTPS URLs and local content/file URIs instantly. 
         // Coil natively handles asynchronous loading, memory caching, and disk caching with flawless speed.
         if (target.startsWith("http://") || target.startsWith("https://") || target.startsWith("content://") || target.startsWith("file://")) {
             return target
+        }
+
+        // Handle raw local paths starting with '/'
+        if (target.startsWith("/")) {
+            return "file://$target"
         }
 
         // 2. Resolve Base64 strings with memory-cache acceleration

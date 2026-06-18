@@ -1,5 +1,9 @@
 package com.example.ui.screens
 
+import android.content.Context
+import android.content.Intent
+import androidx.core.content.FileProvider
+import java.io.File
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -72,6 +76,7 @@ fun BrandStockScreen(viewModel: StockViewModel) {
     // Dialog state
     var showAddStockDialog by remember { mutableStateOf(false) }
     var showSellStockDialog by remember { mutableStateOf(false) }
+    var showExportCsvDialog by remember { mutableStateOf(false) }
     var showAddVariantDialog by remember { mutableStateOf(false) }
 
     // Scanner state
@@ -93,9 +98,7 @@ fun BrandStockScreen(viewModel: StockViewModel) {
     var prefillVariant by remember { mutableStateOf("") }
     var prefillColor by remember { mutableStateOf("") }
 
-    // Toggle states for metrics and alerts panels
-    var showHealthMetricsPanel by remember { mutableStateOf(true) }
-    var showLowStockAlertsPanel by remember { mutableStateOf(true) }
+
 
     // Dynamic metrics calculation for stock health & shortages
     val variantStockCounts = remember(stockItems, brandVariants) {
@@ -195,20 +198,41 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                         .fillMaxWidth()
                         .padding(bottom = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Inventory,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(28.dp)
-                    )
-                    Text(
-                        text = "Warehouse Stock Manager",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Inventory,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(28.dp)
+                        )
+                        Text(
+                            text = "Warehouse Stock Manager",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
+
+                    // Export CSV Reports Button
+                    FilledTonalButton(
+                        onClick = { showExportCsvDialog = true },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier.testTag("export_csv_reports_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Assessment,
+                            contentDescription = "Export CSV Reports",
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Reports", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
 
@@ -754,455 +778,16 @@ fun BrandStockScreen(viewModel: StockViewModel) {
             if (activeSubTab == 0) {
                 // ACTIVE STOCK ITEMS
                 
-                // --- SECTION A: STOCK HEALTH METRICS ---
-                item {
-                    val totalVariantsCount = variantStockCounts.size
-                    val healthyCount = variantStockCounts.count { it.count >= 3 }
-                    val criticalCount = variantStockCounts.count { it.count == 1 }
-                    val stockoutCount = variantStockCounts.count { it.count == 0 }
-                    val lowCount = variantStockCounts.count { it.count == 2 }
-
-                    val healthPct = if (totalVariantsCount > 0) {
-                        ((variantStockCounts.count { it.count >= 2 }.toFloat() / totalVariantsCount.toFloat()) * 100).toInt()
-                    } else {
-                        100
-                    }
-
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp)
-                            .testTag("stock_health_metrics_card"),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-                        ),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-                    ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { showHealthMetricsPanel = !showHealthMetricsPanel },
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Timeline,
-                                        contentDescription = "Stock Health Metrics",
-                                        tint = if (healthPct >= 80) Color(0xFF2E7D32) else if (healthPct >= 50) Color(0xFFEF6C00) else Color(0xFFC62828),
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                    Text(
-                                        text = "Stock Health Metrics",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                                
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(
-                                                if (healthPct >= 80) Color(0xFFE8F5E9)
-                                                else if (healthPct >= 50) Color(0xFFFFF3E0)
-                                                else Color(0xFFFFEBEE)
-                                            )
-                                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                                    ) {
-                                        Text(
-                                            text = "$healthPct% Healthy",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (healthPct >= 80) Color(0xFF2E7D32) else if (healthPct >= 50) Color(0xFFE65100) else Color(0xFFC62828)
-                                        )
-                                    }
-                                    Icon(
-                                        imageVector = if (showHealthMetricsPanel) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
-                                        contentDescription = if (showHealthMetricsPanel) "Collapse" else "Expand",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-
-                            if (showHealthMetricsPanel) {
-                                Spacer(modifier = Modifier.height(12.dp))
-                                
-                                val statusText: String
-                                val statusDesc: String
-                                val statusColor: Color
-                                val statusBg: Color
-                                if (healthPct >= 80) {
-                                    statusText = "Optimal Stock Levels"
-                                    statusDesc = "Most variants are adequately supplied. Keep up the regular dispatch checkups."
-                                    statusColor = Color(0xFF2E7D32)
-                                    statusBg = Color(0xFFE8F5E9).copy(alpha = 0.5f)
-                                } else if (healthPct >= 50) {
-                                    statusText = "Moderate / Fragile Levels"
-                                    statusDesc = "Several models require stock replenishment soon. Look at low stock alerts below."
-                                    statusColor = Color(0xFFEF6C00)
-                                    statusBg = Color(0xFFFFF3E0).copy(alpha = 0.5f)
-                                } else {
-                                    statusText = "Critical System Shortage"
-                                    statusDesc = "Urgent attention required. High number of out-of-stock and critical stockouts."
-                                    statusColor = Color(0xFFC62828)
-                                    statusBg = Color(0xFFFFEBEE).copy(alpha = 0.5f)
-                                }
-
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(statusBg)
-                                        .padding(10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(8.dp)
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(statusColor)
-                                    )
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(statusText, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = statusColor)
-                                        Text(statusDesc, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(12.dp))
-
-                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Row(
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Text("Overall Inventory Health Index", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        Text("$healthPct%", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = statusColor)
-                                    }
-                                    LinearProgressIndicator(
-                                        progress = { healthPct / 100f },
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(8.dp)
-                                            .clip(RoundedCornerShape(4.dp)),
-                                        color = statusColor,
-                                        trackColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(14.dp))
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Card(
-                                        modifier = Modifier.weight(1.0f),
-                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)),
-                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-                                    ) {
-                                        Column(
-                                            modifier = Modifier.padding(8.dp),
-                                            horizontalAlignment = Alignment.CenterHorizontally
-                                        ) {
-                                            Text("Healthy (>2 left)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                            Text("$healthyCount Models", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.ExtraBold, color = Color(0xFF2E7D32))
-                                        }
-                                    }
-
-                                    Card(
-                                        modifier = Modifier.weight(1.0f),
-                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)),
-                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-                                    ) {
-                                        Column(
-                                            modifier = Modifier.padding(8.dp),
-                                            horizontalAlignment = Alignment.CenterHorizontally
-                                        ) {
-                                            Text("Low Stock (1-2)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                            Text("${lowCount + criticalCount} Models", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.ExtraBold, color = Color(0xFFEF6C00))
-                                        }
-                                    }
-
-                                    Card(
-                                        modifier = Modifier.weight(1.0f),
-                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)),
-                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-                                    ) {
-                                        Column(
-                                            modifier = Modifier.padding(8.dp),
-                                            horizontalAlignment = Alignment.CenterHorizontally
-                                        ) {
-                                            Text("Out of Stock", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                            Text("$stockoutCount Models", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.ExtraBold, color = Color(0xFFC62828))
-                                        }
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(10.dp))
-
-                                val inCount = transactions.count { it.type.equals("IN", ignoreCase = true) }
-                                val outCount = transactions.count { it.type.equals("OUT", ignoreCase = true) }
-                                val turnoverRatio = if (inCount > 0) ((outCount.toFloat() / inCount.toFloat()) * 100).toInt() else 0
-
-                                Card(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)),
-                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .padding(10.dp)
-                                            .fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column {
-                                            Text("Inventory Turnover Ratio (Sales Out / Inward IN)", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                            Text(
-                                                text = "Total Intake logged: $inCount units  |  Dispatched units: $outCount",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontSize = 9.sp,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                                            )
-                                        }
-                                        Text(
-                                            text = "$turnoverRatio%",
-                                            fontWeight = FontWeight.ExtraBold,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // --- SECTION B: LOW STOCK ALERTS ---
-                item {
-                    val alerts = variantStockCounts.filter { it.count < 3 }
-                    
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp)
-                            .testTag("low_stock_alerts_card"),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-                        ),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-                    ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { showLowStockAlertsPanel = !showLowStockAlertsPanel },
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Warning,
-                                        contentDescription = "Low Stock Alerts",
-                                        tint = if (alerts.isNotEmpty()) Color(0xFFE53935) else Color(0xFF4CAF50),
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                    Text(
-                                        text = "Low Stock Alerts & Shortages",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                                
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(
-                                                if (alerts.isEmpty()) Color(0xFFE8F5E9)
-                                                else Color(0xFFFFEBEE)
-                                            )
-                                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                                    ) {
-                                        Text(
-                                            text = if (alerts.isEmpty()) "0 Alerts" else "${alerts.size} Shortages",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (alerts.isEmpty()) Color(0xFF2E7D32) else Color(0xFFC62828)
-                                        )
-                                    }
-                                    Icon(
-                                        imageVector = if (showLowStockAlertsPanel) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
-                                        contentDescription = if (showLowStockAlertsPanel) "Collapse" else "Expand",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-
-                            if (showLowStockAlertsPanel) {
-                                Spacer(modifier = Modifier.height(10.dp))
-
-                                if (alerts.isEmpty()) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(Color(0xFFE8F5E9).copy(alpha = 0.5f))
-                                            .padding(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.CheckCircle,
-                                            contentDescription = "Fully Stocked",
-                                            tint = Color(0xFF2E7D32),
-                                            modifier = Modifier.size(28.dp)
-                                        )
-                                        Column {
-                                            Text(
-                                                text = "Perfectly Stocked!",
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 12.sp,
-                                                color = Color(0xFF2E7D32)
-                                            )
-                                            Text(
-                                                text = "All predefined model variants have healthy levels (3+ items). No stock shortages detected.",
-                                                fontSize = 10.sp,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                    }
-                                } else {
-                                    Column(
-                                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        alerts.forEach { alert ->
-                                            val (alertText, alertColor, alertBg) = when (alert.count) {
-                                                0 -> Triple("OUT OF STOCK", Color(0xFFC62828), Color(0xFFFFEBEE))
-                                                1 -> Triple("ONLY 1 LEFT!", Color(0xFFE65100), Color(0xFFFFF3E0))
-                                                else -> Triple("2 LEFT (Low)", Color(0xFFF57F17), Color(0xFFFFFDE7))
-                                            }
-
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .clip(RoundedCornerShape(10.dp))
-                                                    .background(MaterialTheme.colorScheme.surface)
-                                                    .border(1.dp, alertColor.copy(alpha = 0.15f), RoundedCornerShape(10.dp))
-                                                    .padding(horizontal = 10.dp, vertical = 8.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.SpaceBetween
-                                            ) {
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                                    modifier = Modifier.weight(1f)
-                                                ) {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(10.dp)
-                                                            .clip(RoundedCornerShape(5.dp))
-                                                            .background(alertColor)
-                                                    )
-                                                    Column {
-                                                        Text(
-                                                            text = "${alert.brand.uppercase()} - ${alert.modelName}",
-                                                            fontWeight = FontWeight.Bold,
-                                                            style = MaterialTheme.typography.bodyMedium,
-                                                            color = MaterialTheme.colorScheme.onSurface
-                                                        )
-                                                        if (alert.specs.isNotBlank() || alert.color.isNotBlank()) {
-                                                            Text(
-                                                                text = listOfNotNull(alert.specs.ifBlank { null }, alert.color.ifBlank { null }).joinToString(" | "),
-                                                                style = MaterialTheme.typography.bodySmall,
-                                                                fontSize = 10.sp,
-                                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                                                            )
-                                                        }
-                                                    }
-                                                }
-
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                                ) {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .clip(RoundedCornerShape(6.dp))
-                                                            .background(alertBg)
-                                                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                                                    ) {
-                                                        Text(
-                                                            text = alertText,
-                                                            fontSize = 9.sp,
-                                                            fontWeight = FontWeight.ExtraBold,
-                                                            color = alertColor
-                                                        )
-                                                    }
-
-                                                    IconButton(
-                                                        onClick = {
-                                                            prefillBrand = alert.brand
-                                                            prefillVariant = alert.modelName
-                                                            prefillColor = alert.color
-                                                            showAddStockDialog = true
-                                                        },
-                                                        modifier = Modifier
-                                                            .size(32.dp)
-                                                            .testTag("quick_inward_for_${alert.modelName}"),
-                                                        colors = IconButtonDefaults.iconButtonColors(
-                                                            containerColor = alertColor.copy(alpha = 0.08f),
-                                                            contentColor = alertColor
-                                                        )
-                                                    ) {
-                                                        Icon(
-                                                            imageVector = Icons.Default.Add,
-                                                            contentDescription = "Quick stock-in purchase inwards",
-                                                            modifier = Modifier.size(16.dp)
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                
                 // Active Stock List Subtitle Header
                 item {
                     Text(
-                        text = "Current Physical Stock Inventory List",
+                        text = "Current Physical Stock Inventory",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.ExtraBold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 10.dp, bottom = 4.dp)
+                            .padding(top = 4.dp, bottom = 4.dp)
                     )
                 }
 
@@ -1359,6 +944,193 @@ fun BrandStockScreen(viewModel: StockViewModel) {
 
     // ================== DIALOGS ==================
 
+    // CSV REPORT DIALOG & TRIGGER MECHANISM
+    fun triggerCsvExport(context: Context, reportType: String) {
+        try {
+            val csvHeader: String
+            val csvRows = mutableListOf<String>()
+            val filename: String
+            
+            when (reportType) {
+                "stock" -> {
+                    filename = "active_stock_report_${System.currentTimeMillis()}.csv"
+                    csvHeader = "Brand,Model Variant,IMEI_Serial,Warehouse,Color,Added Date"
+                    stockItems.forEach { item ->
+                        val dateStr = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(item.addedDate))
+                        val brand = item.brand.replace(",", " ")
+                        val variant = item.variant.replace(",", " ")
+                        val imei = item.imei.replace(",", " ")
+                        val warehouse = item.warehouse.replace(",", " ")
+                        val color = item.color.replace(",", " ")
+                        csvRows.add("$brand,$variant,$imei,$warehouse,$color,$dateStr")
+                    }
+                }
+                "transactions" -> {
+                    filename = "transaction_logs_report_${System.currentTimeMillis()}.csv"
+                    csvHeader = "Date,IMEI_Serial,Type,Brand,Model Variant,Color,Warehouse,Operator,Notes"
+                    transactions.forEach { tx ->
+                        val dateStr = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(tx.dateInMillis))
+                        val imei = tx.imei.replace(",", " ")
+                        val type = tx.type.replace(",", " ")
+                        val brand = tx.brand.replace(",", " ")
+                        val variant = tx.variant.replace(",", " ")
+                        val color = tx.color.replace(",", " ")
+                        val warehouse = tx.warehouse.replace(",", " ")
+                        val operator = tx.operator.replace(",", " ")
+                        val notes = (tx.notes ?: "").replace(",", " ")
+                        csvRows.add("$dateStr,$imei,$type,$brand,$variant,$color,$warehouse,$operator,$notes")
+                    }
+                }
+                else -> { // "items"
+                    filename = "item_definitions_report_${System.currentTimeMillis()}.csv"
+                    csvHeader = "Brand,Model,Specs,Color"
+                    brandVariants.forEach { v ->
+                        val brand = v.brand.replace(",", " ")
+                        val model = v.modelName.replace(",", " ")
+                        val specs = v.specs.replace(",", " ")
+                        val color = v.color.replace(",", " ")
+                        csvRows.add("$brand,$model,$specs,$color")
+                    }
+                }
+            }
+            
+            val csvString = (listOf(csvHeader) + csvRows).joinToString("\n")
+            val cacheDir = File(context.cacheDir, "reports")
+            if (!cacheDir.exists()) cacheDir.mkdirs()
+            val file = File(cacheDir, filename)
+            file.writeText(csvString)
+            
+            val uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                file
+            )
+            
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/csv"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_SUBJECT, "$reportType CSV Report")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(intent, "Share/Export CSV Report"))
+        } catch (e: Exception) {
+            Toast.makeText(context, "Export error: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    if (showExportCsvDialog) {
+        AlertDialog(
+            onDismissRequest = { showExportCsvDialog = false },
+            title = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Assessment,
+                        contentDescription = "Reports",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Text("Export Stock Reports", fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "Generate and fetch different CSV reports instantly to sync, review or audit:",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    
+                    // 1. ACTIVE STOCK REPORT
+                    OutlinedButton(
+                        onClick = {
+                            triggerCsvExport(context, "stock")
+                            showExportCsvDialog = false
+                        },
+                        modifier = Modifier.fillMaxWidth().testTag("export_active_stock_csv"),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(Icons.Default.Inventory2, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Column {
+                                Text("Active Physical Stock Report", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                Text("Matches current filtered warehouse listings", fontSize = 11.sp, color = MaterialTheme.colorScheme.outline)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // 2. TRANSACTION LOGS REPORT
+                    OutlinedButton(
+                        onClick = {
+                            triggerCsvExport(context, "transactions")
+                            showExportCsvDialog = false
+                        },
+                        modifier = Modifier.fillMaxWidth().testTag("export_transactions_csv"),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(Icons.Default.ReceiptLong, contentDescription = null, tint = Color(0xFFE65100))
+                            Column {
+                                Text("Detailed Transaction Action Logs", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                Text("Full inward/outward history with timestamps", fontSize = 11.sp, color = MaterialTheme.colorScheme.outline)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // 3. CATALOG DEFINITIONS REPORT
+                    OutlinedButton(
+                        onClick = {
+                            triggerCsvExport(context, "items")
+                            showExportCsvDialog = false
+                        },
+                        modifier = Modifier.fillMaxWidth().testTag("export_catalog_csv"),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(Icons.Default.PhoneAndroid, contentDescription = null, tint = Color(0xFF2E7D32))
+                            Column {
+                                Text("Predefined Variant Item Catalog", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                Text("Saved item definitions directory list", fontSize = 11.sp, color = MaterialTheme.colorScheme.outline)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showExportCsvDialog = false }) {
+                    Text("Close")
+                }
+            }
+        )
+    }
+
     // 1. ADD / PURCHASE IN DIALOG
     if (showAddStockDialog) {
         var addBrand by remember(prefillBrand) { mutableStateOf(prefillBrand) }
@@ -1422,38 +1194,65 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                         }
                     }
 
-                    // Presets autocompletion
+                    // Smart type-ahead autocompletion presets
                     val matchingPresets = remember(brandVariants, addBrand) {
                         brandVariants.filter { it.brand.equals(addBrand, ignoreCase = true) }
                     }
-                    var expandedPresetDropdown by remember { mutableStateOf(false) }
-
-                    if (matchingPresets.isNotEmpty()) {
-                        Box {
-                            OutlinedButton(
-                                onClick = { expandedPresetDropdown = true },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f),
-                                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                                )
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text("⚡ Autofill from Saved Items (${matchingPresets.size})", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                                    Icon(Icons.Default.ArrowDropDown, null)
-                                }
+                    var showVariantSuggestions by remember { mutableStateOf(false) }
+                    val typedSuggestions = remember(addVariant, matchingPresets) {
+                        if (addVariant.isBlank()) {
+                            matchingPresets
+                        } else {
+                            matchingPresets.filter {
+                                it.modelName.contains(addVariant, ignoreCase = true) ||
+                                it.specs.contains(addVariant, ignoreCase = true)
                             }
+                        }
+                    }
+
+                    // Smart suggestion indicator
+                    if (matchingPresets.isNotEmpty()) {
+                        Text(
+                            text = "✨ Smart autocomplete active (${matchingPresets.size} items matching $addBrand)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(horizontal = 4.dp)
+                        )
+                    } else {
+                        Text(
+                            text = "💡 Tip: Go to the 'Items' tab to preload products and trigger smart autocomplete.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.secondary,
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(horizontal = 4.dp)
+                        )
+                    }
+
+                    // Variant input with modern type-ahead dropdown
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = addVariant,
+                            onValueChange = {
+                                addVariant = it
+                                showVariantSuggestions = true
+                            },
+                            label = { Text("Model Variant (e.g. Reno 11 Pro 12GB/256GB)") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("add_brand_variant")
+                        )
+
+                        if (showVariantSuggestions && typedSuggestions.isNotEmpty()) {
                             DropdownMenu(
-                                expanded = expandedPresetDropdown,
-                                onDismissRequest = { expandedPresetDropdown = false },
-                                modifier = Modifier.fillMaxWidth(0.7f)
+                                expanded = showVariantSuggestions,
+                                onDismissRequest = { showVariantSuggestions = false },
+                                properties = androidx.compose.ui.window.PopupProperties(focusable = false),
+                                modifier = Modifier.fillMaxWidth(0.85f)
                             ) {
-                                matchingPresets.forEach { preset ->
+                                typedSuggestions.forEach { preset ->
                                     DropdownMenuItem(
                                         text = {
                                             Column {
@@ -1467,31 +1266,13 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                                             if (preset.color.isNotBlank()) {
                                                 addColor = preset.color
                                             }
-                                            expandedPresetDropdown = false
+                                            showVariantSuggestions = false
                                         }
                                     )
                                 }
                             }
                         }
-                    } else {
-                        Text(
-                            text = "💡 Tip: Go to the 'Items' tab to save items of $addBrand and autofill these instantly.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.secondary,
-                            fontSize = 11.sp,
-                            modifier = Modifier.padding(horizontal = 4.dp)
-                        )
                     }
-
-                    // Variant input
-                    OutlinedTextField(
-                        value = addVariant,
-                        onValueChange = { addVariant = it },
-                        label = { Text("Model Variant (e.g. Reno 11 Pro 12GB/256GB)") },
-                        singleLine = true,
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.fillMaxWidth().testTag("add_brand_variant")
-                    )
 
                     // Color with option to enter in front of unique IMEI/Serial Number
                     Row(
