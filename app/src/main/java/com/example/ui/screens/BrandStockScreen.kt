@@ -1990,7 +1990,7 @@ fun BrandStockScreen(viewModel: StockViewModel) {
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(Icons.Default.Category, "Category", tint = MaterialTheme.colorScheme.primary)
-                    Text("Define Model Preset", fontWeight = FontWeight.Bold)
+                    Text("Add Item", fontWeight = FontWeight.Bold)
                 }
             },
             text = {

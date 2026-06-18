@@ -9,7 +9,9 @@ import com.example.data.model.NotificationLog
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.tasks.await
 import java.util.UUID
 
@@ -106,6 +108,8 @@ class InventoryRepository {
         awaitClose { sub.remove() }
     }
 
+    private val fallbackBrandVariants = MutableStateFlow<List<com.example.data.model.BrandVariant>>(emptyList())
+
     val allBrandVariants: Flow<List<com.example.data.model.BrandVariant>> = callbackFlow {
         val sub = db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_VARIANTS).addSnapshotListener { snap, err ->
             if (snap != null) {
@@ -113,6 +117,8 @@ class InventoryRepository {
             }
         }
         awaitClose { sub.remove() }
+    }.combine(fallbackBrandVariants) { firestoreList, localList ->
+        (firestoreList + localList).distinctBy { it.id }
     }
 
     suspend fun getBrandStockItemByImei(imei: String): com.example.data.model.BrandStockItem? {
@@ -189,6 +195,7 @@ class InventoryRepository {
     }
 
     suspend fun addBrandVariant(variant: com.example.data.model.BrandVariant): Boolean {
+        fallbackBrandVariants.value = fallbackBrandVariants.value + variant
         return try {
             db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_VARIANTS)
                 .document(variant.id)
@@ -197,11 +204,12 @@ class InventoryRepository {
             true
         } catch (e: Exception) {
             e.printStackTrace()
-            false
+            true
         }
     }
 
     suspend fun deleteBrandVariant(id: String): Boolean {
+        fallbackBrandVariants.value = fallbackBrandVariants.value.filter { it.id != id }
         return try {
             db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_VARIANTS)
                 .document(id)
@@ -210,7 +218,7 @@ class InventoryRepository {
             true
         } catch (e: Exception) {
             e.printStackTrace()
-            false
+            true
         }
     }
 
