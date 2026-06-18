@@ -187,12 +187,64 @@ class FirebaseStorageService(private val context: Context) : BaseCloudStorageSer
                 .setContentType("image/jpeg")
                 .build()
             
-            // Execute cloud upload and retrieve download URL
-            ref.putBytes(compressedBytes, metadata).await()
-            ref.downloadUrl.await().toString()
+            // Execute cloud upload with timeout and retrieve download URL
+            kotlinx.coroutines.withTimeout(3500) {
+                ref.putBytes(compressedBytes, metadata).await()
+                ref.downloadUrl.await().toString()
+            }
         } catch (e: Exception) {
-            Log.e("FirebaseStorageService", "Failed uploading to Firebase Storage, falling back to local file. Error: ${e.message}")
-            LocalStorageService(context).uploadPhoto(base64Str)
+            Log.e("FirebaseStorageService", "Failed or timed out uploading to Firebase Storage. Generating compact base64 fallback. Error: ${e.message}")
+            try {
+                val bytes = if (base64Str.startsWith("file://")) {
+                    val cleanPath = base64Str.removePrefix("file://")
+                    val file = File(cleanPath)
+                    if (file.exists()) {
+                        file.readBytes()
+                    } else {
+                        null
+                    }
+                } else {
+                    val pureBase64 = if (base64Str.startsWith("data:image")) {
+                        val index = base64Str.indexOf(",")
+                        if (index != -1) base64Str.substring(index + 1) else base64Str
+                    } else {
+                        base64Str
+                    }
+                    Base64.decode(pureBase64, Base64.NO_WRAP)
+                }
+
+                if (bytes != null) {
+                    val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+                    val maxDimension = 320
+                    var sampleSize = 1
+                    if (options.outHeight > maxDimension || options.outWidth > maxDimension) {
+                        val halfHeight = options.outHeight / 2
+                        val halfWidth = options.outWidth / 2
+                        while (halfHeight / sampleSize >= maxDimension && halfWidth / sampleSize >= maxDimension) {
+                            sampleSize *= 2
+                        }
+                    }
+                    val decodeOptions = BitmapFactory.Options().apply {
+                        inSampleSize = sampleSize
+                        inJustDecodeBounds = false
+                    }
+                    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOptions)
+                    if (bitmap != null) {
+                        val scaled = Bitmap.createScaledBitmap(bitmap, 180, (180f * bitmap.height / bitmap.width).toInt(), true)
+                        val out = ByteArrayOutputStream()
+                        scaled.compress(Bitmap.CompressFormat.JPEG, 60, out)
+                        val fallbackBytes = out.toByteArray()
+                        "data:image/jpeg;base64," + Base64.encodeToString(fallbackBytes, Base64.NO_WRAP)
+                    } else {
+                        LocalStorageService(context).uploadPhoto(base64Str)
+                    }
+                } else {
+                    LocalStorageService(context).uploadPhoto(base64Str)
+                }
+            } catch (ex: Exception) {
+                LocalStorageService(context).uploadPhoto(base64Str)
+            }
         }
     }
 

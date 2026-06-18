@@ -61,7 +61,7 @@ fun BrandStockScreen(viewModel: StockViewModel) {
 
     val isAdmin = currentUser?.role?.equals("Admin", ignoreCase = true) == true
 
-    var activeSubTab by remember { mutableStateOf(0) } // 0 = Active Stock, 1 = Audit Transaction Logs, 2 = Model Presets
+    var activeSubTab by remember { mutableStateOf(0) } // 0 = Active Stock, 1 = Logs, 2 = Items
     
     // Filters
     val brands = listOf("Oppo", "Vivo", "Samsung", "OnePlus", "Realme", "Motorola", "Infinix", "Tecno", "Apple", "Google", "Redmi", "Others")
@@ -236,7 +236,7 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                         selected = activeSubTab == 2,
                         onClick = { activeSubTab = 2 },
                         text = { Text("Items", fontWeight = FontWeight.Bold) },
-                        icon = { Icon(Icons.Default.Category, "Predefined item variants model presets") }
+                        icon = { Icon(Icons.Default.Category, "Predefined item variants") }
                     )
                 }
             }
@@ -643,7 +643,7 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                 }
             }
 
-            // Action Buttons Row (IN-Flow & OUT-Flow) or "Add Model Preset" button
+            // Action Buttons Row (IN-Flow & OUT-Flow) or "Add Items" button
             item {
                 if (activeSubTab == 2) {
                     Button(
@@ -659,7 +659,7 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Icon(Icons.Default.Add, "Add model preset")
+                            Icon(Icons.Default.Add, "Add items")
                             Text("Add Items", fontWeight = FontWeight.Bold)
                         }
                     }
@@ -1276,7 +1276,7 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                     }
                 }
             } else {
-                // MODEL PRESET VARIANTS
+                // ITEM DEFINITIONS
                 if (filteredVariants.isEmpty()) {
                     item {
                         Box(
@@ -1346,7 +1346,7 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                                         onClick = { variantToDelete = preset },
                                         colors = IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.error)
                                     ) {
-                                        Icon(Icons.Default.Delete, "Delete model preset variant")
+                                        Icon(Icons.Default.Delete, "Delete item definition")
                                     }
                                 }
                             }
@@ -1444,7 +1444,7 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("⚡ Autofill from Presets (${matchingPresets.size})", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    Text("⚡ Autofill from Saved Items (${matchingPresets.size})", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                                     Icon(Icons.Default.ArrowDropDown, null)
                                 }
                             }
@@ -1990,7 +1990,7 @@ fun BrandStockScreen(viewModel: StockViewModel) {
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(Icons.Default.Category, "Category", tint = MaterialTheme.colorScheme.primary)
-                    Text("Add Item", fontWeight = FontWeight.Bold)
+                    Text("Add Items", fontWeight = FontWeight.Bold)
                 }
             },
             text = {

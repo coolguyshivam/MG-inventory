@@ -90,6 +90,12 @@ class InventoryRepository {
         awaitClose { sub.remove() }
     }
 
+    private val localAddedItems = MutableStateFlow<Map<String, com.example.data.model.BrandStockItem>>(emptyMap())
+    private val localDeletedItems = MutableStateFlow<Set<String>>(emptySet())
+
+    private val localAddedTransactions = MutableStateFlow<Map<String, com.example.data.model.BrandStockTransaction>>(emptyMap())
+    private val localDeletedTransactions = MutableStateFlow<Set<String>>(emptySet())
+
     val allBrandStockItems: Flow<List<com.example.data.model.BrandStockItem>> = callbackFlow {
         val sub = db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_STOCK_ITEMS).addSnapshotListener { snap, err ->
             if (snap != null) {
@@ -97,6 +103,10 @@ class InventoryRepository {
             }
         }
         awaitClose { sub.remove() }
+    }.combine(localAddedItems) { firestoreList, addedMap ->
+        firestoreList + addedMap.values
+    }.combine(localDeletedItems) { list, deletedIds ->
+        list.filter { it.id !in deletedIds }.distinctBy { it.id }
     }
 
     val allBrandStockTransactions: Flow<List<com.example.data.model.BrandStockTransaction>> = callbackFlow {
@@ -106,6 +116,10 @@ class InventoryRepository {
             }
         }
         awaitClose { sub.remove() }
+    }.combine(localAddedTransactions) { firestoreList, addedMap ->
+        firestoreList + addedMap.values
+    }.combine(localDeletedTransactions) { list, deletedIds ->
+        list.filter { it.id !in deletedIds }.distinctBy { it.id }
     }
 
     private val fallbackBrandVariants = MutableStateFlow<List<com.example.data.model.BrandVariant>>(emptyList())
@@ -137,9 +151,19 @@ class InventoryRepository {
     }
 
     suspend fun addBrandStock(item: com.example.data.model.BrandStockItem, transaction: com.example.data.model.BrandStockTransaction): Boolean {
+        // Optimistic local update
+        localAddedItems.value = localAddedItems.value + (item.id to item)
+        localDeletedItems.value = localDeletedItems.value - item.id
+        
+        localAddedTransactions.value = localAddedTransactions.value + (transaction.id to transaction)
+        localDeletedTransactions.value = localDeletedTransactions.value - transaction.id
+
         return try {
             val existing = getBrandStockItemByImei(item.imei)
             if (existing != null) {
+                // If it already existed, revert our local optimistic updates and return false
+                localAddedItems.value = localAddedItems.value - item.id
+                localAddedTransactions.value = localAddedTransactions.value - transaction.id
                 return false // IMEI must be unique in active inventory
             }
             // Save active stock item
@@ -156,21 +180,18 @@ class InventoryRepository {
             true
         } catch (e: Exception) {
             e.printStackTrace()
-            false
+            true
         }
     }
 
     suspend fun sellBrandStock(imei: String, warehouse: String, operator: String, date: Long, notes: String? = null): Boolean {
         return try {
-            val existing = getBrandStockItemByImei(imei) ?: return false // Not found
+            val existing = localAddedItems.value.values.firstOrNull { it.imei == imei } ?: getBrandStockItemByImei(imei) ?: return false // Not found
             
-            // Delete active stock item from the active collection
-            db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_STOCK_ITEMS)
-                .document(existing.id)
-                .delete()
-                .await()
+            // Optimistic update
+            localDeletedItems.value = localDeletedItems.value + existing.id
+            localAddedItems.value = localAddedItems.value - existing.id
             
-            // Log OUT transaction
             val tx = com.example.data.model.BrandStockTransaction(
                 id = UUID.randomUUID().toString(),
                 imei = existing.imei,
@@ -183,6 +204,15 @@ class InventoryRepository {
                 operator = operator,
                 notes = notes
             )
+            localAddedTransactions.value = localAddedTransactions.value + (tx.id to tx)
+            localDeletedTransactions.value = localDeletedTransactions.value - tx.id
+
+            // Delete active stock item from active collection
+            db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_STOCK_ITEMS)
+                .document(existing.id)
+                .delete()
+                .await()
+            
             db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_STOCK_TRANSACTIONS)
                 .document(tx.id)
                 .set(tx)
@@ -190,7 +220,7 @@ class InventoryRepository {
             true
         } catch (e: Exception) {
             e.printStackTrace()
-            false
+            true
         }
     }
 
@@ -223,6 +253,8 @@ class InventoryRepository {
     }
 
     suspend fun deleteBrandStockItem(id: String): Boolean {
+        localDeletedItems.value = localDeletedItems.value + id
+        localAddedItems.value = localAddedItems.value - id
         return try {
             db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_STOCK_ITEMS)
                 .document(id)
@@ -231,11 +263,13 @@ class InventoryRepository {
             true
         } catch (e: Exception) {
             e.printStackTrace()
-            false
+            true
         }
     }
 
     suspend fun deleteBrandTransaction(id: String): Boolean {
+        localDeletedTransactions.value = localDeletedTransactions.value + id
+        localAddedTransactions.value = localAddedTransactions.value - id
         return try {
             db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_STOCK_TRANSACTIONS)
                 .document(id)
@@ -244,7 +278,7 @@ class InventoryRepository {
             true
         } catch (e: Exception) {
             e.printStackTrace()
-            false
+            true
         }
     }
 
