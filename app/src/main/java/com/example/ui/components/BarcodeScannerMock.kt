@@ -30,28 +30,8 @@ fun BarcodeScannerMockDialog(
     suggestedImeis: List<String> = emptyList()
 ) {
     val context = LocalContext.current
-    var showManualInput by remember { mutableStateOf(false) }
     var typedBarcode by remember { mutableStateOf("") }
     
-    // Check permission status
-    val cameraPermission = androidx.core.content.ContextCompat.checkSelfPermission(
-        context, 
-        android.Manifest.permission.CAMERA
-    )
-    var hasCameraPermission by remember { 
-        mutableStateOf(cameraPermission == android.content.pm.PackageManager.PERMISSION_GRANTED) 
-    }
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        hasCameraPermission = isGranted
-        if (!isGranted) {
-            Toast.makeText(context, "Camera permission needed. Falling back to input.", Toast.LENGTH_SHORT).show()
-            showManualInput = true
-        }
-    }
-
     // Function to start Google Play Services scanner
     val startScanner = {
         try {
@@ -63,121 +43,148 @@ fun BarcodeScannerMockDialog(
                 .addOnSuccessListener { barcode ->
                     val rawValue = barcode.rawValue
                     if (!rawValue.isNullOrBlank()) {
-                        onBarcodeScanned(rawValue)
+                        onBarcodeScanned(rawValue.trim())
                         onDismissRequest()
                     } else {
                         Toast.makeText(context, "No barcode detected.", Toast.LENGTH_SHORT).show()
-                        onDismissRequest()
                     }
                 }
                 .addOnFailureListener { e ->
-                    showManualInput = true
+                    Toast.makeText(
+                        context, 
+                        "Scanner unavailable on this device/emulator: ${e.localizedMessage}. Please enter manually.", 
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
                 .addOnCanceledListener {
-                    onDismissRequest()
+                    // Do nothing on user cancel
                 }
         } catch (t: Throwable) {
-            showManualInput = true
+            Toast.makeText(
+                context, 
+                "Live scanning failed to start: ${t.localizedMessage}. Please type manually.", 
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
 
-    // Directly trigger scanning or fallback depending on GMS availability & permissions
-    LaunchedEffect(hasCameraPermission) {
-        val isGmsAvailable = try {
-            com.google.android.gms.common.GoogleApiAvailability.getInstance()
-                .isGooglePlayServicesAvailable(context) == com.google.android.gms.common.ConnectionResult.SUCCESS
-        } catch (t: Throwable) {
-            false
-        }
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.QrCodeScanner,
+                    contentDescription = "Scanner icon",
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Text("Scan/Enter IMEI Or Barcode", fontWeight = FontWeight.Bold)
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                // 1. LIVE CAMERA SCAN TRIGGER
+                Button(
+                    onClick = { startScanner() },
+                    modifier = Modifier.fillMaxWidth().height(50.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.QrCodeScanner,
+                            contentDescription = "Scanner",
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Launch Live Camera Scanner", 
+                            fontWeight = FontWeight.Bold, 
+                            fontSize = 15.sp
+                        )
+                    }
+                }
 
-        if (!isGmsAvailable) {
-            // Emulator or non-GMS device: Fall back instantly to avoid crashing
-            showManualInput = true
-        } else if (hasCameraPermission) {
-            startScanner()
-        } else {
-            permissionLauncher.launch(android.Manifest.permission.CAMERA)
-        }
-    }
-
-    // Elegant and extremely lightweight manual fallback dialog for emulators/previews
-    if (showManualInput) {
-        AlertDialog(
-            onDismissRequest = onDismissRequest,
-            title = {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(vertical = 4.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.QrCodeScanner,
-                        contentDescription = "Scanner icon",
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                    Text("Barcode & IMEI Entry", fontWeight = FontWeight.Bold)
-                }
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
                     Text(
-                        text = "Real-time scanner is loading or camera is simulated on emulator. Type or select a code below.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        text = "OR ENTER MANUALLY", 
+                        style = MaterialTheme.typography.labelSmall, 
+                        color = MaterialTheme.colorScheme.outline,
+                        fontWeight = FontWeight.Bold
                     )
-                    
-                    OutlinedTextField(
-                        value = typedBarcode,
-                        onValueChange = { typedBarcode = it },
-                        label = { Text("IMEI or Barcode") },
-                        placeholder = { Text("E.g., 356829103847291...") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
-                    )
+                    HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
+                }
 
-                    if (suggestedImeis.isNotEmpty()) {
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(
-                                text = "Auto-suggested / Stock items in stock:",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            LazyRow(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                items(suggestedImeis) { imei ->
-                                    SuggestionChip(
-                                        onClick = { typedBarcode = imei },
-                                        label = { Text(imei, fontSize = 11.sp) }
-                                    )
-                                }
+                Text(
+                    text = "If testing on emulator, you can type the barcode/IMEI value or select an auto-completed stock record below.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                
+                OutlinedTextField(
+                    value = typedBarcode,
+                    onValueChange = { typedBarcode = it },
+                    label = { Text("IMEI or Barcode") },
+                    placeholder = { Text("E.g., 356829103847291...") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                if (suggestedImeis.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "Auto-suggested warehouse records:",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(suggestedImeis) { imei ->
+                                SuggestionChip(
+                                    onClick = { typedBarcode = imei },
+                                    label = { Text(imei, fontSize = 11.sp) }
+                                )
                             }
                         }
                     }
                 }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (typedBarcode.isNotBlank()) {
-                            onBarcodeScanned(typedBarcode.trim())
-                            onDismissRequest()
-                        } else {
-                            Toast.makeText(context, "Please enter or select a valid code.", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Text("Submit")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = onDismissRequest) {
-                    Text("Cancel")
-                }
             }
-        )
-    }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (typedBarcode.isNotBlank()) {
+                        onBarcodeScanned(typedBarcode.trim())
+                        onDismissRequest()
+                    } else {
+                        Toast.makeText(context, "Please enter or select a valid code.", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text("Submit")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismissRequest) {
+                Text("Cancel")
+            }
+        }
+    )
 }

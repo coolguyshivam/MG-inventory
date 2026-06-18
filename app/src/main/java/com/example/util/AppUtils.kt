@@ -455,12 +455,25 @@ object AppUtils {
 
         // 1. Return direct HTTP/HTTPS URLs and local content/file URIs instantly. 
         // Coil natively handles asynchronous loading, memory caching, and disk caching with flawless speed.
-        if (target.startsWith("http://") || target.startsWith("https://") || target.startsWith("content://") || target.startsWith("file://")) {
+        if (target.startsWith("http://") || target.startsWith("https://") || target.startsWith("content://")) {
+            return target
+        }
+
+        if (target.startsWith("file://")) {
+            val path = target.removePrefix("file://")
+            val file = File(path)
+            if (!file.exists()) {
+                return "ic_placeholder"
+            }
             return target
         }
 
         // Handle raw local paths starting with '/'
         if (target.startsWith("/")) {
+            val file = File(target)
+            if (!file.exists()) {
+                return "ic_placeholder"
+            }
             return "file://$target"
         }
 
@@ -479,8 +492,14 @@ object AppUtils {
                 target
             }
             val decodedBytes = android.util.Base64.decode(pureBase64, android.util.Base64.NO_WRAP)
-            imageCache[cacheKey] = decodedBytes
-            decodedBytes
+            val bitmap = android.graphics.BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)
+            if (bitmap != null) {
+                imageCache[cacheKey] = bitmap
+                bitmap
+            } else {
+                imageCache[cacheKey] = decodedBytes
+                decodedBytes
+            }
         } catch (e: Exception) {
             target
         }

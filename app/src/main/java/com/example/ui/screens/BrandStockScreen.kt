@@ -944,75 +944,245 @@ fun BrandStockScreen(viewModel: StockViewModel) {
 
     // ================== DIALOGS ==================
 
-    // CSV REPORT DIALOG & TRIGGER MECHANISM
-    fun triggerCsvExport(context: Context, reportType: String) {
+    // COMPREHENSIVE MULTI-FORMAT REPORT GENERATOR (CSV, EXCEL, PDF)
+    fun triggerExport(context: Context, reportType: String, format: String) {
         try {
-            val csvHeader: String
-            val csvRows = mutableListOf<String>()
-            val filename: String
+            val headers: List<String>
+            val rows = mutableListOf<List<String>>()
             
             when (reportType) {
                 "stock" -> {
-                    filename = "active_stock_report_${System.currentTimeMillis()}.csv"
-                    csvHeader = "Brand,Model Variant,IMEI_Serial,Warehouse,Color,Added Date"
+                    headers = listOf("Brand", "Model Variant", "IMEI_Serial", "Warehouse", "Color", "Added Date")
                     stockItems.forEach { item ->
                         val dateStr = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(item.addedDate))
-                        val brand = item.brand.replace(",", " ")
-                        val variant = item.variant.replace(",", " ")
-                        val imei = item.imei.replace(",", " ")
-                        val warehouse = item.warehouse.replace(",", " ")
-                        val color = item.color.replace(",", " ")
-                        csvRows.add("$brand,$variant,$imei,$warehouse,$color,$dateStr")
+                        rows.add(listOf(
+                            item.brand.replace(",", " "),
+                            item.variant.replace(",", " "),
+                            item.imei.replace(",", " "),
+                            item.warehouse.replace(",", " "),
+                            item.color.replace(",", " "),
+                            dateStr
+                        ))
                     }
                 }
                 "transactions" -> {
-                    filename = "transaction_logs_report_${System.currentTimeMillis()}.csv"
-                    csvHeader = "Date,IMEI_Serial,Type,Brand,Model Variant,Color,Warehouse,Operator,Notes"
+                    headers = listOf("Date", "IMEI_Serial", "Type", "Brand", "Model Variant", "Color", "Warehouse", "Operator", "Notes")
                     transactions.forEach { tx ->
                         val dateStr = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(tx.dateInMillis))
-                        val imei = tx.imei.replace(",", " ")
-                        val type = tx.type.replace(",", " ")
-                        val brand = tx.brand.replace(",", " ")
-                        val variant = tx.variant.replace(",", " ")
-                        val color = tx.color.replace(",", " ")
-                        val warehouse = tx.warehouse.replace(",", " ")
-                        val operator = tx.operator.replace(",", " ")
-                        val notes = (tx.notes ?: "").replace(",", " ")
-                        csvRows.add("$dateStr,$imei,$type,$brand,$variant,$color,$warehouse,$operator,$notes")
+                        rows.add(listOf(
+                            dateStr,
+                            tx.imei.replace(",", " "),
+                            tx.type.replace(",", " "),
+                            tx.brand.replace(",", " "),
+                            tx.variant.replace(",", " "),
+                            tx.color.replace(",", " "),
+                            tx.warehouse.replace(",", " "),
+                            tx.operator.replace(",", " "),
+                            (tx.notes ?: "").replace(",", " ")
+                        ))
                     }
                 }
                 else -> { // "items"
-                    filename = "item_definitions_report_${System.currentTimeMillis()}.csv"
-                    csvHeader = "Brand,Model,Specs,Color"
+                    headers = listOf("Brand", "Model", "Specs", "Color")
                     brandVariants.forEach { v ->
-                        val brand = v.brand.replace(",", " ")
-                        val model = v.modelName.replace(",", " ")
-                        val specs = v.specs.replace(",", " ")
-                        val color = v.color.replace(",", " ")
-                        csvRows.add("$brand,$model,$specs,$color")
+                        rows.add(listOf(
+                            v.brand.replace(",", " "),
+                            v.modelName.replace(",", " "),
+                            v.specs.replace(",", " "),
+                            v.color.replace(",", " ")
+                        ))
                     }
                 }
             }
             
-            val csvString = (listOf(csvHeader) + csvRows).joinToString("\n")
-            val cacheDir = File(context.cacheDir, "reports")
-            if (!cacheDir.exists()) cacheDir.mkdirs()
-            val file = File(cacheDir, filename)
-            file.writeText(csvString)
-            
-            val uri = FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.fileprovider",
-                file
-            )
-            
-            val intent = Intent(Intent.ACTION_SEND).apply {
-                type = "text/csv"
-                putExtra(Intent.EXTRA_STREAM, uri)
-                putExtra(Intent.EXTRA_SUBJECT, "$reportType CSV Report")
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            when (format) {
+                "csv" -> {
+                    val csvString = (listOf(headers.joinToString(",")) + rows.map { it.joinToString(",") }).joinToString("\n")
+                    val filename = "${reportType}_report_${System.currentTimeMillis()}.csv"
+                    val cacheDir = File(context.cacheDir, "reports")
+                    if (!cacheDir.exists()) cacheDir.mkdirs()
+                    val file = File(cacheDir, filename)
+                    file.writeText(csvString)
+                    
+                    val uri = FileProvider.getUriForFile(
+                        context,
+                        "${context.packageName}.fileprovider",
+                        file
+                    )
+                    
+                    val intent = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/csv"
+                        putExtra(Intent.EXTRA_STREAM, uri)
+                        putExtra(Intent.EXTRA_SUBJECT, "$reportType CSV Report")
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(Intent.createChooser(intent, "Share/Export CSV Report"))
+                }
+                "excel" -> {
+                    val reportTitle = when(reportType) {
+                        "stock" -> "Active Warehouse Stock Report"
+                        "transactions" -> "Detailed Transaction Action Logs"
+                        else -> "Saved Item Catalog Definitions"
+                    }
+                    val htmlBuilder = java.lang.StringBuilder()
+                    htmlBuilder.append("<html><head><meta charset=\"UTF-8\">")
+                    htmlBuilder.append("<style>")
+                    htmlBuilder.append("table { border-collapse: collapse; width: 100%; font-family: sans-serif; }")
+                    htmlBuilder.append("th { background-color: #1F4E79; color: white; font-weight: bold; padding: 8px; border: 1px solid #D9D9D9; }")
+                    htmlBuilder.append("td { padding: 6px 12px; border: 1px solid #D9D9D9; font-size: 11pt; }")
+                    htmlBuilder.append("tr:nth-child(even) { background-color: #F2F2F2; }")
+                    htmlBuilder.append("h2 { color: #1F4E79; margin-bottom: 4px; }")
+                    htmlBuilder.append(".timestamp { color: #595959; font-size: 9pt; margin-bottom: 20px; }")
+                    htmlBuilder.append("</style></head><body>")
+                    
+                    htmlBuilder.append("<h2>").append(reportTitle).append("</h2>")
+                    htmlBuilder.append("<p class=\"timestamp\">Generated on: ").append(SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())).append("</p>")
+                    
+                    htmlBuilder.append("<table>")
+                    htmlBuilder.append("<tr>")
+                    headers.forEach { h -> htmlBuilder.append("<th>").append(h).append("</th>") }
+                    htmlBuilder.append("</tr>")
+                    
+                    rows.forEach { r ->
+                        htmlBuilder.append("<tr>")
+                        r.forEach { c -> htmlBuilder.append("<td>").append(c).append("</td>") }
+                        htmlBuilder.append("</tr>")
+                    }
+                    htmlBuilder.append("</table></body></html>")
+                    
+                    val filename = "${reportType}_report_${System.currentTimeMillis()}.xls"
+                    val cacheDir = File(context.cacheDir, "reports")
+                    if (!cacheDir.exists()) cacheDir.mkdirs()
+                    val file = File(cacheDir, filename)
+                    file.writeText(htmlBuilder.toString())
+                    
+                    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                    val intent = Intent(Intent.ACTION_SEND).apply {
+                        type = "application/vnd.ms-excel"
+                        putExtra(Intent.EXTRA_STREAM, uri)
+                        putExtra(Intent.EXTRA_SUBJECT, "$reportType Excel Report")
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(Intent.createChooser(intent, "Share/Export Excel Report"))
+                }
+                "pdf" -> {
+                    val pdfDocument = android.graphics.pdf.PdfDocument()
+                    val titlePaint = android.graphics.Paint().apply {
+                        isFakeBoldText = true
+                        textSize = 14f
+                        color = android.graphics.Color.BLACK
+                    }
+                    val headerPaint = android.graphics.Paint().apply {
+                        isFakeBoldText = true
+                        textSize = 10f
+                        color = android.graphics.Color.WHITE
+                    }
+                    val contentPaint = android.graphics.Paint().apply {
+                        textSize = 9f
+                        color = android.graphics.Color.BLACK
+                    }
+                    val footerPaint = android.graphics.Paint().apply {
+                        textSize = 8f
+                        color = android.graphics.Color.GRAY
+                    }
+                    
+                    val A4_WIDTH = 595
+                    val A4_HEIGHT = 842
+                    val MARGIN = 30
+                    
+                    var pageNum = 1
+                    var pageInfo = android.graphics.pdf.PdfDocument.PageInfo.Builder(A4_WIDTH, A4_HEIGHT, pageNum).create()
+                    var page = pdfDocument.startPage(pageInfo)
+                    var canvas = page.canvas
+                    canvas.drawColor(android.graphics.Color.WHITE)
+                    
+                    var yPos = MARGIN + 20f
+                    
+                    fun drawHeaderAndTitle(canv: android.graphics.Canvas) {
+                        val titleText = when(reportType) {
+                            "stock" -> "Active Warehouse Stock Report"
+                            "transactions" -> "Detailed Transaction Action Logs"
+                            else -> "Saved Item Catalog Definitions"
+                        }
+                        canv.drawText(titleText, MARGIN.toFloat(), yPos, titlePaint)
+                        
+                        yPos += 15
+                        canv.drawText("Generated on: " + SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date()), MARGIN.toFloat(), yPos, footerPaint)
+                        
+                        yPos += 25
+                        
+                        val headerBgPaint = android.graphics.Paint().apply {
+                            color = android.graphics.Color.rgb(46, 82, 135)
+                        }
+                        canv.drawRect(MARGIN.toFloat(), yPos - 12f, (A4_WIDTH - MARGIN).toFloat(), yPos + 8f, headerBgPaint)
+                        
+                        val columnWidth = (A4_WIDTH - 2 * MARGIN) / headers.size.toFloat()
+                        headers.forEachIndexed { i, hName ->
+                            canv.drawText(hName, MARGIN + i * columnWidth + 4, yPos, headerPaint)
+                        }
+                        yPos += 18f
+                    }
+                    
+                    drawHeaderAndTitle(canvas)
+                    
+                    val zebraPaint = android.graphics.Paint().apply {
+                        color = android.graphics.Color.rgb(245, 247, 250)
+                    }
+                    
+                    rows.forEachIndexed { idx, rValues ->
+                        if (yPos > A4_HEIGHT - MARGIN - 30) {
+                            canvas.drawText("Page $pageNum", (A4_WIDTH / 2).toFloat(), (A4_HEIGHT - 20).toFloat(), footerPaint)
+                            pdfDocument.finishPage(page)
+                            
+                            pageNum++
+                            pageInfo = android.graphics.pdf.PdfDocument.PageInfo.Builder(A4_WIDTH, A4_HEIGHT, pageNum).create()
+                            page = pdfDocument.startPage(pageInfo)
+                            canvas = page.canvas
+                            canvas.drawColor(android.graphics.Color.WHITE)
+                            yPos = MARGIN + 30f
+                            drawHeaderAndTitle(canvas)
+                        }
+                        
+                        if (idx % 2 == 1) {
+                            canvas.drawRect(MARGIN.toFloat(), yPos - 10f, (A4_WIDTH - MARGIN).toFloat(), yPos + 4f, zebraPaint)
+                        }
+                        
+                        val linePaint = android.graphics.Paint().apply {
+                            color = android.graphics.Color.rgb(230, 230, 230)
+                            strokeWidth = 0.5f
+                        }
+                        canvas.drawLine(MARGIN.toFloat(), yPos + 4f, (A4_WIDTH - MARGIN).toFloat(), yPos + 4f, linePaint)
+                        
+                        val columnWidth = (A4_WIDTH - 2 * MARGIN) / headers.size.toFloat()
+                        rValues.forEachIndexed { colIdx, cellValue ->
+                            val maxChar = if (headers.size > 6) 12 else 18
+                            val truncatedText = if (cellValue.length > maxChar) cellValue.take(maxChar - 3) + "..." else cellValue
+                            canvas.drawText(truncatedText, MARGIN + colIdx * columnWidth + 4, yPos, contentPaint)
+                        }
+                        yPos += 16f
+                    }
+                    
+                    canvas.drawText("Page $pageNum", (A4_WIDTH / 2).toFloat(), (A4_HEIGHT - 20).toFloat(), footerPaint)
+                    pdfDocument.finishPage(page)
+                    
+                    val filename = "${reportType}_report_${System.currentTimeMillis()}.pdf"
+                    val cacheDir = File(context.cacheDir, "reports")
+                    if (!cacheDir.exists()) cacheDir.mkdirs()
+                    val file = File(cacheDir, filename)
+                    
+                    pdfDocument.writeTo(java.io.FileOutputStream(file))
+                    pdfDocument.close()
+                    
+                    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                    val intent = Intent(Intent.ACTION_SEND).apply {
+                        type = "application/pdf"
+                        putExtra(Intent.EXTRA_STREAM, uri)
+                        putExtra(Intent.EXTRA_SUBJECT, "$reportType PDF Report")
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(Intent.createChooser(intent, "Share/Export PDF Report"))
+                }
             }
-            context.startActivity(Intent.createChooser(intent, "Share/Export CSV Report"))
         } catch (e: Exception) {
             Toast.makeText(context, "Export error: ${e.message}", Toast.LENGTH_LONG).show()
         }
@@ -1031,93 +1201,182 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                         contentDescription = "Reports",
                         tint = MaterialTheme.colorScheme.primary
                     )
-                    Text("Export Stock Reports", fontWeight = FontWeight.Bold)
+                    Text("Warehouse Reports Hub", fontWeight = FontWeight.Bold)
                 }
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
-                        text = "Generate and fetch different CSV reports instantly to sync, review or audit:",
+                        text = "Generate and share audit-ready PDF sheets, Excel spreadsheets, or standard CSV files instantly:",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 8.dp)
+                        modifier = Modifier.padding(bottom = 4.dp)
                     )
                     
-                    // 1. ACTIVE STOCK REPORT
-                    OutlinedButton(
-                        onClick = {
-                            triggerCsvExport(context, "stock")
-                            showExportCsvDialog = false
-                        },
-                        modifier = Modifier.fillMaxWidth().testTag("export_active_stock_csv"),
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
-                        )
+                    // 1. ACTIVE STOCK REPORT CARD
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(Icons.Default.Inventory2, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                            Column {
-                                Text("Active Physical Stock Report", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                                Text("Matches current filtered warehouse listings", fontSize = 11.sp, color = MaterialTheme.colorScheme.outline)
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(Icons.Default.Inventory2, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                Column {
+                                    Text("Active Physical Stock Report", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                    Text("Reflects current filtered warehouse listings", fontSize = 11.sp, color = MaterialTheme.colorScheme.outline)
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = { triggerExport(context, "stock", "csv") },
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.weight(1f).testTag("export_active_stock_csv"),
+                                    contentPadding = PaddingValues(vertical = 4.dp, horizontal = 2.dp)
+                                ) {
+                                    Icon(Icons.Default.FileDownload, null, modifier = Modifier.size(12.dp))
+                                    Spacer(Modifier.width(2.dp))
+                                    Text("CSV", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                                OutlinedButton(
+                                    onClick = { triggerExport(context, "stock", "excel") },
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.weight(1f).testTag("export_active_stock_excel"),
+                                    contentPadding = PaddingValues(vertical = 4.dp, horizontal = 2.dp)
+                                ) {
+                                    Icon(Icons.Default.FileDownload, null, modifier = Modifier.size(12.dp))
+                                    Spacer(Modifier.width(2.dp))
+                                    Text("Excel", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                                OutlinedButton(
+                                    onClick = { triggerExport(context, "stock", "pdf") },
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.weight(1f).testTag("export_active_stock_pdf"),
+                                    contentPadding = PaddingValues(vertical = 4.dp, horizontal = 2.dp)
+                                ) {
+                                    Icon(Icons.Default.FileDownload, null, modifier = Modifier.size(12.dp))
+                                    Spacer(Modifier.width(2.dp))
+                                    Text("PDF", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    // 2. TRANSACTION LOGS REPORT
-                    OutlinedButton(
-                        onClick = {
-                            triggerCsvExport(context, "transactions")
-                            showExportCsvDialog = false
-                        },
-                        modifier = Modifier.fillMaxWidth().testTag("export_transactions_csv"),
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
-                        )
+                    // 2. TRANSACTION LOGS CARD
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(Icons.Default.ReceiptLong, contentDescription = null, tint = Color(0xFFE65100))
-                            Column {
-                                Text("Detailed Transaction Action Logs", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                                Text("Full inward/outward history with timestamps", fontSize = 11.sp, color = MaterialTheme.colorScheme.outline)
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(Icons.Default.ReceiptLong, contentDescription = null, tint = Color(0xFFE65100), modifier = Modifier.size(20.dp))
+                                Column {
+                                    Text("Transaction Action History Logs", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                    Text("Full warehouse ledger of stock movements", fontSize = 11.sp, color = MaterialTheme.colorScheme.outline)
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = { triggerExport(context, "transactions", "csv") },
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.weight(1f).testTag("export_transactions_csv"),
+                                    contentPadding = PaddingValues(vertical = 4.dp, horizontal = 2.dp)
+                                ) {
+                                    Icon(Icons.Default.FileDownload, null, modifier = Modifier.size(12.dp))
+                                    Spacer(Modifier.width(2.dp))
+                                    Text("CSV", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                                OutlinedButton(
+                                    onClick = { triggerExport(context, "transactions", "excel") },
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.weight(1f).testTag("export_transactions_excel"),
+                                    contentPadding = PaddingValues(vertical = 4.dp, horizontal = 2.dp)
+                                ) {
+                                    Icon(Icons.Default.FileDownload, null, modifier = Modifier.size(12.dp))
+                                    Spacer(Modifier.width(2.dp))
+                                    Text("Excel", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                                OutlinedButton(
+                                    onClick = { triggerExport(context, "transactions", "pdf") },
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.weight(1f).testTag("export_transactions_pdf"),
+                                    contentPadding = PaddingValues(vertical = 4.dp, horizontal = 2.dp)
+                                ) {
+                                    Icon(Icons.Default.FileDownload, null, modifier = Modifier.size(12.dp))
+                                    Spacer(Modifier.width(2.dp))
+                                    Text("PDF", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    // 3. CATALOG DEFINITIONS REPORT
-                    OutlinedButton(
-                        onClick = {
-                            triggerCsvExport(context, "items")
-                            showExportCsvDialog = false
-                        },
-                        modifier = Modifier.fillMaxWidth().testTag("export_catalog_csv"),
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
-                        )
+                    // 3. CATALOG CARD
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(Icons.Default.PhoneAndroid, contentDescription = null, tint = Color(0xFF2E7D32))
-                            Column {
-                                Text("Predefined Variant Item Catalog", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                                Text("Saved item definitions directory list", fontSize = 11.sp, color = MaterialTheme.colorScheme.outline)
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(Icons.Default.PhoneAndroid, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.size(20.dp))
+                                Column {
+                                    Text("Predefined Item Spec Catalog", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                    Text("Matches inventory template master database", fontSize = 11.sp, color = MaterialTheme.colorScheme.outline)
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = { triggerExport(context, "items", "csv") },
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.weight(1f).testTag("export_catalog_csv"),
+                                    contentPadding = PaddingValues(vertical = 4.dp, horizontal = 2.dp)
+                                ) {
+                                    Icon(Icons.Default.FileDownload, null, modifier = Modifier.size(12.dp))
+                                    Spacer(Modifier.width(2.dp))
+                                    Text("CSV", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                                OutlinedButton(
+                                    onClick = { triggerExport(context, "items", "excel") },
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.weight(1f).testTag("export_catalog_excel"),
+                                    contentPadding = PaddingValues(vertical = 4.dp, horizontal = 2.dp)
+                                ) {
+                                    Icon(Icons.Default.FileDownload, null, modifier = Modifier.size(12.dp))
+                                    Spacer(Modifier.width(2.dp))
+                                    Text("Excel", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                                OutlinedButton(
+                                    onClick = { triggerExport(context, "items", "pdf") },
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.weight(1f).testTag("export_catalog_pdf"),
+                                    contentPadding = PaddingValues(vertical = 4.dp, horizontal = 2.dp)
+                                ) {
+                                    Icon(Icons.Default.FileDownload, null, modifier = Modifier.size(12.dp))
+                                    Spacer(Modifier.width(2.dp))
+                                    Text("PDF", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }

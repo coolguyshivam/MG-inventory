@@ -188,7 +188,7 @@ class FirebaseStorageService(private val context: Context) : BaseCloudStorageSer
                 .build()
             
             // Execute cloud upload with timeout and retrieve download URL
-            kotlinx.coroutines.withTimeout(3500) {
+            kotlinx.coroutines.withTimeout(30000) {
                 ref.putBytes(compressedBytes, metadata).await()
                 ref.downloadUrl.await().toString()
             }
