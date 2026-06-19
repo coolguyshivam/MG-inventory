@@ -1494,6 +1494,276 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
             onResult(success)
         }
     }
+
+    // --- Continuous Continuous Multi-item Stock Actions ---
+    fun addMultipleBrandStockItems(
+        brand: String,
+        variant: String,
+        color: String,
+        imeis: List<String>,
+        warehouse: String,
+        date: Long,
+        onResult: (successCount: Int, failedImeis: List<String>) -> Unit
+    ) {
+        viewModelScope.launch {
+            val creator = loggedInUser.value?.username ?: "Unknown"
+            var successCount = 0
+            val failedImeis = mutableListOf<String>()
+
+            for (rawImei in imeis) {
+                val imei = rawImei.trim()
+                if (imei.isBlank()) continue
+
+                val item = com.example.data.model.BrandStockItem(
+                    imei = imei,
+                    brand = brand,
+                    variant = variant.trim(),
+                    color = color.trim(),
+                    warehouse = warehouse,
+                    addedByUser = creator,
+                    addedDate = date,
+                    lastUpdated = System.currentTimeMillis()
+                )
+                val tx = com.example.data.model.BrandStockTransaction(
+                    imei = imei,
+                    brand = brand,
+                    variant = variant.trim(),
+                    color = color.trim(),
+                    warehouse = warehouse,
+                    type = "IN",
+                    dateInMillis = date,
+                    operator = creator,
+                    notes = "Purchase intake (Bulk)"
+                )
+
+                // Check duplicate IMEI first to prevent duplicate active items
+                val existing = repository.getBrandStockItemByImei(imei)
+                if (existing != null) {
+                    failedImeis.add(imei)
+                    continue
+                }
+
+                val success = repository.addBrandStock(item, tx)
+                if (success) {
+                    successCount++
+                } else {
+                    failedImeis.add(imei)
+                }
+            }
+            onResult(successCount, failedImeis)
+        }
+    }
+
+    fun sellMultipleBrandStockItems(
+        imeis: List<String>,
+        warehouse: String,
+        date: Long,
+        notes: String? = null,
+        onResult: (successCount: Int, failedImeis: List<String>) -> Unit
+    ) {
+        viewModelScope.launch {
+            val seller = loggedInUser.value?.username ?: "Unknown"
+            var successCount = 0
+            val failedImeis = mutableListOf<String>()
+
+            for (rawImei in imeis) {
+                val imei = rawImei.trim()
+                if (imei.isBlank()) continue
+
+                val success = repository.sellBrandStock(imei, warehouse, seller, date, notes)
+                if (success) {
+                    successCount++
+                } else {
+                    failedImeis.add(imei)
+                }
+            }
+            onResult(successCount, failedImeis)
+        }
+    }
+
+    // --- CSV File Stock Import Parser ---
+    fun importBrandStockCsv(
+        context: Context,
+        uri: android.net.Uri,
+        onResult: (successCount: Int, duplicatedCount: Int, errorCount: Int, message: String) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                val contentResolver = context.contentResolver
+                val inputStream = contentResolver.openInputStream(uri)
+                if (inputStream == null) {
+                    onResult(0, 0, 1, "Failed to open selected file. Please make sure the app has read permissions.")
+                    return@launch
+                }
+                val reader = java.io.BufferedReader(java.io.InputStreamReader(inputStream))
+                val lines = mutableListOf<String>()
+                var line: String? = reader.readLine()
+                while (line != null) {
+                    if (line.isNotBlank()) {
+                        lines.add(line)
+                    }
+                    line = reader.readLine()
+                }
+                inputStream.close()
+
+                if (lines.isEmpty()) {
+                    onResult(0, 0, 0, "Selected file is completely empty.")
+                    return@launch
+                }
+
+                // Identify headers and delimiter from the first line
+                val firstLine = lines[0]
+                val delimiter = if (firstLine.contains(";")) ";" else ","
+                
+                // Safe CSV parsing of header line
+                val rawHeaders = parseCsvLine(firstLine, delimiter).map { it.lowercase() }
+                
+                // Detect if first line contains common keywords as a header
+                val hasHeader = rawHeaders.any { 
+                    it == "imei" || it == "brand" || it == "variant" || it == "model" || it == "color" || it == "warehouse" || it == "specs" 
+                }
+
+                var startIdx = 0
+                var imeiIdx = 0
+                var brandIdx = 1
+                var modelIdx = 2
+                var specsIdx = 3
+                var colorIdx = 4
+                var whIdx = 5
+
+                if (hasHeader) {
+                    startIdx = 1
+                    imeiIdx = rawHeaders.indexOfFirst { it.contains("imei") || it.contains("serial") || it.contains("id") || it.contains("code") }.let { if (it == -1) 0 else it }
+                    brandIdx = rawHeaders.indexOfFirst { it.contains("brand") || it.contains("make") || it.contains("company") }.let { if (it == -1) 1 else it }
+                    modelIdx = rawHeaders.indexOfFirst { it.contains("model") || it.contains("variant") || it.contains("product") || it == "name" }.let { if (it == -1) 2 else it }
+                    specsIdx = rawHeaders.indexOfFirst { it.contains("spec") || it.contains("ram") || it.contains("storage") || it.contains("size") }.let { if (it == -1) 3 else it }
+                    colorIdx = rawHeaders.indexOfFirst { it.contains("color") || it.contains("colour") || it.contains("shade") }.let { if (it == -1) 4 else it }
+                    whIdx = rawHeaders.indexOfFirst { it.contains("warehouse") || it.contains("wh") || it.contains("loc") }.let { if (it == -1) 5 else it }
+                }
+
+                var success = 0
+                var dupCount = 0
+                var errCount = 0
+
+                val currentVariants = brandVariants.value
+                val creator = loggedInUser.value?.username ?: "CSV Bulk Import"
+
+                for (i in startIdx until lines.size) {
+                    val row = lines[i]
+                    val cols = parseCsvLine(row, delimiter)
+                    if (cols.isEmpty()) {
+                        errCount++
+                        continue
+                    }
+
+                    fun getCol(idx: Int, default: String) = if (idx >= 0 && idx < cols.size) cols[idx] else default
+
+                    val rawImei = getCol(imeiIdx, "")
+                    if (rawImei.isBlank()) {
+                        errCount++
+                        continue
+                    }
+
+                    val brand = getCol(brandIdx, "Generic").ifBlank { "Generic" }
+                    val rawModel = getCol(modelIdx, "Smartphone").ifBlank { "Smartphone" }
+                    val specs = getCol(specsIdx, "Base").ifBlank { "Base" }
+                    val color = getCol(colorIdx, "Black").ifBlank { "Black" }
+                    val wh = getCol(whIdx, "G").let { 
+                        if (it.uppercase().startsWith("O") || it.uppercase() == "O") "O" else "G"
+                    }
+
+                    // Auto-seed or verify Brand Variant model definitions inside Inventory items catalog
+                    val fullVariantName = "${rawModel} ${specs}".trim()
+                    val matchedPreset = currentVariants.find { 
+                        it.brand.equals(brand, ignoreCase = true) && 
+                        (it.modelName.equals(rawModel, ignoreCase = true) || 
+                         "${it.modelName} ${it.specs}".trim().equals(fullVariantName, ignoreCase = true)) 
+                    }
+
+                    if (matchedPreset == null) {
+                        val newPreset = com.example.data.model.BrandVariant(
+                            brand = brand,
+                            modelName = rawModel,
+                            specs = specs,
+                            color = color
+                        )
+                        try {
+                            repository.addBrandVariant(newPreset)
+                        } catch (e: Exception) {
+                            Log.e("StockViewModel", "Could not seed brand variant: ${e.message}")
+                        }
+                    }
+
+                    // Strict unique IMEI verification
+                    val existingItem = repository.getBrandStockItemByImei(rawImei)
+                    if (existingItem != null) {
+                        dupCount++
+                        continue
+                    }
+
+                    val stockItem = com.example.data.model.BrandStockItem(
+                        imei = rawImei,
+                        brand = brand,
+                        variant = fullVariantName,
+                        color = color,
+                        warehouse = wh,
+                        addedByUser = creator,
+                        addedDate = System.currentTimeMillis(),
+                        lastUpdated = System.currentTimeMillis()
+                    )
+
+                    val stockTx = com.example.data.model.BrandStockTransaction(
+                        imei = rawImei,
+                        brand = brand,
+                        variant = fullVariantName,
+                        color = color,
+                        warehouse = wh,
+                        type = "IN",
+                        dateInMillis = System.currentTimeMillis(),
+                        operator = creator,
+                        notes = "Imported via CSV Stock Sheet"
+                    )
+
+                    val result = repository.addBrandStock(stockItem, stockTx)
+                    if (result) {
+                        success++
+                    } else {
+                        dupCount++
+                    }
+                }
+
+                onResult(
+                    success, 
+                    dupCount, 
+                    errCount, 
+                    "Catalog synced completely! Successfully imported $success stock records. Ignored $dupCount duplicates, skipped $errCount faulty rows."
+                )
+            } catch (e: Exception) {
+                onResult(0, 0, 1, "CSV Import Error: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    private fun parseCsvLine(line: String, delimiter: String): List<String> {
+        val result = mutableListOf<String>()
+        var current = StringBuilder()
+        var inQuotes = false
+        var i = 0
+        while (i < line.length) {
+            val c = line[i]
+            if (c == '"') {
+                inQuotes = !inQuotes
+            } else if (c.toString() == delimiter && !inQuotes) {
+                result.add(current.toString().trim().replace(Regex("^\"|\"$"), ""))
+                current = StringBuilder()
+            } else {
+                current.append(c)
+            }
+            i++
+        }
+        result.add(current.toString().trim().replace(Regex("^\"|\"$"), ""))
+        return result
+    }
 }
 
 // Simple Factory provider

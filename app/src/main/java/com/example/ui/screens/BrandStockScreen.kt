@@ -12,6 +12,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -73,11 +74,27 @@ fun BrandStockScreen(viewModel: StockViewModel) {
     var selectedWarehouse by remember { mutableStateOf("Combined") } // "Combined", "G", "O"
     var searchQuery by remember { mutableStateOf("") }
 
+    // Status feedback state
+    var statusMessage by remember { mutableStateOf<String?>(null) }
+    var isErrorStatus by remember { mutableStateOf(false) }
+
     // Dialog state
     var showAddStockDialog by remember { mutableStateOf(false) }
     var showSellStockDialog by remember { mutableStateOf(false) }
     var showExportCsvDialog by remember { mutableStateOf(false) }
     var showAddVariantDialog by remember { mutableStateOf(false) }
+    var showImportCsvFileDialog by remember { mutableStateOf(false) }
+
+    val csvPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.importBrandStockCsv(context, uri) { success, dups, errs, msg ->
+                statusMessage = msg
+                isErrorStatus = success == 0
+            }
+        }
+    }
 
     // Scanner state
     var showQrScannerDialog by remember { mutableStateOf(false) }
@@ -89,9 +106,6 @@ fun BrandStockScreen(viewModel: StockViewModel) {
     var transactionToDelete by remember { mutableStateOf<BrandStockTransaction?>(null) }
     var variantToDelete by remember { mutableStateOf<com.example.data.model.BrandVariant?>(null) }
     
-    // Status feedback state
-    var statusMessage by remember { mutableStateOf<String?>(null) }
-    var isErrorStatus by remember { mutableStateOf(false) }
 
     // Prefill state for Stock Inwards Dialog
     var prefillBrand by remember { mutableStateOf("Oppo") }
@@ -732,6 +746,29 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                             }
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    OutlinedButton(
+                        onClick = {
+                            csvPickerLauncher.launch("*/*")
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .testTag("btn_brand_stock_csv_import"),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(Icons.Default.UploadFile, "Upload File")
+                            Text("Import Stock via CSV/Excel", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+                    }
                 }
             }
 
@@ -1206,13 +1243,6 @@ fun BrandStockScreen(viewModel: StockViewModel) {
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        text = "Generate and share audit-ready PDF sheets, Excel spreadsheets, or standard CSV files instantly:",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 4.dp)
-                    )
-                    
                     // 1. ACTIVE STOCK REPORT CARD
                     Card(
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
@@ -1411,7 +1441,10 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                 }
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
                     if (inputError != null) {
                         Text(
                             text = inputError!!,
@@ -1469,25 +1502,6 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                         }
                     }
 
-                    // Smart suggestion indicator
-                    if (matchingPresets.isNotEmpty()) {
-                        Text(
-                            text = "✨ Smart autocomplete active (${matchingPresets.size} items matching $addBrand)",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontSize = 11.sp,
-                            modifier = Modifier.padding(horizontal = 4.dp)
-                        )
-                    } else {
-                        Text(
-                            text = "💡 Tip: Go to the 'Items' tab to preload products and trigger smart autocomplete.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.secondary,
-                            fontSize = 11.sp,
-                            modifier = Modifier.padding(horizontal = 4.dp)
-                        )
-                    }
-
                     // Variant input with modern type-ahead dropdown
                     Box(modifier = Modifier.fillMaxWidth()) {
                         OutlinedTextField(
@@ -1533,36 +1547,47 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                         }
                     }
 
-                    // Color with option to enter in front of unique IMEI/Serial Number
+                    // Color with full width visibility
+                    OutlinedTextField(
+                        value = addColor,
+                        onValueChange = { addColor = it },
+                        label = { Text("Color") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("add_brand_color")
+                    )
+
+                    // IMEI field optimized for continuous multiple inputs
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         OutlinedTextField(
-                            value = addColor,
-                            onValueChange = { addColor = it },
-                            label = { Text("Color") },
-                            singleLine = true,
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.weight(0.44f).testTag("add_brand_color")
-                        )
-
-                        OutlinedTextField(
                             value = addImei,
-                            onValueChange = { addImei = it.trim() },
-                            label = { Text("IMEI / Serial") },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            onValueChange = { addImei = it },
+                            label = { Text("IMEI Number(s)") },
+                            placeholder = { Text("Enter IMEI numbers (separated by comma, space, or new line)") },
+                            singleLine = false,
+                            minLines = 3,
+                            maxLines = 5,
                             shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.weight(0.56f).testTag("add_brand_imei")
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("add_brand_imei")
                         )
 
                         IconButton(
                             onClick = {
                                 scannerModeInOrOut = true
                                 qrScannerCallback = { scannedResult ->
-                                    addImei = scannedResult
+                                    if (addImei.isBlank()) {
+                                        addImei = scannedResult
+                                    } else {
+                                        addImei = addImei.trim() + "\n" + scannedResult
+                                    }
                                     showQrScannerDialog = false
                                 }
                                 showQrScannerDialog = true
@@ -1607,8 +1632,9 @@ fun BrandStockScreen(viewModel: StockViewModel) {
             confirmButton = {
                 Button(
                     onClick = {
-                        if (addVariant.isBlank() || addColor.isBlank() || addImei.isBlank()) {
-                            inputError = "All fields (Variant, Color, IMEI) are required!"
+                        val imeiList = addImei.split(Regex("[,\\s\\n]+")).map { it.trim() }.filter { it.isNotBlank() }
+                        if (addVariant.isBlank() || addColor.isBlank() || imeiList.isEmpty()) {
+                            inputError = "Variant, Color and at least one valid IMEI are required!"
                             return@Button
                         }
                         // Validate if model/variant is available in Items
@@ -1618,25 +1644,28 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                              "${it.modelName} ${it.specs}".trim().equals(addVariant, ignoreCase = true)) 
                         }
                         if (!isValidPreset) {
-                            inputError = "Error: Variant '$addVariant' is not defined in inventory Items of $addBrand. It must be defined under Items first!"
+                            inputError = "Error: Variant '$addVariant' is not defined under Items first!"
                             return@Button
                         }
                         isSubmitting = true
-                        viewModel.addBrandStockItem(
+                        viewModel.addMultipleBrandStockItems(
                             brand = addBrand,
                             variant = addVariant,
                             color = addColor,
-                            imei = addImei,
+                            imeis = imeiList,
                             warehouse = addWh,
                             date = addDate
-                        ) { success ->
+                        ) { successCount, failedList ->
                             isSubmitting = false
-                            if (success) {
-                                statusMessage = "Successfully IN-taken phone IMEI: $addImei to Warehouse $addWh!"
+                            if (successCount > 0) {
+                                statusMessage = "Successfully added $successCount items to Warehouse $addWh!"
+                                if (failedList.isNotEmpty()) {
+                                    statusMessage += " (Skipped ${failedList.size} duplicates/errors: ${failedList.joinToString()})"
+                                }
                                 isErrorStatus = false
                                 showAddStockDialog = false
                             } else {
-                                inputError = "Duplicate IMEI found in inventory! Please verify IMEI has not already been stock in."
+                                inputError = "Duplicate IMEI(s) found! None of the entered IMEIs could be registered."
                             }
                         }
                     },
@@ -1666,25 +1695,39 @@ fun BrandStockScreen(viewModel: StockViewModel) {
         var sellImei by remember { mutableStateOf("") }
         var sellWh by remember { mutableStateOf("G") }
         var sellNotes by remember { mutableStateOf("") }
-        var matchingItem by remember { mutableStateOf<BrandStockItem?>(null) }
         var checkingImei by remember { mutableStateOf(false) }
         var isSubmitting by remember { mutableStateOf(false) }
         var inputError by remember { mutableStateOf<String?>(null) }
 
-        // Find match on IMEI update
+        // Multi-IMEI match and verified items collection
+        var recognizedItems by remember { mutableStateOf<List<BrandStockItem>>(emptyList()) }
+        var unrecognizedImeis by remember { mutableStateOf<List<String>>(emptyList()) }
+
+        // Find match dynamically on IMEI string update
         LaunchedEffect(sellImei) {
-            val query = sellImei.trim()
-            if (query.length >= 4) {
+            val queryList = sellImei.split(Regex("[,\\s\\n]+")).map { it.trim() }.filter { it.isNotBlank() }
+            if (queryList.isNotEmpty()) {
                 checkingImei = true
-                val fetched = viewModel.findBrandStockItemByImei(query)
-                matchingItem = fetched
-                if (fetched != null) {
-                    sellWh = fetched.warehouse // automatically switch to where it is stored
-                    inputError = null
+                val matches = mutableListOf<BrandStockItem>()
+                val unmatched = mutableListOf<String>()
+                for (code in queryList) {
+                    val item = viewModel.findBrandStockItemByImei(code)
+                    if (item != null) {
+                        matches.add(item)
+                    } else {
+                        unmatched.add(code)
+                    }
+                }
+                recognizedItems = matches
+                unrecognizedImeis = unmatched
+                if (matches.isNotEmpty()) {
+                    sellWh = matches[0].warehouse // Default dispatch location to first matching warehouse
                 }
                 checkingImei = false
             } else {
-                matchingItem = null
+                recognizedItems = emptyList()
+                unrecognizedImeis = emptyList()
+                checkingImei = false
             }
         }
 
@@ -1697,7 +1740,10 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                 }
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
                     if (inputError != null) {
                         Text(
                             text = inputError!!,
@@ -1707,7 +1753,7 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                         )
                     }
 
-                    // IMEI field with QR scanner shortcut
+                    // Multi-IMEI text field (full width)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -1715,19 +1761,27 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                     ) {
                         OutlinedTextField(
                             value = sellImei,
-                            onValueChange = { sellImei = it.trim() },
-                            label = { Text("Enter/Scan unique device IMEI") },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            onValueChange = { sellImei = it },
+                            label = { Text("Device IMEI(s) to Dispatch") },
+                            placeholder = { Text("Enter device IMEIs (comma, space or new line separated)") },
+                            singleLine = false,
+                            minLines = 3,
+                            maxLines = 5,
                             shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.weight(1f).testTag("sell_brand_imei")
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("sell_brand_imei")
                         )
 
                         IconButton(
                             onClick = {
                                 scannerModeInOrOut = false
                                 qrScannerCallback = { scannedResult ->
-                                    sellImei = scannedResult
+                                    if (sellImei.isBlank()) {
+                                        sellImei = scannedResult
+                                    } else {
+                                        sellImei = sellImei.trim() + "\n" + scannedResult
+                                    }
                                     showQrScannerDialog = false
                                 }
                                 showQrScannerDialog = true
@@ -1744,47 +1798,51 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                         }
                     }
 
-                    // Autocomplete indicators
+                    // Verification diagnostics feedback
                     if (checkingImei) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             CircularProgressIndicator(modifier = Modifier.size(14.dp))
-                            Text("Searching active stock...", style = MaterialTheme.typography.bodySmall)
+                            Text("Searching stock records...", style = MaterialTheme.typography.bodySmall)
                         }
-                    } else if (matchingItem != null) {
-                        val item = matchingItem!!
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                                    Text("Match Found:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
-                                    Text("Warehouse: ${item.warehouse}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                    } else {
+                        if (recognizedItems.isNotEmpty()) {
+                            Text(
+                                text = "✔ Matched Active Stock (${recognizedItems.size}):",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            recognizedItems.forEach { item ->
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                                            Text("IMEI: ${item.imei}", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                            Text("Wh: ${item.warehouse}", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                        Text("${item.brand} - ${item.variant}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
+                                        Text("Color: ${item.color}", fontSize = 11.sp, color = MaterialTheme.colorScheme.outline)
+                                    }
                                 }
-                                Text("Device: ${item.brand} - ${item.variant}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                                Text("Color: ${item.color}", style = MaterialTheme.typography.bodySmall)
-                                Text("Operator In: ${item.addedByUser}", style = MaterialTheme.typography.bodySmall, fontSize = 10.sp)
                             }
                         }
-                    } else if (sellImei.length >= 4) {
-                        Text(
-                            text = "⚠ IMEI not found in active inventory. Please verify code.",
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
 
-                    // Stored warehouse details mapped automatically
-                    if (matchingItem != null) {
-                        LaunchedEffect(matchingItem) {
-                            sellWh = matchingItem!!.warehouse
+                        if (unrecognizedImeis.isNotEmpty()) {
+                            Text(
+                                text = "⚠ Not Found in Active Inventory (${unrecognizedImeis.size}):",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                            Text(
+                                text = unrecognizedImeis.joinToString(),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                                fontSize = 11.sp
+                            )
                         }
-                        Text(
-                            text = "Mapped Warehouse for Dispatch: Warehouse $sellWh",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
                     }
 
                     // Optional Notes
@@ -1794,48 +1852,48 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                         label = { Text("Comment/Sale Notes (Optional)") },
                         singleLine = false,
                         shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.fillMaxWidth().testTag("sell_brand_notes")
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("sell_brand_notes")
                     )
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        if (matchingItem == null) {
-                            inputError = "You can only dispatch details of a valid IMEI from active stock!"
+                        val imeiList = sellImei.split(Regex("[,\\s\\n]+")).map { it.trim() }.filter { it.isNotBlank() }
+                        if (imeiList.isEmpty()) {
+                            inputError = "Please enter at least one IMEI to sell!"
                             return@Button
                         }
-                        // Validate if variant is defined in pre-existing Items
-                        val targetItem = matchingItem!!
-                        val isValidPresetForSell = brandVariants.any {
-                            it.brand.equals(targetItem.brand, ignoreCase = true) &&
-                            (it.modelName.equals(targetItem.variant, ignoreCase = true) ||
-                             "${it.modelName} ${it.specs}".trim().equals(targetItem.variant, ignoreCase = true))
-                        }
-                        if (!isValidPresetForSell) {
-                            inputError = "Error: Variant '${targetItem.variant}' is not defined in inventory Items. Cannot sell."
+                        if (recognizedItems.isEmpty()) {
+                            inputError = "No valid matching devices found in active stock!"
                             return@Button
                         }
 
                         isSubmitting = true
-                        viewModel.sellBrandStockItem(
-                            imei = sellImei,
+                        viewModel.sellMultipleBrandStockItems(
+                            imeis = recognizedItems.map { it.imei },
                             warehouse = sellWh,
                             date = System.currentTimeMillis(),
-                            notes = sellNotes.ifBlank { "Regular sales dispatch" }
-                        ) { success ->
+                            notes = sellNotes.ifBlank { "Regular sales dispatch (Bulk)" }
+                        ) { successCount, failedList ->
                             isSubmitting = false
-                            if (success) {
-                                statusMessage = "Successfully dispatched model with IMEI: $sellImei (Out from Warehouse $sellWh)"
+                            if (successCount > 0) {
+                                statusMessage = "Successfully dispatched $successCount device(s) outwards!"
+                                val ignoredCount = imeiList.size - successCount
+                                if (ignoredCount > 0) {
+                                    statusMessage += " (Skipped $ignoredCount invalid/untracked IMEIs)"
+                                }
                                 isErrorStatus = false
                                 showSellStockDialog = false
                             } else {
-                                inputError = "Failed to dispatch out device. Please check connection and try again."
+                                inputError = "Failed to sell devices. Please check that entered IMEIs correspond to actual available stock!"
                             }
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935)),
-                    enabled = !isSubmitting && matchingItem != null
+                    enabled = !isSubmitting && recognizedItems.isNotEmpty()
                 ) {
                     if (isSubmitting) {
                         CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White)
