@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -81,6 +82,8 @@ fun BrandStockScreen(viewModel: StockViewModel) {
     // Dialog state
     var showAddStockDialog by remember { mutableStateOf(false) }
     var showSellStockDialog by remember { mutableStateOf(false) }
+    var sellImei by remember { mutableStateOf("") }
+    var showCsvHelpDialog by remember { mutableStateOf(false) }
     var showExportCsvDialog by remember { mutableStateOf(false) }
     var showAddVariantDialog by remember { mutableStateOf(false) }
     var showImportCsvFileDialog by remember { mutableStateOf(false) }
@@ -650,31 +653,135 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                     }
                 } else {
                     Card(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
                         colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-                        )
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            horizontalArrangement = Arrangement.SpaceAround,
-                            verticalAlignment = Alignment.CenterVertically
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Total Stock", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("$totalInStock units", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text(
+                                        text = "CURRENT PHYSICAL STOCK STATUS",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontSize = 10.sp,
+                                        letterSpacing = 0.6.sp
+                                    )
+                                    Text(
+                                        text = "$totalInStock devices in stock",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Black,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                                
+                                val leaderBrand = remember(stockItems) {
+                                    if (stockItems.isEmpty()) "None"
+                                    else stockItems.groupBy { it.brand }
+                                        .maxByOrNull { it.value.size }?.key ?: "None"
+                                }
+                                if (leaderBrand != "None") {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(MaterialTheme.colorScheme.primaryContainer)
+                                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                                    ) {
+                                        Text(
+                                            text = "★ Leader: ${leaderBrand.uppercase()}",
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 9.sp,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                    }
+                                }
                             }
-                            VerticalDivider(modifier = Modifier.height(30.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Warehouse G", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("$gCount units", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                            }
-                            VerticalDivider(modifier = Modifier.height(30.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Warehouse O", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("$oCount units", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                            
+                            // Dual-tone split ratio bar between G and O warehouses
+                            if (totalInStock > 0) {
+                                val ratio = gCount.toFloat() / totalInStock.toFloat()
+                                val gPercent = (ratio * 100).toInt()
+                                val oPercent = 100 - gPercent
+                                
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(8.dp)
+                                            .clip(CircleShape)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxHeight()
+                                                .weight(if (ratio > 0f) ratio else 0.001f)
+                                                .background(Color(0xFF00ACC1)) // Cyan-teal for G
+                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxHeight()
+                                                .weight(if ((1f - ratio) > 0f) (1f - ratio) else 0.001f)
+                                                .background(Color(0xFFFF9800)) // Amber-orange for O
+                                        )
+                                    }
+                                    
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(Color(0xFF00ACC1)))
+                                            Text(
+                                                text = "Wh G: $gCount ($gPercent%)",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                fontSize = 11.sp
+                                            )
+                                        }
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Text(
+                                                text = "Wh O: $oCount ($oPercent%)",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                fontSize = 11.sp
+                                            )
+                                            Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(Color(0xFFFF9800)))
+                                        }
+                                    }
+                                }
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(6.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                )
+                                Text(
+                                    text = "No current stock resides across both warehouses.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 11.sp
+                                )
                             }
                         }
                     }
@@ -749,24 +856,43 @@ fun BrandStockScreen(viewModel: StockViewModel) {
 
                     Spacer(modifier = Modifier.height(6.dp))
 
-                    OutlinedButton(
-                        onClick = {
-                            csvPickerLauncher.launch("*/*")
-                        },
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(44.dp)
-                            .testTag("btn_brand_stock_csv_import"),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        OutlinedButton(
+                            onClick = {
+                                csvPickerLauncher.launch("*/*")
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
+                                .testTag("btn_brand_stock_csv_import"),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
                         ) {
-                            Icon(Icons.Default.UploadFile, "Upload File")
-                            Text("Import Stock via CSV/Excel", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(Icons.Default.UploadFile, "Upload File")
+                                Text("Import Stock via CSV/Excel", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            }
+                        }
+
+                        IconButton(
+                            onClick = { showCsvHelpDialog = true },
+                            modifier = Modifier
+                                .size(44.dp)
+                                .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Help,
+                                contentDescription = "Show CSV Format Guide",
+                                tint = MaterialTheme.colorScheme.secondary
+                            )
                         }
                     }
                 }
@@ -857,9 +983,16 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                     }
                 } else {
                     items(filteredStockItems) { item ->
-                        BrandStockItemCard(item, isAdmin) {
-                            itemToDelete = item
-                        }
+                        BrandStockItemCard(
+                            item = item,
+                            isAdmin = isAdmin,
+                            onDelete = { itemToDelete = item },
+                            onTraceClick = { searchQuery = it },
+                            onDispatchClick = { imei ->
+                                sellImei = imei
+                                showSellStockDialog = true
+                            }
+                        )
                     }
                 }
             } else if (activeSubTab == 1) {
@@ -1223,6 +1356,134 @@ fun BrandStockScreen(viewModel: StockViewModel) {
         } catch (e: Exception) {
             Toast.makeText(context, "Export error: ${e.message}", Toast.LENGTH_LONG).show()
         }
+    }
+
+    if (showCsvHelpDialog) {
+        AlertDialog(
+            onDismissRequest = { showCsvHelpDialog = false },
+            title = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = "CSV Guide",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Text("CSV Import Guide", fontWeight = FontWeight.Black)
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "To import stock in bulk, upload a CSV file matching the column header structure below (order does not matter).",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    // Required Columns Section
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                "EXPECTED COLS (CASE-INSENSITIVE):",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            listOf(
+                                "imei" to "15-digit unique serial number (Required)",
+                                "brand" to "e.g. Oppo, Vivo, Samsung, Realme (Required)",
+                                "model" to "Model / Variant label (Required)",
+                                "specs" to "RAM, storage, or configuration specs (Optional)",
+                                "color" to "Device paint color name (Optional)",
+                                "warehouse" to "Target warehouse 'G' or 'O' (Optional, defaults to G)"
+                            ).forEach { (col, desc) ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.Top
+                                ) {
+                                    Text("•", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
+                                    Column {
+                                        Text(col, fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                                        Text(desc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Sample CSV Section
+                    Text(
+                        "SAMPLE CSV FILE STRUCTURE:",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+
+                    val sampleCsvContent = """
+                        imei,brand,model,specs,color,warehouse
+                        862509100258102,Oppo,Reno 11,12GB 256GB,Midnight Black,G
+                        862509100258203,Vivo,V29,8GB 256GB,Noble Black,O
+                        862509100258305,Samsung,S24,12GB 512GB,Amber Yellow,G
+                    """.trimIndent()
+
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+                        ),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Text(
+                                text = sampleCsvContent,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    // Copy action button
+                    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+                    Button(
+                        onClick = {
+                            clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(sampleCsvContent))
+                            Toast.makeText(context, "Sample CSV Template Copied!", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(Icons.Default.ContentCopy, "Copy Template")
+                            Text("Copy CSV Template", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showCsvHelpDialog = false }) {
+                    Text("Close Guide", fontWeight = FontWeight.Bold)
+                }
+            }
+        )
     }
 
     if (showExportCsvDialog) {
@@ -1692,7 +1953,6 @@ fun BrandStockScreen(viewModel: StockViewModel) {
 
     // 2. DISPATCH / SALE OUT DIALOG
     if (showSellStockDialog) {
-        var sellImei by remember { mutableStateOf("") }
         var sellWh by remember { mutableStateOf("G") }
         var sellNotes by remember { mutableStateOf("") }
         var checkingImei by remember { mutableStateOf(false) }
@@ -1732,7 +1992,7 @@ fun BrandStockScreen(viewModel: StockViewModel) {
         }
 
         AlertDialog(
-            onDismissRequest = { if (!isSubmitting) showSellStockDialog = false },
+            onDismissRequest = { if (!isSubmitting) { showSellStockDialog = false; sellImei = "" } },
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(Icons.Default.ArrowDownward, "Outward", tint = Color(0xFFE53935))
@@ -1887,6 +2147,7 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                                 }
                                 isErrorStatus = false
                                 showSellStockDialog = false
+                                sellImei = ""
                             } else {
                                 inputError = "Failed to sell devices. Please check that entered IMEIs correspond to actual available stock!"
                             }
@@ -1904,7 +2165,7 @@ fun BrandStockScreen(viewModel: StockViewModel) {
             },
             dismissButton = {
                 TextButton(
-                    onClick = { showSellStockDialog = false },
+                    onClick = { showSellStockDialog = false; sellImei = "" },
                     enabled = !isSubmitting
                 ) {
                     Text("Cancel")
@@ -2323,7 +2584,9 @@ fun BrandStockScreen(viewModel: StockViewModel) {
 fun BrandStockItemCard(
     item: BrandStockItem,
     isAdmin: Boolean = false,
-    onDelete: (() -> Unit)? = null
+    onDelete: (() -> Unit)? = null,
+    onTraceClick: ((String) -> Unit)? = null,
+    onDispatchClick: ((String) -> Unit)? = null
 ) {
     val dateStr = remember(item.addedDate) {
         SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(item.addedDate))
@@ -2418,34 +2681,101 @@ fun BrandStockItemCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = "IMEI / Serial",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                     )
-                    Text(
-                        text = item.imei,
-                        fontWeight = FontWeight.ExtraBold,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = item.imei,
+                            fontWeight = FontWeight.ExtraBold,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        
+                        // Copy to Clipboard shortcut
+                        val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+                        val context = androidx.compose.ui.platform.LocalContext.current
+                        Icon(
+                            imageVector = Icons.Default.ContentCopy,
+                            contentDescription = "Copy IMEI",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier
+                                .size(14.dp)
+                                .clickable {
+                                    clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(item.imei))
+                                    Toast.makeText(context, "IMEI Copied to Clipboard!", Toast.LENGTH_SHORT).show()
+                                }
+                        )
+                    }
                 }
 
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        text = "By ${item.addedByUser}",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = dateStr,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                        fontSize = 10.sp
-                    )
+                // Inline quick action shortcuts
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (onTraceClick != null) {
+                        SuggestionChip(
+                            onClick = { onTraceClick(item.imei) },
+                            label = { 
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(Icons.Default.History, null, modifier = Modifier.size(10.dp))
+                                    Text("Trace", fontSize = 10.sp)
+                                }
+                            },
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+                            modifier = Modifier.height(28.dp)
+                        )
+                    }
+                    if (onDispatchClick != null) {
+                        SuggestionChip(
+                            onClick = { onDispatchClick(item.imei) },
+                            label = { 
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(Icons.Default.ArrowDownward, null, modifier = Modifier.size(10.dp))
+                                    Text("Out", fontSize = 10.sp)
+                                }
+                            },
+                            colors = SuggestionChipDefaults.suggestionChipColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f),
+                                labelColor = MaterialTheme.colorScheme.error
+                            ),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.3f)),
+                            modifier = Modifier.height(28.dp)
+                        )
+                    }
                 }
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Added by ${item.addedByUser}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = dateStr,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                )
             }
         }
     }
