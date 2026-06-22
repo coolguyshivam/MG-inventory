@@ -1908,7 +1908,7 @@ fun BrandStockScreen(viewModel: StockViewModel) {
             text = {
                 Column(
                     modifier = Modifier.verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     if (inputError != null) {
                         Text(
@@ -1919,135 +1919,19 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                         )
                     }
 
-                    // Brand Dropdown Selector
-                    Box {
-                        OutlinedButton(
-                            onClick = { expandedBrandDropdown = true },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("Select Brand:  $addBrand")
-                                Icon(Icons.Default.ArrowDropDown, "Select Brand options")
-                            }
-                        }
-                        DropdownMenu(
-                            expanded = expandedBrandDropdown,
-                            onDismissRequest = { expandedBrandDropdown = false }
-                        ) {
-                            brands.forEach { b ->
-                                DropdownMenuItem(
-                                    text = { Text(b) },
-                                    onClick = {
-                                        addBrand = b
-                                        expandedBrandDropdown = false
-                                    }
-                                )
-                            }
-                        }
-                    }
-
-                    // Smart type-ahead autocompletion presets
-                    val matchingPresets = remember(brandVariants, addBrand) {
-                        brandVariants.filter { it.brand.equals(addBrand, ignoreCase = true) }
-                    }
-                    var showVariantSuggestions by remember { mutableStateOf(false) }
-                    val typedSuggestions = remember(addVariant, matchingPresets) {
-                        if (addVariant.isBlank()) {
-                            matchingPresets
-                        } else {
-                            matchingPresets.filter {
-                                it.modelName.contains(addVariant, ignoreCase = true) ||
-                                it.specs.contains(addVariant, ignoreCase = true)
-                            }
-                        }
-                    }
-
-                    // Variant input with modern type-ahead dropdown
-                    Box(modifier = Modifier.fillMaxWidth()) {
-                        OutlinedTextField(
-                            value = addVariant,
-                            onValueChange = {
-                                addVariant = it
-                                showVariantSuggestions = true
-                            },
-                            label = { Text("Model Variant (e.g. Reno 11 Pro 12GB/256GB)") },
-                            singleLine = true,
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("add_brand_variant")
-                        )
-
-                        if (showVariantSuggestions && typedSuggestions.isNotEmpty()) {
-                            DropdownMenu(
-                                expanded = showVariantSuggestions,
-                                onDismissRequest = { showVariantSuggestions = false },
-                                properties = androidx.compose.ui.window.PopupProperties(focusable = false),
-                                modifier = Modifier.fillMaxWidth(0.85f)
-                            ) {
-                                typedSuggestions.forEach { preset ->
-                                    DropdownMenuItem(
-                                        text = {
-                                            Column {
-                                                Text(preset.modelName, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                                val detailText = if (preset.color.isBlank()) preset.specs else "${preset.specs} | ${preset.color}"
-                                                Text(detailText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline, fontSize = 11.sp)
-                                            }
-                                        },
-                                        onClick = {
-                                            addVariant = "${preset.modelName} ${preset.specs}".trim()
-                                            if (preset.color.isNotBlank()) {
-                                                addColor = preset.color
-                                                // Pre-fill the colors of empty rows
-                                                stockInRows = stockInRows.map { 
-                                                    if (it.second.isBlank()) Pair(it.first, preset.color) else it 
-                                                }
-                                            }
-                                            showVariantSuggestions = false
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    // Default Color with full width visibility (acts as template)
-                    OutlinedTextField(
-                        value = addColor,
-                        onValueChange = { newVal -> 
-                            addColor = newVal 
-                            // Auto-fill color of any row that is currently empty or matches old color
-                            stockInRows = stockInRows.map { 
-                                if (it.second.isBlank()) Pair(it.first, newVal) else it 
-                            }
-                        },
-                        label = { Text("Default Template Color") },
-                        singleLine = true,
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("add_brand_color")
-                    )
-
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text("Device Serials and Colors:", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-
-                    // Realigned, sleek dynamic list of IMEIs and individual colors
-                    stockInRows.forEachIndexed { index, row ->
-                        Card(
-                            shape = RoundedCornerShape(8.dp),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(10.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                    // Combined Brand Dropdown and Model Variant in exactly 1 Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Brand Dropdown Selector
+                        Box(modifier = Modifier.weight(1f)) {
+                            OutlinedButton(
+                                onClick = { expandedBrandDropdown = true },
+                                modifier = Modifier.fillMaxWidth().height(48.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp)
                             ) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -2055,52 +1939,132 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = "Item #${index + 1}",
-                                        fontWeight = FontWeight.Bold,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.secondary
+                                        text = addBrand,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                     )
-                                    if (stockInRows.size > 1) {
-                                        IconButton(
-                                            onClick = {
-                                                stockInRows = stockInRows.toMutableList().apply {
-                                                    removeAt(index)
+                                    Icon(Icons.Default.ArrowDropDown, "Select Brand Options", modifier = Modifier.size(18.dp))
+                                }
+                            }
+                            DropdownMenu(
+                                expanded = expandedBrandDropdown,
+                                onDismissRequest = { expandedBrandDropdown = false }
+                            ) {
+                                brands.forEach { b ->
+                                    DropdownMenuItem(
+                                        text = { Text(b) },
+                                        onClick = {
+                                            addBrand = b
+                                            expandedBrandDropdown = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        // Smart type-ahead autocompletion presets for Variant
+                        val matchingPresets = remember(brandVariants, addBrand) {
+                            brandVariants.filter { it.brand.equals(addBrand, ignoreCase = true) }
+                        }
+                        var showVariantSuggestions by remember { mutableStateOf(false) }
+                        val typedSuggestions = remember(addVariant, matchingPresets) {
+                            if (addVariant.isBlank()) {
+                                matchingPresets
+                            } else {
+                                matchingPresets.filter {
+                                    it.modelName.contains(addVariant, ignoreCase = true) ||
+                                    it.specs.contains(addVariant, ignoreCase = true)
+                                }
+                            }
+                        }
+
+                        // Variant input with modern type-ahead dropdown
+                        Box(modifier = Modifier.weight(2.2f)) {
+                            OutlinedTextField(
+                                value = addVariant,
+                                onValueChange = {
+                                    addVariant = it
+                                    showVariantSuggestions = true
+                                },
+                                placeholder = { Text("Model Variant Specs", style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp)) },
+                                singleLine = true,
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                                    .testTag("add_brand_variant")
+                            )
+
+                            if (showVariantSuggestions && typedSuggestions.isNotEmpty()) {
+                                DropdownMenu(
+                                    expanded = showVariantSuggestions,
+                                    onDismissRequest = { showVariantSuggestions = false },
+                                    properties = androidx.compose.ui.window.PopupProperties(focusable = false),
+                                    modifier = Modifier.fillMaxWidth(0.65f)
+                                ) {
+                                    typedSuggestions.forEach { preset ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Column {
+                                                    Text(preset.modelName, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                    val detailText = if (preset.color.isBlank()) preset.specs else "${preset.specs} | ${preset.color}"
+                                                    Text(detailText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline, fontSize = 11.sp)
                                                 }
                                             },
-                                            modifier = Modifier.size(28.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Delete,
-                                                contentDescription = "Remove item",
-                                                tint = MaterialTheme.colorScheme.error,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                        }
+                                            onClick = {
+                                                addVariant = "${preset.modelName} ${preset.specs}".trim()
+                                                if (preset.color.isNotBlank()) {
+                                                    addColor = preset.color
+                                                    // Pre-fill colors of any empty row
+                                                    stockInRows = stockInRows.map { 
+                                                        if (it.second.isBlank() || it.second == "Unknown") Pair(it.first, preset.color) else it 
+                                                    }
+                                                }
+                                                showVariantSuggestions = false
+                                            }
+                                        )
                                     }
                                 }
+                            }
+                        }
+                    }
 
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    // IMEI Field
-                                    OutlinedTextField(
-                                        value = row.first,
-                                        onValueChange = { newVal ->
-                                            if (newVal.contains(",") || newVal.contains(" ") || newVal.contains("\n")) {
-                                                val split = newVal.split(Regex("[,\\s\\n]+")).map { it.trim() }.filter { it.isNotBlank() }
-                                                if (split.size > 1) {
-                                                    stockInRows = stockInRows.toMutableList().apply {
-                                                        val currentColor = this[index].second
-                                                        this[index] = Pair(split[0], currentColor)
-                                                        for (i in 1 until split.size) {
-                                                            add(Pair(split[i], currentColor))
-                                                        }
-                                                    }
-                                                } else {
-                                                    stockInRows = stockInRows.toMutableList().apply {
-                                                        this[index] = Pair(newVal, this[index].second)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text("Device Serials and Colors:", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+
+                    // Unified visual column layout representing sleek compact device records
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        stockInRows.forEachIndexed { index, row ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                // Unified index number indicator
+                                Text(
+                                    text = "${index + 1}.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.secondary,
+                                    modifier = Modifier.width(20.dp)
+                                )
+
+                                // Real-time high-density IMEI Field (comfortable fit for 15/16 digits)
+                                OutlinedTextField(
+                                    value = row.first,
+                                    onValueChange = { newVal ->
+                                        if (newVal.contains(",") || newVal.contains(" ") || newVal.contains("\n")) {
+                                            val split = newVal.split(Regex("[,\\s\\n]+")).map { it.trim() }.filter { it.isNotBlank() }
+                                            if (split.size > 1) {
+                                                stockInRows = stockInRows.toMutableList().apply {
+                                                    val currentColor = this[index].second
+                                                    this[index] = Pair(split[0], currentColor)
+                                                    for (i in 1 until split.size) {
+                                                        add(Pair(split[i], currentColor))
                                                     }
                                                 }
                                             } else {
@@ -2108,54 +2072,84 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                                                     this[index] = Pair(newVal, this[index].second)
                                                 }
                                             }
-                                        },
-                                        placeholder = { Text("IMEI") },
-                                        singleLine = true,
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                        shape = RoundedCornerShape(8.dp),
-                                        modifier = Modifier
-                                            .weight(1.3f)
-                                            .testTag("add_brand_imei_$index")
-                                    )
+                                        } else {
+                                            stockInRows = stockInRows.toMutableList().apply {
+                                                this[index] = Pair(newVal, this[index].second)
+                                            }
+                                        }
+                                    },
+                                    placeholder = { Text("IMEI (15-16 Digits)", fontSize = 12.sp) },
+                                    textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier
+                                        .weight(1.8f)
+                                        .height(48.dp)
+                                        .testTag("add_brand_imei_$index")
+                                )
 
-                                    // Barcode scanning camera icon launcher directly attached
+                                // Direct integrated inline QR / Barcode Scanner launcher button
+                                IconButton(
+                                    onClick = {
+                                        scannerModeInOrOut = true
+                                        qrScannerCallback = { scannedResult ->
+                                            stockInRows = stockInRows.toMutableList().apply {
+                                                this[index] = Pair(scannedResult, this[index].second)
+                                            }
+                                            showQrScannerDialog = false
+                                        }
+                                        showQrScannerDialog = true
+                                    },
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.QrCode,
+                                        contentDescription = "Scan IMEI",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+
+                                // Color input taking about half-row size
+                                OutlinedTextField(
+                                    value = row.second,
+                                    onValueChange = { newVal ->
+                                        stockInRows = stockInRows.toMutableList().apply {
+                                            this[index] = Pair(this[index].first, newVal)
+                                        }
+                                    },
+                                    placeholder = { Text("Color", fontSize = 12.sp) },
+                                    textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier
+                                        .weight(0.9f)
+                                        .height(48.dp)
+                                        .testTag("add_brand_color_$index")
+                                )
+
+                                // Delete option if there are multiple serials
+                                if (stockInRows.size > 1) {
                                     IconButton(
                                         onClick = {
-                                            scannerModeInOrOut = true
-                                            qrScannerCallback = { scannedResult ->
-                                                stockInRows = stockInRows.toMutableList().apply {
-                                                    this[index] = Pair(scannedResult, this[index].second)
-                                                }
-                                                showQrScannerDialog = false
+                                            stockInRows = stockInRows.toMutableList().apply {
+                                                removeAt(index)
                                             }
-                                            showQrScannerDialog = true
                                         },
-                                        modifier = Modifier
-                                            .size(46.dp)
-                                            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                        modifier = Modifier.size(28.dp)
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.QrCode,
-                                            contentDescription = "Scan IMEI for item #${index + 1}",
-                                            tint = MaterialTheme.colorScheme.primary
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = "Remove item",
+                                            tint = MaterialTheme.colorScheme.error,
+                                            modifier = Modifier.size(16.dp)
                                         )
                                     }
-
-                                    // Color Field entered manually
-                                    OutlinedTextField(
-                                        value = row.second,
-                                        onValueChange = { newVal ->
-                                            stockInRows = stockInRows.toMutableList().apply {
-                                                this[index] = Pair(this[index].first, newVal)
-                                            }
-                                        },
-                                        placeholder = { Text("Color") },
-                                        singleLine = true,
-                                        shape = RoundedCornerShape(8.dp),
-                                        modifier = Modifier
-                                            .weight(0.9f)
-                                            .testTag("add_brand_color_$index")
-                                    )
+                                } else {
+                                    Spacer(modifier = Modifier.size(28.dp))
                                 }
                             }
                         }
@@ -2164,13 +2158,14 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                     // Button to add another device row beautifully
                     TextButton(
                         onClick = {
-                            stockInRows = stockInRows + Pair("", addColor)
+                            val nextDefaultsColor = stockInRows.lastOrNull()?.second?.ifBlank { addColor } ?: addColor
+                            stockInRows = stockInRows + Pair("", nextDefaultsColor)
                         },
                         modifier = Modifier.align(Alignment.CenterHorizontally)
                     ) {
-                        Icon(Icons.Default.Add, "Add device row")
+                        Icon(Icons.Default.Add, "Add device row", modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Add Another Device Serial")
+                        Text("Add Another Device Serial", fontSize = 13.sp)
                     }
 
                     // Warehouse selection radio buttons
