@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.example.ui.components.BarcodeScannerMockDialog
 import com.example.ui.viewmodel.StockViewModel
+import com.example.util.AppUtils
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -226,6 +227,10 @@ fun TransactionsScreen(viewModel: StockViewModel) {
     var showDatePicker by remember { mutableStateOf(false) }
     var scannerIndex by remember { mutableStateOf<Int?>(null) }
     val transactionSubItems by viewModel.transactionSubItems.collectAsStateWithLifecycle()
+
+    var showImeiConfirmDialog by remember { mutableStateOf(false) }
+    var pendingImeisToConfirm by remember { mutableStateOf<List<String>>(emptyList()) }
+    var onConfirmProceedAction by remember { mutableStateOf<(() -> Unit)?>(null) }
 
     // Date formatting helper
     val formattedDate = remember(dateInMillis) {
@@ -921,7 +926,18 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                     triggerAllTouched()
                     val validationErr = getRealtimeError()
                     if (validationErr == null) {
-                        viewModel.executeTransaction()
+                        val invalidImeis = transactionSubItems
+                            .map { it.serialNumber.trim() }
+                            .filter { !AppUtils.isValidImei(it) }
+                        if (invalidImeis.isNotEmpty()) {
+                            pendingImeisToConfirm = invalidImeis
+                            showImeiConfirmDialog = true
+                            onConfirmProceedAction = {
+                                viewModel.executeTransaction()
+                            }
+                        } else {
+                            viewModel.executeTransaction()
+                        }
                     } else {
                         Toast.makeText(context, "Please correct the highlighted validation errors.", Toast.LENGTH_SHORT).show()
                     }
@@ -975,6 +991,35 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                     scannerIndex = null
                 },
                 suggestedImeis = suggestedImeis
+            )
+        }
+
+        if (showImeiConfirmDialog) {
+            AlertDialog(
+                onDismissRequest = { showImeiConfirmDialog = false },
+                title = { Text("Invalid IMEI(s) Detected", fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("The following IMEI numbers fail standard Luhn algorithm check:")
+                        pendingImeisToConfirm.forEach {
+                            Text("• $it", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                        }
+                        Text("Do you want to keep them as serial numbers anyway, or correct them?")
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        showImeiConfirmDialog = false
+                        onConfirmProceedAction?.invoke()
+                    }) {
+                        Text("Keep Serial")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showImeiConfirmDialog = false }) {
+                        Text("Go Back & Correct")
+                    }
+                }
             )
         }
 

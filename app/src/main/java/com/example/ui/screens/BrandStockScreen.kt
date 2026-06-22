@@ -42,6 +42,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.model.BrandStockItem
 import com.example.data.model.BrandStockTransaction
 import com.example.ui.viewmodel.StockViewModel
+import com.example.util.AppUtils
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
@@ -108,6 +109,11 @@ fun BrandStockScreen(viewModel: StockViewModel) {
     var itemToDelete by remember { mutableStateOf<BrandStockItem?>(null) }
     var transactionToDelete by remember { mutableStateOf<BrandStockTransaction?>(null) }
     var variantToDelete by remember { mutableStateOf<com.example.data.model.BrandVariant?>(null) }
+
+    val expandedGroups = remember { mutableStateMapOf<String, Boolean>() }
+    var showImeiConfirmDialog by remember { mutableStateOf(false) }
+    var pendingImeisToConfirm by remember { mutableStateOf<List<String>>(emptyList()) }
+    var onConfirmProceedAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     
 
     // Prefill state for Stock Inwards Dialog
@@ -195,6 +201,10 @@ fun BrandStockScreen(viewModel: StockViewModel) {
     val totalInStock = filteredStockItems.size
     val gCount = filteredStockItems.count { it.warehouse.equals("G", ignoreCase = true) }
     val oCount = filteredStockItems.count { it.warehouse.equals("O", ignoreCase = true) }
+
+    val groupedStock = remember(filteredStockItems) {
+        filteredStockItems.groupBy { "${it.brand.uppercase()} ${it.variant}" }
+    }
 
     Box(
         modifier = Modifier
@@ -982,17 +992,211 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                         }
                     }
                 } else {
-                    items(filteredStockItems) { item ->
-                        BrandStockItemCard(
-                            item = item,
-                            isAdmin = isAdmin,
-                            onDelete = { itemToDelete = item },
-                            onTraceClick = { searchQuery = it },
-                            onDispatchClick = { imei ->
-                                sellImei = imei
-                                showSellStockDialog = true
+                    groupedStock.forEach { (modelName, itemsList) ->
+                        item(key = modelName) {
+                            val isExpanded = expandedGroups[modelName] ?: false
+                            Card(
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (isExpanded) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surface
+                                ),
+                                border = BorderStroke(1.dp, if (isExpanded) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outlineVariant),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
+                                    .clickable {
+                                        expandedGroups[modelName] = !isExpanded
+                                    }
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp)) {
+                                    // Header Row
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = modelName,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                style = MaterialTheme.typography.titleMedium,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = "${itemsList.size} in stock",
+                                                fontWeight = FontWeight.Bold,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            // Split summary of G vs O for this model:
+                                            val gSubCount = itemsList.count { it.warehouse.equals("G", ignoreCase = true) }
+                                            val oSubCount = itemsList.size - gSubCount
+                                            if (gSubCount > 0) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(6.dp))
+                                                        .background(Color(0xFFE0F7FA))
+                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text("G: $gSubCount", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF006064))
+                                                }
+                                            }
+                                            if (oSubCount > 0) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(6.dp))
+                                                        .background(Color(0xFFFFF3E0))
+                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text("O: $oSubCount", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
+                                                }
+                                            }
+
+                                            Icon(
+                                                imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                                contentDescription = if (isExpanded) "Collapse list" else "Expand list"
+                                            )
+                                        }
+                                    }
+
+                                    if (isExpanded) {
+                                        Spacer(modifier = Modifier.height(10.dp))
+                                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                        Spacer(modifier = Modifier.height(10.dp))
+
+                                        // Collapsible IMEI lists grouped inside Card
+                                        Column(
+                                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            itemsList.forEach { subItem ->
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .background(
+                                                            MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
+                                                            RoundedCornerShape(8.dp)
+                                                        )
+                                                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                                        .padding(10.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                        ) {
+                                                            Text(
+                                                                text = subItem.imei,
+                                                                fontWeight = FontWeight.ExtraBold,
+                                                                style = MaterialTheme.typography.bodyMedium,
+                                                                color = MaterialTheme.colorScheme.primary,
+                                                                modifier = Modifier.testTag("stock_item_imei_${subItem.imei}")
+                                                            )
+
+                                                            val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+                                                            val ctx = androidx.compose.ui.platform.LocalContext.current
+                                                            Icon(
+                                                                imageVector = Icons.Default.ContentCopy,
+                                                                contentDescription = "Copy IMEI",
+                                                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                                                modifier = Modifier
+                                                                    .size(14.dp)
+                                                                    .clickable {
+                                                                        clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(subItem.imei))
+                                                                        Toast.makeText(ctx, "IMEI Copied!", Toast.LENGTH_SHORT).show()
+                                                                    }
+                                                            )
+                                                        }
+                                                        
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                            modifier = Modifier.padding(top = 4.dp)
+                                                        ) {
+                                                            // Color field manually entered for each IMEI
+                                                            Text(
+                                                                text = "Color: ${subItem.color.ifBlank { "Unknown" }}",
+                                                                style = MaterialTheme.typography.bodySmall,
+                                                                fontWeight = FontWeight.Medium,
+                                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                            )
+                                                            
+                                                            Text("•", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f), fontSize = 10.sp)
+
+                                                            // Wh badge
+                                                            Text(
+                                                                text = "Wh: ${subItem.warehouse}",
+                                                                style = MaterialTheme.typography.bodySmall,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = if (subItem.warehouse.equals("G", ignoreCase = true)) Color(0xFF006064) else Color(0xFFE65100)
+                                                            )
+                                                        }
+                                                    }
+
+                                                    // Inline mini control buttons
+                                                    Row(
+                                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        // Trace/timeline search
+                                                        IconButton(
+                                                            onClick = { searchQuery = subItem.imei },
+                                                            modifier = Modifier.size(32.dp)
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.History,
+                                                                contentDescription = "Trace IMEI",
+                                                                tint = MaterialTheme.colorScheme.secondary,
+                                                                modifier = Modifier.size(16.dp)
+                                                            )
+                                                        }
+
+                                                        // Out (Dispatch / Sale)
+                                                        IconButton(
+                                                            onClick = { 
+                                                                sellImei = subItem.imei
+                                                                showSellStockDialog = true 
+                                                            },
+                                                            modifier = Modifier.size(32.dp)
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.ArrowDownward,
+                                                                contentDescription = "Stock Out",
+                                                                tint = Color(0xFFE53935),
+                                                                modifier = Modifier.size(16.dp)
+                                                            )
+                                                        }
+
+                                                        // Delete (if Admin)
+                                                        if (isAdmin) {
+                                                            IconButton(
+                                                                onClick = { itemToDelete = subItem },
+                                                                modifier = Modifier.size(32.dp)
+                                                            ) {
+                                                                Icon(
+                                                                    imageVector = Icons.Default.Delete,
+                                                                    contentDescription = "Delete",
+                                                                    tint = MaterialTheme.colorScheme.error,
+                                                                    modifier = Modifier.size(16.dp)
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
-                        )
+                        }
                     }
                 }
             } else if (activeSubTab == 1) {
@@ -1686,7 +1890,7 @@ fun BrandStockScreen(viewModel: StockViewModel) {
         var addBrand by remember(prefillBrand) { mutableStateOf(prefillBrand) }
         var addVariant by remember(prefillVariant) { mutableStateOf(prefillVariant) }
         var addColor by remember(prefillColor) { mutableStateOf(prefillColor) }
-        var addImei by remember { mutableStateOf("") }
+        var stockInRows by remember { mutableStateOf(listOf(Pair("", prefillColor))) }
         var addWh by remember { mutableStateOf("G") }
         var addDate by remember { mutableStateOf(System.currentTimeMillis()) }
         var isSubmitting by remember { mutableStateOf(false) }
@@ -1799,6 +2003,10 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                                             addVariant = "${preset.modelName} ${preset.specs}".trim()
                                             if (preset.color.isNotBlank()) {
                                                 addColor = preset.color
+                                                // Pre-fill the colors of empty rows
+                                                stockInRows = stockInRows.map { 
+                                                    if (it.second.isBlank()) Pair(it.first, preset.color) else it 
+                                                }
                                             }
                                             showVariantSuggestions = false
                                         }
@@ -1808,11 +2016,17 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                         }
                     }
 
-                    // Color with full width visibility
+                    // Default Color with full width visibility (acts as template)
                     OutlinedTextField(
                         value = addColor,
-                        onValueChange = { addColor = it },
-                        label = { Text("Color") },
+                        onValueChange = { newVal -> 
+                            addColor = newVal 
+                            // Auto-fill color of any row that is currently empty or matches old color
+                            stockInRows = stockInRows.map { 
+                                if (it.second.isBlank()) Pair(it.first, newVal) else it 
+                            }
+                        },
+                        label = { Text("Default Template Color") },
                         singleLine = true,
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier
@@ -1820,49 +2034,143 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                             .testTag("add_brand_color")
                     )
 
-                    // IMEI field optimized for continuous multiple inputs
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = addImei,
-                            onValueChange = { addImei = it },
-                            label = { Text("IMEI Number(s)") },
-                            placeholder = { Text("Enter IMEI numbers (separated by comma, space, or new line)") },
-                            singleLine = false,
-                            minLines = 3,
-                            maxLines = 5,
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("add_brand_imei")
-                        )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("Device Serials and Colors:", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
 
-                        IconButton(
-                            onClick = {
-                                scannerModeInOrOut = true
-                                qrScannerCallback = { scannedResult ->
-                                    if (addImei.isBlank()) {
-                                        addImei = scannedResult
-                                    } else {
-                                        addImei = addImei.trim() + "\n" + scannedResult
-                                    }
-                                    showQrScannerDialog = false
-                                }
-                                showQrScannerDialog = true
-                            },
-                            modifier = Modifier
-                                .size(52.dp)
-                                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                    // Realigned, sleek dynamic list of IMEIs and individual colors
+                    stockInRows.forEachIndexed { index, row ->
+                        Card(
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.QrCode,
-                                contentDescription = "Scan IMEI Barcode",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
+                            Column(
+                                modifier = Modifier.padding(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Item #${index + 1}",
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.secondary
+                                    )
+                                    if (stockInRows.size > 1) {
+                                        IconButton(
+                                            onClick = {
+                                                stockInRows = stockInRows.toMutableList().apply {
+                                                    removeAt(index)
+                                                }
+                                            },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Delete,
+                                                contentDescription = "Remove item",
+                                                tint = MaterialTheme.colorScheme.error,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    // IMEI Field
+                                    OutlinedTextField(
+                                        value = row.first,
+                                        onValueChange = { newVal ->
+                                            if (newVal.contains(",") || newVal.contains(" ") || newVal.contains("\n")) {
+                                                val split = newVal.split(Regex("[,\\s\\n]+")).map { it.trim() }.filter { it.isNotBlank() }
+                                                if (split.size > 1) {
+                                                    stockInRows = stockInRows.toMutableList().apply {
+                                                        val currentColor = this[index].second
+                                                        this[index] = Pair(split[0], currentColor)
+                                                        for (i in 1 until split.size) {
+                                                            add(Pair(split[i], currentColor))
+                                                        }
+                                                    }
+                                                } else {
+                                                    stockInRows = stockInRows.toMutableList().apply {
+                                                        this[index] = Pair(newVal, this[index].second)
+                                                    }
+                                                }
+                                            } else {
+                                                stockInRows = stockInRows.toMutableList().apply {
+                                                    this[index] = Pair(newVal, this[index].second)
+                                                }
+                                            }
+                                        },
+                                        placeholder = { Text("IMEI") },
+                                        singleLine = true,
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier
+                                            .weight(1.3f)
+                                            .testTag("add_brand_imei_$index")
+                                    )
+
+                                    // Barcode scanning camera icon launcher directly attached
+                                    IconButton(
+                                        onClick = {
+                                            scannerModeInOrOut = true
+                                            qrScannerCallback = { scannedResult ->
+                                                stockInRows = stockInRows.toMutableList().apply {
+                                                    this[index] = Pair(scannedResult, this[index].second)
+                                                }
+                                                showQrScannerDialog = false
+                                            }
+                                            showQrScannerDialog = true
+                                        },
+                                        modifier = Modifier
+                                            .size(46.dp)
+                                            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.QrCode,
+                                            contentDescription = "Scan IMEI for item #${index + 1}",
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+
+                                    // Color Field entered manually
+                                    OutlinedTextField(
+                                        value = row.second,
+                                        onValueChange = { newVal ->
+                                            stockInRows = stockInRows.toMutableList().apply {
+                                                this[index] = Pair(this[index].first, newVal)
+                                            }
+                                        },
+                                        placeholder = { Text("Color") },
+                                        singleLine = true,
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier
+                                            .weight(0.9f)
+                                            .testTag("add_brand_color_$index")
+                                    )
+                                }
+                            }
                         }
+                    }
+
+                    // Button to add another device row beautifully
+                    TextButton(
+                        onClick = {
+                            stockInRows = stockInRows + Pair("", addColor)
+                        },
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                    ) {
+                        Icon(Icons.Default.Add, "Add device row")
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Add Another Device Serial")
                     }
 
                     // Warehouse selection radio buttons
@@ -1893,9 +2201,9 @@ fun BrandStockScreen(viewModel: StockViewModel) {
             confirmButton = {
                 Button(
                     onClick = {
-                        val imeiList = addImei.split(Regex("[,\\s\\n]+")).map { it.trim() }.filter { it.isNotBlank() }
-                        if (addVariant.isBlank() || addColor.isBlank() || imeiList.isEmpty()) {
-                            inputError = "Variant, Color and at least one valid IMEI are required!"
+                        val validRows = stockInRows.map { Pair(it.first.trim(), it.second.trim()) }.filter { it.first.isNotBlank() }
+                        if (addVariant.isBlank() || validRows.isEmpty()) {
+                            inputError = "Variant and at least one valid IMEI are required!"
                             return@Button
                         }
                         // Validate if model/variant is available in Items
@@ -1908,26 +2216,40 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                             inputError = "Error: Variant '$addVariant' is not defined under Items first!"
                             return@Button
                         }
-                        isSubmitting = true
-                        viewModel.addMultipleBrandStockItems(
-                            brand = addBrand,
-                            variant = addVariant,
-                            color = addColor,
-                            imeis = imeiList,
-                            warehouse = addWh,
-                            date = addDate
-                        ) { successCount, failedList ->
-                            isSubmitting = false
-                            if (successCount > 0) {
-                                statusMessage = "Successfully added $successCount items to Warehouse $addWh!"
-                                if (failedList.isNotEmpty()) {
-                                    statusMessage += " (Skipped ${failedList.size} duplicates/errors: ${failedList.joinToString()})"
+
+                        val proceedSubmission = {
+                            isSubmitting = true
+                            viewModel.addMultipleBrandStockItemsWithColors(
+                                brand = addBrand,
+                                variant = addVariant,
+                                itemsWithColors = validRows,
+                                warehouse = addWh,
+                                date = addDate
+                            ) { successCount, failedList ->
+                                isSubmitting = false
+                                if (successCount > 0) {
+                                    statusMessage = "Successfully added $successCount items to Warehouse $addWh!"
+                                    if (failedList.isNotEmpty()) {
+                                        statusMessage += " (Skipped ${failedList.size} duplicates: ${failedList.joinToString()})"
+                                    }
+                                    isErrorStatus = false
+                                    showAddStockDialog = false
+                                } else {
+                                    inputError = "Duplicate IMEI(s) found! None of the entered IMEIs could be registered."
                                 }
-                                isErrorStatus = false
-                                showAddStockDialog = false
-                            } else {
-                                inputError = "Duplicate IMEI(s) found! None of the entered IMEIs could be registered."
                             }
+                        }
+
+                        // Run Luhn algorithm on each of the valid IMEIs
+                        val invalidImeis = validRows.map { it.first }.filter { !AppUtils.isValidImei(it) }
+                        if (invalidImeis.isNotEmpty()) {
+                            pendingImeisToConfirm = invalidImeis
+                            showImeiConfirmDialog = true
+                            onConfirmProceedAction = {
+                                proceedSubmission()
+                            }
+                        } else {
+                            proceedSubmission()
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
@@ -1946,6 +2268,35 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                     enabled = !isSubmitting
                 ) {
                     Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showImeiConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showImeiConfirmDialog = false },
+            title = { Text("Invalid IMEI(s) Detected", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("The following IMEI numbers are not valid according to standard Luhn algorithm:")
+                    pendingImeisToConfirm.forEach {
+                        Text("• $it", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                    }
+                    Text("Do you want to keep them as serial numbers anyway, or correct them?")
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    showImeiConfirmDialog = false
+                    onConfirmProceedAction?.invoke()
+                }) {
+                    Text("Keep Serial")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showImeiConfirmDialog = false }) {
+                    Text("Go Back and Correct")
                 }
             }
         )
@@ -2457,10 +2808,7 @@ fun BrandStockScreen(viewModel: StockViewModel) {
     }
 
     if (showQrScannerDialog) {
-        var manualText by remember { mutableStateOf("") }
-        var simulationProgress by remember { mutableStateOf(false) }
-
-        val startProductionScanner = {
+        LaunchedEffect(Unit) {
             try {
                 val options = GmsBarcodeScannerOptions.Builder()
                     .setBarcodeFormats(Barcode.FORMAT_ALL_FORMATS)
@@ -2470,113 +2818,24 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                     .addOnSuccessListener { barcode ->
                         val rawValue = barcode.rawValue
                         if (!rawValue.isNullOrBlank()) {
-                            qrScannerCallback?.invoke(rawValue)
-                            showQrScannerDialog = false
+                            qrScannerCallback?.invoke(rawValue.trim())
                         } else {
-                            Toast.makeText(context, "No barcode detected.", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "No barcode/IMEI detected.", Toast.LENGTH_SHORT).show()
                         }
+                        showQrScannerDialog = false
                     }
                     .addOnFailureListener { e ->
-                        Toast.makeText(context, "Live scan failed or play services code scanner not configured. Please use simulated scanner / manual entry.", Toast.LENGTH_LONG).show()
+                        Toast.makeText(context, "Live scanner unavailable: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                        showQrScannerDialog = false
+                    }
+                    .addOnCanceledListener {
+                        showQrScannerDialog = false
                     }
             } catch (t: Throwable) {
-                Toast.makeText(context, "Live scan not available in this environment. Please use simulated scan.", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "Failed to launch live camera scanner: ${t.localizedMessage}", Toast.LENGTH_LONG).show()
+                showQrScannerDialog = false
             }
         }
-
-        AlertDialog(
-            onDismissRequest = { showQrScannerDialog = false },
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Default.QrCode, null, tint = MaterialTheme.colorScheme.primary)
-                    Text("Intelligent Barcode Scanner", fontWeight = FontWeight.Bold)
-                }
-            },
-            text = {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "Position the smartphone barcode / QR code or IMEI label inside the viewfinder rectangle below.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        textAlign = TextAlign.Center
-                    )
-
-                    // Viewfinder box representing camera feed
-                    Box(
-                        modifier = Modifier
-                            .size(200.dp, 120.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color.Black)
-                            .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.QrCode,
-                            contentDescription = "Active scanning grid",
-                            tint = Color(0xFF4CAF50),
-                            modifier = Modifier.size(48.dp)
-                        )
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(2.dp)
-                                .background(Color(0xFF4CAF50))
-                                .align(Alignment.Center)
-                        )
-                    }
-
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Button(
-                            onClick = { startProductionScanner() },
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                            modifier = Modifier.fillMaxWidth().testTag("btn_trigger_real_scan")
-                        ) {
-                            Icon(Icons.Default.CameraAlt, "Camera")
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Scan with Camera (Real Device)")
-                        }
-                    }
-
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-                    Text("Or, key in IMEI/Serial code manually here:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-
-                    OutlinedTextField(
-                        value = manualText,
-                        onValueChange = { manualText = it },
-                        placeholder = { Text("e.g. 869304859203847") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.fillMaxWidth().testTag("manual_imei_scanner_input")
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (manualText.isNotBlank()) {
-                            qrScannerCallback?.invoke(manualText.trim())
-                            showQrScannerDialog = false
-                        }
-                    },
-                    enabled = manualText.isNotBlank()
-                ) {
-                    Text("Apply Code")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showQrScannerDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
     }
 }
 

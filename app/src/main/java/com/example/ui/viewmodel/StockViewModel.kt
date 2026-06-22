@@ -1554,6 +1554,64 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
         }
     }
 
+    fun addMultipleBrandStockItemsWithColors(
+        brand: String,
+        variant: String,
+        itemsWithColors: List<Pair<String, String>>, // Pair of (IMEI, Color)
+        warehouse: String,
+        date: Long,
+        onResult: (successCount: Int, failedImeis: List<String>) -> Unit
+    ) {
+        viewModelScope.launch {
+            val creator = loggedInUser.value?.username ?: "Unknown"
+            var successCount = 0
+            val failedImeis = mutableListOf<String>()
+
+            for (p in itemsWithColors) {
+                val imei = p.first.trim()
+                val color = p.second.trim()
+                if (imei.isBlank()) continue
+
+                val item = com.example.data.model.BrandStockItem(
+                    imei = imei,
+                    brand = brand,
+                    variant = variant.trim(),
+                    color = color.ifBlank { "Unknown" },
+                    warehouse = warehouse,
+                    addedByUser = creator,
+                    addedDate = date,
+                    lastUpdated = System.currentTimeMillis()
+                )
+                val tx = com.example.data.model.BrandStockTransaction(
+                    imei = imei,
+                    brand = brand,
+                    variant = variant.trim(),
+                    color = color.ifBlank { "Unknown" },
+                    warehouse = warehouse,
+                    type = "IN",
+                    dateInMillis = date,
+                    operator = creator,
+                    notes = "Purchase intake (Bulk colored)"
+                )
+
+                // Check duplicate IMEI first to prevent duplicate active items
+                val existing = repository.getBrandStockItemByImei(imei)
+                if (existing != null) {
+                    failedImeis.add(imei)
+                    continue
+                }
+
+                val success = repository.addBrandStock(item, tx)
+                if (success) {
+                    successCount++
+                } else {
+                    failedImeis.add(imei)
+                }
+            }
+            onResult(successCount, failedImeis)
+        }
+    }
+
     fun sellMultipleBrandStockItems(
         imeis: List<String>,
         warehouse: String,

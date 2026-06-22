@@ -29,8 +29,26 @@ import com.example.data.repository.FirebaseSyncManager
 
 object AppUtils {
 
+    fun isValidImei(imei: String): Boolean {
+        val clean = imei.trim()
+        if (clean.length != 15 || !clean.all { it.isDigit() }) return false
+        var sum = 0
+        for (i in 0 until 15) {
+            var d = clean[i] - '0'
+            if (i % 2 == 1) { // odd index (0-indexed) => 2nd, 4th, 6th... 
+                d *= 2
+                if (d > 9) d -= 9
+            }
+            sum += d
+        }
+        return sum % 10 == 0
+    }
+
     private var appContext: Context? = null
-    private val imageCache = java.util.concurrent.ConcurrentHashMap<String, Any>()
+    // Size-limited LruCache to hold decoded compressed byte arrays instead of raw uncompressed Bitmaps.
+    // Storing uncompressed Bitmaps in an unbounded HashMap leads to massive heap consumption and GC pauses.
+    // Returning a ByteArray allows Coil to decode it asynchronously on its internal background thread pool.
+    private val imageCache = android.util.LruCache<String, ByteArray>(50)
 
     fun init(context: Context) {
         appContext = context.applicationContext
@@ -460,26 +478,19 @@ object AppUtils {
         }
 
         if (target.startsWith("file://")) {
-            val path = target.removePrefix("file://")
-            val file = File(path)
-            if (!file.exists()) {
-                return "ic_placeholder"
-            }
+            // Return file URIs immediately; do not perform blocking disk I/O check file.exists() on Main thread!
             return target
         }
 
         // Handle raw local paths starting with '/'
         if (target.startsWith("/")) {
-            val file = File(target)
-            if (!file.exists()) {
-                return "ic_placeholder"
-            }
+            // Return file URI immediately; do not perform blocking disk I/O check file.exists() on Main thread!
             return "file://$target"
         }
 
-        // 2. Resolve Base64 strings with memory-cache acceleration
+        // 2. Resolve Base64 strings with memory-cache acceleration using LruCache holding ByteArrays
         val cacheKey = "b64_${target.length}_${target.hashCode()}"
-        val cached = imageCache[cacheKey]
+        val cached = imageCache.get(cacheKey)
         if (cached != null) {
             return cached
         }
@@ -492,14 +503,8 @@ object AppUtils {
                 target
             }
             val decodedBytes = android.util.Base64.decode(pureBase64, android.util.Base64.NO_WRAP)
-            val bitmap = android.graphics.BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)
-            if (bitmap != null) {
-                imageCache[cacheKey] = bitmap
-                bitmap
-            } else {
-                imageCache[cacheKey] = decodedBytes
-                decodedBytes
-            }
+            imageCache.put(cacheKey, decodedBytes)
+            decodedBytes
         } catch (e: Exception) {
             target
         }
