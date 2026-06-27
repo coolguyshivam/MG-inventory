@@ -587,12 +587,14 @@ class InventoryRepository {
         return true
     }
 
-    suspend fun returnItemFromRepair(itemId: String, userId: String): Boolean {
+    suspend fun returnItemFromRepair(itemId: String, userId: String, repairCost: Double = 0.0): Boolean {
         val existing = getItemById(itemId) ?: return false
+        val newAmount = existing.amount + repairCost
         val updated = existing.copy(
             underRepair = false,
             technicianName = null,
-            repairReason = null
+            repairReason = null,
+            amount = newAmount
         )
         db.collection("inventory_items").document(itemId).set(updated).await()
 
@@ -604,13 +606,17 @@ class InventoryRepository {
             name = existing.name,
             phoneNumber = existing.phoneNumber,
             aadhaarNumber = existing.aadhaarNumber,
-            amount = existing.amount,
-            description = "Returned from repair: " + (existing.repairReason ?: ""),
+            amount = newAmount,
+            description = if (repairCost > 0.0) {
+                "Returned from repair: " + (existing.repairReason ?: "") + " (Repair Cost: ₹$repairCost added to purchase cost)"
+            } else {
+                "Returned from repair: " + (existing.repairReason ?: "")
+            },
             dateInMillis = System.currentTimeMillis(),
             quantity = existing.quantity,
             photoUri = existing.photoUri,
             userId = userId,
-            extraDetails = "Technician responsible was: " + (existing.technicianName ?: "Unknown")
+            extraDetails = "Technician responsible: " + (existing.technicianName ?: "Unknown") + if (repairCost > 0.0) ", Repair Cost: ₹$repairCost" else ""
         )
         db.collection("history_events").document(history.id).set(history).await()
         return true

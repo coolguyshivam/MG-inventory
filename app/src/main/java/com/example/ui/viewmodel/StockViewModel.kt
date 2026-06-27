@@ -899,11 +899,11 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
         }
     }
 
-    fun resolveRepairItem(itemId: String) {
+    fun resolveRepairItem(itemId: String, repairCost: Double = 0.0) {
         viewModelScope.launch {
             try {
                 _isSyncing.value = true
-                val success = repository.returnItemFromRepair(itemId, _loggedInUser.value?.username ?: "admin")
+                val success = repository.returnItemFromRepair(itemId, _loggedInUser.value?.username ?: "admin", repairCost)
                 if (success) {
                     triggerCloudSync()
                 }

@@ -795,8 +795,30 @@ fun printHistoryEvent(context: android.content.Context, event: HistoryEvent) {
             }
             val loadedBase64List = base64Deferreds.map { it.await() }
             
-            val imgTags = loadedBase64List.joinToString("") { base64 ->
-                "<img src='$base64' style='max-width: 47%; max-height: 480px; object-fit: contain; margin-top: 10px; margin-right: 10px; border: 1.5px solid #bbb; border-radius: 4px; padding: 3px;'/>"
+            val (addressVal, descVal) = extractAddressAndDescription(event.description)
+            
+            val imgTags = when (loadedBase64List.size) {
+                0 -> ""
+                1 -> {
+                    val base64 = loadedBase64List[0]
+                    """
+                    <div style="text-align: center; margin: 20px 0; page-break-inside: avoid;">
+                        <img src="$base64" style="max-width: 95%; max-height: 480px; width: auto; height: auto; object-fit: contain; border: 1.5px solid #bbb; border-radius: 6px; padding: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.15); display: inline-block;" />
+                    </div>
+                    """.trimIndent()
+                }
+                else -> {
+                    val itemsHtml = loadedBase64List.joinToString("") { base64 ->
+                        """
+                        <img src="$base64" style="max-width: 48%; max-height: 380px; width: auto; height: auto; object-fit: contain; border: 1.5px solid #bbb; border-radius: 6px; padding: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.15); margin: 8px 1%; display: inline-block; vertical-align: middle;" />
+                        """.trimIndent()
+                    }
+                    """
+                    <div style="text-align: center; margin: 15px 0; page-break-inside: avoid;">
+                        $itemsHtml
+                    </div>
+                    """.trimIndent()
+                }
             }
 
             val prefs = context.getSharedPreferences("mobile_gallery_prefs", android.content.Context.MODE_PRIVATE)
@@ -811,6 +833,7 @@ fun printHistoryEvent(context: android.content.Context, event: HistoryEvent) {
                 <!DOCTYPE html>
                 <html>
                 <head>
+                	<meta charset="utf-8">
                     <style>
                         body {
                             font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
@@ -848,40 +871,27 @@ fun printHistoryEvent(context: android.content.Context, event: HistoryEvent) {
                             text-align: right;
                             color: #333;
                         }
-                        .grid {
-                            display: table;
+                        table.details-table {
                             width: 100%;
-                            margin-bottom: 16px;
                             border-collapse: collapse;
+                            table-layout: fixed;
+                            margin-bottom: 16px;
                         }
-                        .grid-row {
-                            display: table-row;
-                        }
-                        .grid-cell {
-                            display: table-cell;
+                        table.details-table td {
                             padding: 8px 10px;
                             font-size: 11px;
                             border-bottom: 1px dotted #ccc;
+                            word-wrap: break-word;
+                            vertical-align: middle;
                         }
-                        .label {
+                        table.details-table td.label {
                             font-weight: bold;
                             color: #111;
                             background: #fdfdfd;
-                            width: 130px;
+                            width: 20%;
                         }
-                        .photos {
-                            margin-top: 12px;
-                            display: flex;
-                            gap: 12px;
-                            flex-wrap: wrap;
-                            justify-content: center;
-                        }
-                        .photos img {
-                            max-height: 480px;
-                            max-width: 47%;
-                            border: 1.5px solid #bbb;
-                            padding: 3px;
-                            border-radius: 4px;
+                        table.details-table td.value {
+                            width: 30%;
                         }
                         .terms-block {
                             font-size: 9px;
@@ -892,6 +902,7 @@ fun printHistoryEvent(context: android.content.Context, event: HistoryEvent) {
                             margin-top: 16px;
                             color: #333;
                             white-space: pre-wrap;
+                            page-break-inside: avoid;
                         }
                         .footer-note {
                             font-size: 8px;
@@ -902,6 +913,7 @@ fun printHistoryEvent(context: android.content.Context, event: HistoryEvent) {
                         }
                         @media print {
                             body { padding: 0; margin: 0; }
+                            .invoice-card { border: none; padding: 0; }
                         }
                     </style>
                 </head>
@@ -918,38 +930,48 @@ fun printHistoryEvent(context: android.content.Context, event: HistoryEvent) {
                             </div>
                         </div>
     
-                        <div class="grid">
-                            <div class="grid-row">
-                                <div class="grid-cell label">Transaction Mode:</div>
-                                <div class="grid-cell" style="font-weight: bold; color: #111;">${event.actionType}</div>
-                                <div class="grid-cell label">Brand & Model:</div>
-                                <div class="grid-cell">${event.model.ifBlank { "________________" }}</div>
-                            </div>
-                            <div class="grid-row">
-                                <div class="grid-cell label">Customer Name:</div>
-                                <div class="grid-cell">${event.name.ifBlank { "_____________________________" }}</div>
-                                <div class="grid-cell label">Contact Phone:</div>
-                                <div class="grid-cell">${event.phoneNumber ?: "_____________________________"}</div>
-                            </div>
-                            <div class="grid-row">
-                                <div class="grid-cell label">IMEI/Serial Key:</div>
-                                <div class="grid-cell" style="font-family: monospace;">${event.serialNumber.ifBlank { "________________" }}</div>
-                                <div class="grid-cell label">Amount / Price:</div>
-                                <div class="grid-cell" style="font-weight: bold; color: #111;">$pricePlaceholder</div>
-                            </div>
-                            <div class="grid-row">
-                                <div class="grid-cell label">Audited By:</div>
-                                <div class="grid-cell">${event.userId}</div>
-                                <div class="grid-cell label">Quantity Unit:</div>
-                                <div class="grid-cell">${event.quantity} Unit(s)</div>
-                            </div>
-                        </div>
+                        <table class="details-table">
+                            <colgroup>
+                                <col style="width: 20%;">
+                                <col style="width: 30%;">
+                                <col style="width: 20%;">
+                                <col style="width: 30%;">
+                            </colgroup>
+                            <tr>
+                                <td class="label">Transaction Mode:</td>
+                                <td class="value" style="font-weight: bold; color: #111;">${event.actionType}</td>
+                                <td class="label">Brand & Model:</td>
+                                <td class="value">${event.model.ifBlank { "________________" }}</td>
+                            </tr>
+                            <tr>
+                                <td class="label">Customer Name:</td>
+                                <td class="value">${event.name.ifBlank { "_____________________________" }}</td>
+                                <td class="label">Contact Phone:</td>
+                                <td class="value">${event.phoneNumber ?: "_____________________________"}</td>
+                            </tr>
+                            <tr>
+                                <td class="label">IMEI/Serial Key:</td>
+                                <td class="value" style="font-family: monospace;">${event.serialNumber.ifBlank { "________________" }}</td>
+                                <td class="label">Amount / Price:</td>
+                                <td class="value" style="font-weight: bold; color: #111;">$pricePlaceholder</td>
+                            </tr>
+                            <tr>
+                                <td class="label">Audited By:</td>
+                                <td class="value">${event.userId}</td>
+                                <td class="label">Quantity Unit:</td>
+                                <td class="value">${event.quantity} Unit(s)</td>
+                            </tr>
+                            <tr>
+                                <td class="label">Address:</td>
+                                <td class="value" colspan="3" style="white-space: pre-wrap;">${addressVal.ifBlank { "_____________________________" }}</td>
+                            </tr>
+                            <tr>
+                                <td class="label">Remarks / Notes:</td>
+                                <td class="value" colspan="3" style="white-space: pre-wrap;">${descVal.ifBlank { "No additional remarks logged." }}</td>
+                            </tr>
+                        </table>
     
-                        <div style="font-size: 11px; margin-top: 8px; padding-bottom: 8px; border-bottom: 1px dotted #ccc;">
-                            <strong>Log Remarks:</strong> ${event.description.ifBlank { "No additional remarks logged." }}
-                        </div>
-    
-                        <div class="photos">$imgTags</div>
+                        $imgTags
     
                         <div class="terms-block">
                             $terms
@@ -1074,21 +1096,28 @@ fun printHistoryEventCustom(
 
             val (addressVal, descVal) = extractAddressAndDescription(event.description)
 
-            var photosHtml = ""
-            if (loadedPhotos.isNotEmpty()) {
-                photosHtml += """
-                    <div style="margin-top: 10px; margin-bottom: 10px; text-align: center;">
-                        <div style="display: block; text-align: center;">
-                """.trimIndent()
-                for (photo in loadedPhotos) {
-                    photosHtml += """
-                            <img src="$photo" style="max-width: 47%; max-height: 480px; width: auto; height: auto; object-fit: contain; border: 1.5px solid #bbb; border-radius: 4px; padding: 3px; margin: 6px; display: inline-block;" />
+            val photosHtml = when (loadedPhotos.size) {
+                0 -> ""
+                1 -> {
+                    val base64 = loadedPhotos[0]
+                    """
+                    <div style="text-align: center; margin: 20px 0; page-break-inside: avoid;">
+                        <img src="$base64" style="max-width: 95%; max-height: 480px; width: auto; height: auto; object-fit: contain; border: 1.5px solid #bbb; border-radius: 6px; padding: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.15); display: inline-block;" />
+                    </div>
                     """.trimIndent()
                 }
-                photosHtml += """
-                        </div>
+                else -> {
+                    val itemsHtml = loadedPhotos.joinToString("") { base64 ->
+                        """
+                        <img src="$base64" style="max-width: 48%; max-height: 380px; width: auto; height: auto; object-fit: contain; border: 1.5px solid #bbb; border-radius: 6px; padding: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.15); margin: 8px 1%; display: inline-block; vertical-align: middle;" />
+                        """.trimIndent()
+                    }
+                    """
+                    <div style="text-align: center; margin: 15px 0; page-break-inside: avoid;">
+                        $itemsHtml
                     </div>
-                """.trimIndent()
+                    """.trimIndent()
+                }
             }
 
             val prefs = context.getSharedPreferences("mobile_gallery_prefs", android.content.Context.MODE_PRIVATE)
@@ -1103,12 +1132,13 @@ fun printHistoryEventCustom(
                 <!DOCTYPE html>
                 <html>
                 <head>
+                	<meta charset="utf-8">
                     <style>
                         body {
                             font-family: sans-serif;
-                            padding: 10px;
+                            padding: 20px;
                             color: #111;
-                            line-height: 1.3;
+                            line-height: 1.4;
                             max-width: 800px;
                             margin: 0 auto;
                             box-sizing: border-box;
@@ -1116,23 +1146,20 @@ fun printHistoryEventCustom(
                         .invoice-card {
                             border: 2px solid #222;
                             border-radius: 4px;
-                            padding: 16px;
+                            padding: 24px;
                             background: #fff;
                             box-sizing: border-box;
-                            min-height: 95vh;
-                            display: flex;
-                            flex-direction: column;
                         }
                         .header {
                             display: flex;
                             justify-content: space-between;
                             align-items: center;
                             border-bottom: 2px solid #222;
-                            padding-bottom: 4px;
-                            margin-bottom: 8px;
+                            padding-bottom: 8px;
+                            margin-bottom: 16px;
                         }
                         .header-title {
-                            font-size: 16px;
+                            font-size: 18px;
                             font-weight: 800;
                             text-transform: uppercase;
                             letter-spacing: 0.5px;
@@ -1143,35 +1170,42 @@ fun printHistoryEventCustom(
                             text-align: right;
                             color: #444;
                         }
-                        .grid {
-                            display: table;
+                        table.details-table {
                             width: 100%;
-                            margin-bottom: 8px;
+                            border-collapse: collapse;
+                            table-layout: fixed;
+                            margin-bottom: 16px;
                         }
-                        .grid-row {
-                            display: table-row;
-                        }
-                        .grid-cell {
-                            display: table-cell;
-                            padding: 4px 6px;
+                        table.details-table td {
+                            padding: 8px 10px;
                             font-size: 11px;
                             border-bottom: 1px dotted #ccc;
+                            word-wrap: break-word;
+                            vertical-align: middle;
                         }
-                        .label {
+                        table.details-table td.label {
                             font-weight: bold;
                             color: #111;
-                            width: 140px;
+                            background: #fdfdfd;
+                            width: 20%;
+                        }
+                        table.details-table td.value {
+                            width: 30%;
                         }
                         .terms-block {
                             font-size: 11px;
                             margin-top: 15px;
                             color: #111;
                             white-space: pre-wrap;
-                            border-bottom: 1px dotted #ccc;
-                            padding-bottom: 15px;
+                            border: 1px solid #ddd;
+                            border-radius: 4px;
+                            padding: 12px;
+                            background: #fafafa;
+                            page-break-inside: avoid;
                         }
                         @media print {
                             body { padding: 0; margin: 0; }
+                            .invoice-card { border: none; padding: 0; }
                         }
                     </style>
                 </head>
@@ -1188,38 +1222,46 @@ fun printHistoryEventCustom(
                             </div>
                         </div>
                         
-                        <div class="grid">
-                            <div class="grid-row">
-                                <div class="grid-cell label">Action Mode:</div>
-                                <div class="grid-cell" style="font-weight: bold; color: #111;">${event.actionType}</div>
-                                <div class="grid-cell label">Brand & Model:</div>
-                                <div class="grid-cell">${event.model.ifBlank { "________________" }}</div>
-                            </div>
-                            <div class="grid-row">
-                                <div class="grid-cell label">Customer Name:</div>
-                                <div class="grid-cell">${event.name.ifBlank { "_____________________________" }}</div>
-                                <div class="grid-cell label">Contact Phone:</div>
-                                <div class="grid-cell">${event.phoneNumber ?: "_____________________________"}</div>
-                            </div>
-                            <div class="grid-row">
-                                <div class="grid-cell label">IMEI / Serial key:</div>
-                                <div class="grid-cell" style="font-family: monospace;">${event.serialNumber.ifBlank { "________________" }}</div>
-                                <div class="grid-cell label">Amount / Price:</div>
-                                <div class="grid-cell" style="font-weight: bold; color: #111;">$pricePlaceholder</div>
-                            </div>
-                            <div class="grid-row">
-                                <div class="grid-cell label">Aadhaar Number:</div>
-                                <div class="grid-cell" style="font-family: monospace;">${event.aadhaarNumber?.ifBlank { "_____________________________" } ?: "_____________________________"}</div>
-                                <div class="grid-cell label">Quantity / Qty:</div>
-                                <div class="grid-cell">${event.quantity} unit(s)</div>
-                            </div>
-                            <div class="grid-row">
-                                <div class="grid-cell label">Address:</div>
-                                <div class="grid-cell">${addressVal.ifBlank { "_____________________________" }}</div>
-                                <div class="grid-cell label"></div>
-                                <div class="grid-cell"></div>
-                            </div>
-                        </div>
+                        <table class="details-table">
+                            <colgroup>
+                                <col style="width: 20%;">
+                                <col style="width: 30%;">
+                                <col style="width: 20%;">
+                                <col style="width: 30%;">
+                            </colgroup>
+                            <tr>
+                                <td class="label">Action Mode:</td>
+                                <td class="value" style="font-weight: bold; color: #111;">${event.actionType}</td>
+                                <td class="label">Brand & Model:</td>
+                                <td class="value">${event.model.ifBlank { "________________" }}</td>
+                            </tr>
+                            <tr>
+                                <td class="label">Customer Name:</td>
+                                <td class="value">${event.name.ifBlank { "_____________________________" }}</td>
+                                <td class="label">Contact Phone:</td>
+                                <td class="value">${event.phoneNumber ?: "_____________________________"}</td>
+                            </tr>
+                            <tr>
+                                <td class="label">IMEI / Serial key:</td>
+                                <td class="value" style="font-family: monospace;">${event.serialNumber.ifBlank { "________________" }}</td>
+                                <td class="label">Amount / Price:</td>
+                                <td class="value" style="font-weight: bold; color: #111;">$pricePlaceholder</td>
+                            </tr>
+                            <tr>
+                                <td class="label">Aadhaar Number:</td>
+                                <td class="value" style="font-family: monospace;">${event.aadhaarNumber?.ifBlank { "_____________________________" } ?: "_____________________________"}</td>
+                                <td class="label">Quantity / Qty:</td>
+                                <td class="value">${event.quantity} unit(s)</td>
+                            </tr>
+                            <tr>
+                                <td class="label">Address:</td>
+                                <td class="value" colspan="3" style="white-space: pre-wrap;">${addressVal.ifBlank { "_____________________________" }}</td>
+                            </tr>
+                            <tr>
+                                <td class="label">Remarks / Notes:</td>
+                                <td class="value" colspan="3" style="white-space: pre-wrap;">${descVal.ifBlank { "No additional remarks logged." }}</td>
+                            </tr>
+                        </table>
     
                         <div class="terms-block">
                             $customText

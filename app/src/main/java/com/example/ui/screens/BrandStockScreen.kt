@@ -1549,6 +1549,40 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                     val A4_HEIGHT = 842
                     val MARGIN = 30
                     
+                    val columnWeights = when (reportType) {
+                        "stock" -> listOf(0.15f, 0.22f, 0.22f, 0.14f, 0.12f, 0.15f)
+                        "transactions" -> listOf(0.13f, 0.15f, 0.09f, 0.12f, 0.15f, 0.10f, 0.10f, 0.08f, 0.08f)
+                        else -> listOf(0.20f, 0.30f, 0.30f, 0.20f)
+                    }
+                    val totalUsableWidth = A4_WIDTH - 2 * MARGIN
+
+                    fun getColumnX(colIdx: Int): Float {
+                        var weightSum = 0f
+                        for (i in 0 until colIdx.coerceAtMost(columnWeights.size - 1)) {
+                            weightSum += columnWeights[i]
+                        }
+                        return MARGIN + weightSum * totalUsableWidth
+                    }
+
+                    fun getColumnWidth(colIdx: Int): Float {
+                        if (colIdx >= columnWeights.size) return 0f
+                        return columnWeights[colIdx] * totalUsableWidth
+                    }
+
+                    fun drawCellText(canv: android.graphics.Canvas, text: String, x: Float, y: Float, colWidth: Float, paint: android.graphics.Paint) {
+                        val padding = 4f
+                        val usableWidth = colWidth - 2 * padding
+                        if (usableWidth <= 0) return
+                        val charsCount = paint.breakText(text, true, usableWidth, null)
+                        val displayText = if (charsCount < text.length) {
+                            val takeLen = (charsCount - 3).coerceAtLeast(0)
+                            text.take(takeLen) + "..."
+                        } else {
+                            text
+                        }
+                        canv.drawText(displayText, x + padding, y, paint)
+                    }
+
                     var pageNum = 1
                     var pageInfo = android.graphics.pdf.PdfDocument.PageInfo.Builder(A4_WIDTH, A4_HEIGHT, pageNum).create()
                     var page = pdfDocument.startPage(pageInfo)
@@ -1575,9 +1609,10 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                         }
                         canv.drawRect(MARGIN.toFloat(), yPos - 12f, (A4_WIDTH - MARGIN).toFloat(), yPos + 8f, headerBgPaint)
                         
-                        val columnWidth = (A4_WIDTH - 2 * MARGIN) / headers.size.toFloat()
                         headers.forEachIndexed { i, hName ->
-                            canv.drawText(hName, MARGIN + i * columnWidth + 4, yPos, headerPaint)
+                            val colX = getColumnX(i)
+                            val colW = getColumnWidth(i)
+                            drawCellText(canv, hName, colX, yPos, colW, headerPaint)
                         }
                         yPos += 18f
                     }
@@ -1612,11 +1647,10 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                         }
                         canvas.drawLine(MARGIN.toFloat(), yPos + 4f, (A4_WIDTH - MARGIN).toFloat(), yPos + 4f, linePaint)
                         
-                        val columnWidth = (A4_WIDTH - 2 * MARGIN) / headers.size.toFloat()
                         rValues.forEachIndexed { colIdx, cellValue ->
-                            val maxChar = if (headers.size > 6) 12 else 18
-                            val truncatedText = if (cellValue.length > maxChar) cellValue.take(maxChar - 3) + "..." else cellValue
-                            canvas.drawText(truncatedText, MARGIN + colIdx * columnWidth + 4, yPos, contentPaint)
+                            val colX = getColumnX(colIdx)
+                            val colW = getColumnWidth(colIdx)
+                            drawCellText(canvas, cellValue, colX, yPos, colW, contentPaint)
                         }
                         yPos += 16f
                     }

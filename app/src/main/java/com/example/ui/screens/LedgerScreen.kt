@@ -485,24 +485,27 @@ private fun printLedgerEntry(context: android.content.Context, entry: LedgerEntr
                             text-align: right;
                             color: #444;
                         }
-                        .grid {
-                            display: table;
+                        table.details-table {
                             width: 100%;
-                            margin-bottom: 8px;
+                            border-collapse: collapse;
+                            table-layout: fixed;
+                            margin-bottom: 16px;
                         }
-                        .grid-row {
-                            display: table-row;
-                        }
-                        .grid-cell {
-                            display: table-cell;
-                            padding: 6px 8px;
+                        table.details-table td {
+                            padding: 8px 10px;
                             font-size: 12px;
                             border-bottom: 1px dotted #ccc;
+                            word-wrap: break-word;
+                            vertical-align: middle;
                         }
-                        .label {
+                        table.details-table td.label {
                             font-weight: bold;
                             color: #111;
-                            width: 140px;
+                            background: #fdfdfd;
+                            width: 25%;
+                        }
+                        table.details-table td.value {
+                            width: 75%;
                         }
                         .amount-block {
                             font-size: 16px;
@@ -520,7 +523,7 @@ private fun printLedgerEntry(context: android.content.Context, entry: LedgerEntr
                             color: #111;
                             border-left: 2px solid #111;
                             padding-left: 10px;
-                            font-style: italic;
+                            white-space: pre-wrap;
                         }
                         .sign-row {
                             margin-top: 50px; /* Spacing added natively using div below */
@@ -546,6 +549,7 @@ private fun printLedgerEntry(context: android.content.Context, entry: LedgerEntr
                         }
                         @media print {
                             body { padding: 0; margin: 0; }
+                            .invoice-card { border: none; padding: 0; }
                         }
                     </style>
                 </head>
@@ -562,24 +566,28 @@ private fun printLedgerEntry(context: android.content.Context, entry: LedgerEntr
                             </div>
                         </div>
                         
-                        <div class="grid">
-                            <div class="grid-row">
-                                <div class="grid-cell label">Party Name:</div>
-                                <div class="grid-cell" style="font-weight: bold;">${party.name}</div>
-                            </div>
-                            <div class="grid-row">
-                                <div class="grid-cell label">Phone / Contact:</div>
-                                <div class="grid-cell">${party.phoneNumber.ifBlank { "N/A" }}</div>
-                            </div>
-                            <div class="grid-row">
-                                <div class="grid-cell label">Address:</div>
-                                <div class="grid-cell">${party.address.ifBlank { "N/A" }}</div>
-                            </div>
-                            <div class="grid-row">
-                                <div class="grid-cell label">Audited Party Id:</div>
-                                <div class="grid-cell" style="font-family: monospace;">${party.id}</div>
-                            </div>
-                        </div>
+                        <table class="details-table">
+                            <colgroup>
+                                <col style="width: 25%;">
+                                <col style="width: 75%;">
+                            </colgroup>
+                            <tr>
+                                <td class="label">Party Name:</td>
+                                <td class="value" style="font-weight: bold;">${party.name}</td>
+                            </tr>
+                            <tr>
+                                <td class="label">Phone / Contact:</td>
+                                <td class="value">${party.phoneNumber.ifBlank { "N/A" }}</td>
+                            </tr>
+                            <tr>
+                                <td class="label">Address:</td>
+                                <td class="value" style="white-space: pre-wrap;">${party.address.ifBlank { "N/A" }}</td>
+                            </tr>
+                            <tr>
+                                <td class="label">Audited Party Id:</td>
+                                <td class="value" style="font-family: monospace;">${party.id}</td>
+                            </tr>
+                        </table>
     
                         <div class="amount-block">
                             Amount: INR ${String.format("%,.2f", entry.amount)}

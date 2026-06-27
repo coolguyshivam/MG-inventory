@@ -66,6 +66,10 @@ fun InventoryScreen(viewModel: StockViewModel) {
     var technicianName by remember { mutableStateOf("") }
     var repairReason by remember { mutableStateOf("") }
 
+    // Dialog state for "Return from Repair"
+    var repairReturnItem by remember { mutableStateOf<InventoryItem?>(null) }
+    var repairCostInput by remember { mutableStateOf("") }
+
     // Dialog state for "Edit Item"
     var editingItem by remember { mutableStateOf<InventoryItem?>(null) }
     var editModel by remember { mutableStateOf("") }
@@ -422,7 +426,8 @@ fun InventoryScreen(viewModel: StockViewModel) {
                                 technicianName = ""
                                 repairReason = ""
                             } else {
-                                viewModel.resolveRepairItem(item.id)
+                                repairReturnItem = item
+                                repairCostInput = ""
                             }
                         },
                         onDeleteClicked = {
@@ -504,6 +509,68 @@ fun InventoryScreen(viewModel: StockViewModel) {
                             placeholder = { Text("E.g., Screen replacement, system lock") },
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            )
+        }
+
+        // Dialogue Modal for Returning from Repair (adding repair cost optionally)
+        repairReturnItem?.let { item ->
+            AlertDialog(
+                onDismissRequest = { repairReturnItem = null },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val costVal = repairCostInput.toDoubleOrNull() ?: 0.0
+                            viewModel.resolveRepairItem(item.id, costVal)
+                            repairReturnItem = null
+                        }
+                    ) {
+                        Text("Complete Repair")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { repairReturnItem = null }) {
+                        Text("Cancel")
+                    }
+                },
+                title = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Default.CheckCircle, "Resolve", tint = MaterialTheme.colorScheme.primary)
+                        Text("Return from Repair")
+                    }
+                },
+                text = {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "Item: ${item.name} (${item.model})\nIMEI: ${item.serialNumber}\n\nCurrent Purchase Cost: ₹${String.format("%,.2f", item.amount)}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                        )
+                        OutlinedTextField(
+                            value = repairCostInput,
+                            onValueChange = { 
+                                if (it.isEmpty() || it.toDoubleOrNull() != null || it.endsWith(".")) {
+                                    repairCostInput = it 
+                                }
+                            },
+                            label = { Text("Repair Cost (Optional)") },
+                            placeholder = { Text("E.g., 1500") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Text(
+                            text = "Note: The repair cost entered will be added to the phone's purchase cost, representing the updated total inventory value of this item.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
                         )
                     }
                 }
