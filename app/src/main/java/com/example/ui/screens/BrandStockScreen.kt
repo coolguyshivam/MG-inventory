@@ -295,12 +295,40 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(28.dp)
                         )
-                        Text(
-                            text = "Warehouse Stock Manager",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
+                        Column {
+                            Text(
+                                text = "Warehouse Stock Manager",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.onBackground
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .background(
+                                            color = MaterialTheme.colorScheme.primaryContainer,
+                                            shape = RoundedCornerShape(4.dp)
+                                        )
+                                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                                ) {
+                                    Text(
+                                        text = "v2.3.2",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                Text(
+                                    text = "Intelligent Edition",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                    color = MaterialTheme.colorScheme.outline,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
                     }
 
                     // Export CSV Reports Button
@@ -1986,7 +2014,7 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                         Box(modifier = Modifier.weight(1f)) {
                             OutlinedButton(
                                 onClick = { expandedBrandDropdown = true },
-                                modifier = Modifier.fillMaxWidth().height(48.dp),
+                                modifier = Modifier.fillMaxWidth().height(56.dp),
                                 shape = RoundedCornerShape(8.dp),
                                 contentPadding = PaddingValues(horizontal = 8.dp)
                             ) {
@@ -2049,7 +2077,7 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                                 shape = RoundedCornerShape(8.dp),
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(48.dp)
+                                    .height(56.dp)
                                     .testTag("add_brand_variant")
                             )
 
@@ -2142,7 +2170,7 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                                     shape = RoundedCornerShape(8.dp),
                                     modifier = Modifier
                                         .weight(1.8f)
-                                        .height(48.dp)
+                                        .height(56.dp)
                                         .testTag("add_brand_imei_$index")
                                 )
 
@@ -2159,7 +2187,8 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                                         showQrScannerDialog = true
                                     },
                                     modifier = Modifier
-                                        .size(38.dp)
+                                        .height(56.dp)
+                                        .width(44.dp)
                                         .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
                                 ) {
                                     Icon(
@@ -2184,7 +2213,7 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                                     shape = RoundedCornerShape(8.dp),
                                     modifier = Modifier
                                         .weight(0.9f)
-                                        .height(48.dp)
+                                        .height(56.dp)
                                         .testTag("add_brand_color_$index")
                                 )
 
@@ -2859,7 +2888,69 @@ fun BrandStockScreen(viewModel: StockViewModel) {
         )
     }
 
+    val triggerLaserScan: () -> Unit = {
+        try {
+            val options = GmsBarcodeScannerOptions.Builder()
+                .setBarcodeFormats(Barcode.FORMAT_ALL_FORMATS)
+                .build()
+            val scanner = GmsBarcodeScanning.getClient(context, options)
+            scanner.startScan()
+                .addOnSuccessListener { barcode ->
+                    val rawValue = barcode.rawValue?.trim()
+                    val isValidImei = !rawValue.isNullOrBlank() && rawValue.length >= 8 && rawValue.all { it.isLetterOrDigit() }
+                    if (isValidImei) {
+                        qrScannerCallback?.invoke(rawValue)
+                        showQrScannerDialog = false
+                        Toast.makeText(context, "Scanned: $rawValue", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Laser did not detect properly. Starting camera label scanner...", Toast.LENGTH_LONG).show()
+                        try {
+                            val tempFile = File.createTempFile("scan_photo_", ".jpg", context.cacheDir).apply {
+                                deleteOnExit()
+                            }
+                            val pkg = context.packageName
+                            val uri = FileProvider.getUriForFile(context, "$pkg.fileprovider", tempFile)
+                            tempPhotoUri = uri
+                            cameraLauncher.launch(uri)
+                        } catch (t: Throwable) {
+                            Toast.makeText(context, "Unable to initiate camera: ${t.localizedMessage}", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+                .addOnFailureListener { e ->
+                    Toast.makeText(context, "Laser scanning cancelled/failed. Starting camera label scanner...", Toast.LENGTH_LONG).show()
+                    try {
+                        val tempFile = File.createTempFile("scan_photo_", ".jpg", context.cacheDir).apply {
+                            deleteOnExit()
+                        }
+                        val pkg = context.packageName
+                        val uri = FileProvider.getUriForFile(context, "$pkg.fileprovider", tempFile)
+                        tempPhotoUri = uri
+                        cameraLauncher.launch(uri)
+                    } catch (t: Throwable) {
+                        Toast.makeText(context, "Unable to initiate camera: ${t.localizedMessage}", Toast.LENGTH_LONG).show()
+                    }
+                }
+        } catch (t: Throwable) {
+            Toast.makeText(context, "Failed to launch laser: ${t.localizedMessage}. Starting camera...", Toast.LENGTH_SHORT).show()
+            try {
+                val tempFile = File.createTempFile("scan_photo_", ".jpg", context.cacheDir).apply {
+                    deleteOnExit()
+                }
+                val pkg = context.packageName
+                val uri = FileProvider.getUriForFile(context, "$pkg.fileprovider", tempFile)
+                tempPhotoUri = uri
+                cameraLauncher.launch(uri)
+            } catch (t2: Throwable) {
+                Toast.makeText(context, "Unable to initiate camera: ${t2.localizedMessage}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
     if (showQrScannerDialog) {
+        LaunchedEffect(Unit) {
+            triggerLaserScan()
+        }
         AlertDialog(
             onDismissRequest = {
                 showQrScannerDialog = false
@@ -2899,27 +2990,7 @@ fun BrandStockScreen(viewModel: StockViewModel) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                try {
-                                    val options = GmsBarcodeScannerOptions.Builder()
-                                        .setBarcodeFormats(Barcode.FORMAT_ALL_FORMATS)
-                                        .build()
-                                    val scanner = GmsBarcodeScanning.getClient(context, options)
-                                    scanner.startScan()
-                                        .addOnSuccessListener { barcode ->
-                                            val rawValue = barcode.rawValue
-                                            if (!rawValue.isNullOrBlank()) {
-                                                qrScannerCallback?.invoke(rawValue.trim())
-                                            } else {
-                                                Toast.makeText(context, "No barcode/IMEI detected.", Toast.LENGTH_SHORT).show()
-                                            }
-                                            showQrScannerDialog = false
-                                        }
-                                        .addOnFailureListener { e ->
-                                            Toast.makeText(context, "Laser scanner error: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
-                                        }
-                                } catch (t: Throwable) {
-                                    Toast.makeText(context, "Failed to launch laser: ${t.localizedMessage}", Toast.LENGTH_LONG).show()
-                                }
+                                triggerLaserScan()
                             },
                         shape = RoundedCornerShape(12.dp),
                         color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),

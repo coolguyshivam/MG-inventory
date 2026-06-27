@@ -93,7 +93,7 @@ fun TransactionsScreen(viewModel: StockViewModel) {
     }
 
     // Real Camera and Gallery integration launchers
-    val tempCameraUriState = remember { mutableStateOf<Uri?>(null) }
+    val tempCameraUriStringState = androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
     val coroutineScope = rememberCoroutineScope()
     var isProcessingPhotos by remember { mutableStateOf(false) }
 
@@ -155,7 +155,8 @@ fun TransactionsScreen(viewModel: StockViewModel) {
         contract = ActivityResultContracts.TakePicture()
     ) { success ->
         if (success) {
-            tempCameraUriState.value?.let { uri ->
+            tempCameraUriStringState.value?.let { uriStr ->
+                val uri = Uri.parse(uriStr)
                 val currentUris = viewModel.photoUriInput.value
                 val urisArray = if (currentUris.isNullOrBlank()) emptyList() else currentUris.split(",")
                 if (urisArray.size < 10) {
@@ -181,7 +182,7 @@ fun TransactionsScreen(viewModel: StockViewModel) {
         if (granted) {
             val uri = createTempImageUri()
             if (uri != null) {
-                tempCameraUriState.value = uri
+                tempCameraUriStringState.value = uri.toString()
                 try {
                     cameraLauncher.launch(uri)
                 } catch (e: Exception) {
@@ -1061,7 +1062,7 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                                         if (hasCameraPermission) {
                                             val uri = createTempImageUri()
                                             if (uri != null) {
-                                                tempCameraUriState.value = uri
+                                                tempCameraUriStringState.value = uri.toString()
                                                 try {
                                                     cameraLauncher.launch(uri)
                                                 } catch (e: Exception) {

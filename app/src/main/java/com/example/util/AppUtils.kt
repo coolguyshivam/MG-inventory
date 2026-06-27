@@ -529,11 +529,9 @@ object AppUtils {
             val maxDimension = 1024
             var sampleSize = 1
             if (options.outHeight > maxDimension || options.outWidth > maxDimension) {
-                val halfHeight = options.outHeight / 2
-                val halfWidth = options.outWidth / 2
-                while (halfHeight / sampleSize >= maxDimension && halfWidth / sampleSize >= maxDimension) {
-                    sampleSize *= 2
-                }
+                val heightRatio = Math.round(options.outHeight.toFloat() / maxDimension.toFloat())
+                val widthRatio = Math.round(options.outWidth.toFloat() / maxDimension.toFloat())
+                sampleSize = maxOf(1, maxOf(heightRatio, widthRatio))
             }
             
             val decodeOptions = BitmapFactory.Options().apply {
@@ -545,13 +543,19 @@ object AppUtils {
             } ?: return null
             
             val scaledBitmap = if (bitmap.width > maxDimension || bitmap.height > maxDimension) {
-                val ratio = bitmap.width.toFloat() / bitmap.height.toFloat()
+                val ratio = bitmap.width.toFloat() / maxOf(1, bitmap.height).toFloat()
                 val (w, h) = if (ratio > 1) {
-                    Pair(maxDimension, (maxDimension / ratio).toInt())
+                    val calculatedHeight = (maxDimension / ratio).toInt()
+                    Pair(maxDimension, maxOf(1, calculatedHeight))
                 } else {
-                    Pair((maxDimension * ratio).toInt(), maxDimension)
+                    val calculatedWidth = (maxDimension * ratio).toInt()
+                    Pair(maxOf(1, calculatedWidth), maxDimension)
                 }
-                Bitmap.createScaledBitmap(bitmap, w, h, true)
+                val sb = Bitmap.createScaledBitmap(bitmap, w, h, true)
+                if (sb != bitmap) {
+                    bitmap.recycle()
+                }
+                sb
             } else {
                 bitmap
             }
@@ -559,8 +563,9 @@ object AppUtils {
             FileOutputStream(file).use { out ->
                 scaledBitmap.compress(getJpegFormat(), 75, out) // 75% JPEG is extremely crisp and has small file size
             }
+            scaledBitmap.recycle()
             "file://${file.absolutePath}"
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             e.printStackTrace()
             null
         }

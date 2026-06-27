@@ -168,7 +168,7 @@ fun AttendanceScreen(viewModel: StockViewModel) {
     }
 
     // Camera attachments
-    val tempCameraUriState = remember { mutableStateOf<Uri?>(null) }
+    val tempCameraUriStringState = androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
     var isCheckingInAction by remember { mutableStateOf(true) } // true = check-in, false = check-out
 
     // Camera capture handler
@@ -176,7 +176,8 @@ fun AttendanceScreen(viewModel: StockViewModel) {
         contract = ActivityResultContracts.TakePicture()
     ) { success ->
         if (success) {
-            tempCameraUriState.value?.let { uri ->
+            tempCameraUriStringState.value?.let { uriStr ->
+                val uri = Uri.parse(uriStr)
                 val base64 = AppUtils.uriToBase64(context, uri)
                 if (base64 != null) {
                     AppUtils.getCurrentLocation(context) { locSpec ->
@@ -242,7 +243,7 @@ fun AttendanceScreen(viewModel: StockViewModel) {
                     if (!directory.exists()) directory.mkdirs()
                     val tempFile = File.createTempFile("selfie_${System.currentTimeMillis()}", ".jpg", directory)
                     val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", tempFile)
-                    tempCameraUriState.value = uri
+                    tempCameraUriStringState.value = uri.toString()
                     selfieLauncher.launch(uri)
                 } catch (e: Exception) {
                     e.printStackTrace()
