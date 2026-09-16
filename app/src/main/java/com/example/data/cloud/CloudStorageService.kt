@@ -253,7 +253,7 @@ class FirebaseStorageService(private val context: Context) : BaseCloudStorageSer
         kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
             addOnCompleteListener { task ->
                 if (task.isSuccessful) {
-                    continuation.resume(task.result, null)
+                    continuation.resume(task.result) { _, _, _ -> }
                 } else {
                     continuation.resumeWith(Result.failure(task.exception ?: RuntimeException("Task failed")))
                 }

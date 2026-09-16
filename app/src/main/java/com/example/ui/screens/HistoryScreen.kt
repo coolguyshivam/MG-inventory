@@ -29,7 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.HistoryEvent
-import com.example.ui.components.BarcodeScannerMockDialog
+import com.example.ui.components.SmartImeiScannerDialog
 import com.example.ui.theme.TransactionColors
 import com.example.ui.viewmodel.StockViewModel
 import java.text.SimpleDateFormat
@@ -379,7 +379,7 @@ fun HistoryScreen(viewModel: StockViewModel) {
     }
 
     if (showScanner) {
-        BarcodeScannerMockDialog(
+        SmartImeiScannerDialog(
             onDismissRequest = { showScanner = false },
             onBarcodeScanned = { viewModel.setHistorySearchTerm(it) },
             suggestedImeis = suggestedImeis

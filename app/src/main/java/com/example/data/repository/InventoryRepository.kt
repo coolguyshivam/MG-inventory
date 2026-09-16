@@ -166,27 +166,30 @@ class InventoryRepository {
                 localAddedTransactions.value = localAddedTransactions.value - transaction.id
                 return false // IMEI must be unique in active inventory
             }
-            // Save active stock item
-            db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_STOCK_ITEMS)
-                .document(item.id)
-                .set(item)
-                .await()
             
-            // Save transaction history log
-            db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_STOCK_TRANSACTIONS)
-                .document(transaction.id)
-                .set(transaction)
-                .await()
+            // Atomic batch commit for stock item and transaction history log
+            val batch = db.batch()
+            val itemRef = db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_STOCK_ITEMS).document(item.id)
+            val txRef = db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_STOCK_TRANSACTIONS).document(transaction.id)
+            batch.set(itemRef, item)
+            batch.set(txRef, transaction)
+            batch.commit().await()
             true
         } catch (e: Exception) {
             e.printStackTrace()
-            true
+            // Roll back local state on error
+            localAddedItems.value = localAddedItems.value - item.id
+            localAddedTransactions.value = localAddedTransactions.value - transaction.id
+            false
         }
     }
 
     suspend fun sellBrandStock(imei: String, warehouse: String, operator: String, date: Long, notes: String? = null): Boolean {
+        var existingItem: com.example.data.model.BrandStockItem? = null
+        var txCreated: com.example.data.model.BrandStockTransaction? = null
         return try {
             val existing = localAddedItems.value.values.firstOrNull { it.imei == imei } ?: getBrandStockItemByImei(imei) ?: return false // Not found
+            existingItem = existing
             
             // Optimistic update
             localDeletedItems.value = localDeletedItems.value + existing.id
@@ -204,23 +207,72 @@ class InventoryRepository {
                 operator = operator,
                 notes = notes
             )
+            txCreated = tx
             localAddedTransactions.value = localAddedTransactions.value + (tx.id to tx)
             localDeletedTransactions.value = localDeletedTransactions.value - tx.id
 
-            // Delete active stock item from active collection
-            db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_STOCK_ITEMS)
-                .document(existing.id)
-                .delete()
-                .await()
-            
-            db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_STOCK_TRANSACTIONS)
-                .document(tx.id)
-                .set(tx)
-                .await()
+            // Concurrency-safe atomic transaction to prevent double-selling across multiple counters
+            val itemRef = db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_STOCK_ITEMS).document(existing.id)
+            val txRef = db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_STOCK_TRANSACTIONS).document(tx.id)
+            db.runTransaction { transaction ->
+                val snapshot = transaction.get(itemRef)
+                if (!snapshot.exists()) {
+                    throw IllegalStateException("Brand stock item already sold by another counter staff.")
+                }
+                transaction.delete(itemRef)
+                transaction.set(txRef, tx)
+            }.await()
             true
         } catch (e: Exception) {
             e.printStackTrace()
+            // Roll back local optimistic changes on failure
+            existingItem?.let { existing ->
+                localDeletedItems.value = localDeletedItems.value - existing.id
+            }
+            txCreated?.let { tx ->
+                localAddedTransactions.value = localAddedTransactions.value - tx.id
+            }
+            false
+        }
+    }
+
+    suspend fun transferBrandStock(imei: String, toWarehouse: String, operator: String, date: Long, notes: String? = null): Boolean {
+        return try {
+            val query = db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_STOCK_ITEMS)
+                .whereEqualTo("imei", imei.trim())
+                .limit(1)
+                .get()
+                .await()
+            val existingDoc = query.documents.firstOrNull() ?: return false
+            val itemRef = existingDoc.reference
+            val currentItem = existingDoc.toObject(com.example.data.model.BrandStockItem::class.java) ?: return false
+
+            val tx = com.example.data.model.BrandStockTransaction(
+                id = UUID.randomUUID().toString(),
+                imei = currentItem.imei,
+                brand = currentItem.brand,
+                variant = currentItem.variant,
+                color = currentItem.color,
+                warehouse = toWarehouse,
+                type = "TRANSFER",
+                dateInMillis = date,
+                operator = operator,
+                notes = notes ?: "Transferred to $toWarehouse"
+            )
+            val txRef = db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_STOCK_TRANSACTIONS).document(tx.id)
+
+            db.runTransaction { transaction ->
+                val snap = transaction.get(itemRef)
+                if (!snap.exists()) {
+                    throw IllegalStateException("Brand stock item no longer available for transfer.")
+                }
+                transaction.update(itemRef, "warehouse", toWarehouse)
+                transaction.set(txRef, tx)
+            }.await()
             true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
         }
     }
 
@@ -239,46 +291,46 @@ class InventoryRepository {
     }
 
     suspend fun deleteBrandVariant(id: String): Boolean {
-        fallbackBrandVariants.value = fallbackBrandVariants.value.filter { it.id != id }
         return try {
             db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_VARIANTS)
                 .document(id)
                 .delete()
                 .await()
+            fallbackBrandVariants.value = fallbackBrandVariants.value.filter { it.id != id }
             true
         } catch (e: Exception) {
             e.printStackTrace()
-            true
+            false
         }
     }
 
     suspend fun deleteBrandStockItem(id: String): Boolean {
-        localDeletedItems.value = localDeletedItems.value + id
-        localAddedItems.value = localAddedItems.value - id
         return try {
             db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_STOCK_ITEMS)
                 .document(id)
                 .delete()
                 .await()
+            localDeletedItems.value = localDeletedItems.value + id
+            localAddedItems.value = localAddedItems.value - id
             true
         } catch (e: Exception) {
             e.printStackTrace()
-            true
+            false
         }
     }
 
     suspend fun deleteBrandTransaction(id: String): Boolean {
-        localDeletedTransactions.value = localDeletedTransactions.value + id
-        localAddedTransactions.value = localAddedTransactions.value - id
         return try {
             db.collection(com.example.data.cloud.AppCloudConfig.COLL_BRAND_STOCK_TRANSACTIONS)
                 .document(id)
                 .delete()
                 .await()
+            localDeletedTransactions.value = localDeletedTransactions.value + id
+            localAddedTransactions.value = localAddedTransactions.value - id
             true
         } catch (e: Exception) {
             e.printStackTrace()
-            true
+            false
         }
     }
 
@@ -358,8 +410,6 @@ class InventoryRepository {
             photoUri = uploadedPhotoUri,
             underRepair = false
         )
-        db.collection("inventory_items").document(item.id).set(item).await()
-
         val history = HistoryEvent(
             id = UUID.randomUUID().toString(),
             actionType = "PURCHASE",
@@ -375,7 +425,14 @@ class InventoryRepository {
             photoUri = uploadedPhotoUri,
             userId = userId
         )
-        db.collection("history_events").document(history.id).set(history).await()
+
+        // Atomic write batch ensuring item and audit log commit together
+        val batch = db.batch()
+        val itemRef = db.collection("inventory_items").document(item.id)
+        val histRef = db.collection("history_events").document(history.id)
+        batch.set(itemRef, item)
+        batch.set(histRef, history)
+        batch.commit().await()
         
         if (uploadedPhotoUri != null && uploadedPhotoUri.contains("file://")) {
             com.example.util.AppUtils.uploadPhotoInBackground(item.id, uploadedPhotoUri, "inventory_items")
@@ -399,16 +456,16 @@ class InventoryRepository {
         photoUri: String?,
         userId: String
     ): Boolean {
-        val existing = getItemBySerialNumber(serialNumber)
-        if (existing != null) {
-            if (existing.quantity <= quantity) {
-                db.collection("inventory_items").document(existing.id).delete().await()
-            } else {
-                db.collection("inventory_items").document(existing.id).update("quantity", existing.quantity - quantity).await()
-            }
-        }
+        // Query item reference by serial number
+        val querySnap = db.collection("inventory_items")
+            .whereEqualTo("serialNumber", serialNumber.trim())
+            .limit(1)
+            .get()
+            .await()
+        val existingDoc = querySnap.documents.firstOrNull()
+        val existingItem = existingDoc?.toObject(InventoryItem::class.java)
 
-        val uploadedPhotoUri = com.example.util.AppUtils.processAndUploadPhotos(photoUri ?: existing?.photoUri)
+        val uploadedPhotoUri = com.example.util.AppUtils.processAndUploadPhotos(photoUri ?: existingItem?.photoUri)
         val history = HistoryEvent(
             id = UUID.randomUUID().toString(),
             actionType = "SALE",
@@ -424,7 +481,32 @@ class InventoryRepository {
             photoUri = uploadedPhotoUri,
             userId = userId
         )
-        db.collection("history_events").document(history.id).set(history).await()
+
+        if (existingDoc != null) {
+            val docRef = existingDoc.reference
+            // Concurrency-safe atomic transaction preventing double-selling across ~20 staff counters
+            db.runTransaction { transaction ->
+                val snapshot = transaction.get(docRef)
+                if (!snapshot.exists()) {
+                    throw IllegalStateException("Device $serialNumber has already been sold by another staff member.")
+                }
+                val currentQty = snapshot.getLong("quantity")?.toInt() ?: 1
+                if (currentQty < quantity) {
+                    throw IllegalStateException("Insufficient inventory: Only $currentQty units left in stock.")
+                }
+                if (currentQty <= quantity) {
+                    transaction.delete(docRef)
+                } else {
+                    transaction.update(docRef, "quantity", currentQty - quantity)
+                }
+                val histRef = db.collection("history_events").document(history.id)
+                transaction.set(histRef, history)
+            }.await()
+        } else {
+            // Unstocked or accessory direct sale
+            val histRef = db.collection("history_events").document(history.id)
+            histRef.set(history).await()
+        }
         
         if (uploadedPhotoUri != null && uploadedPhotoUri.contains("file://")) {
             com.example.util.AppUtils.uploadPhotoInBackground(history.id, uploadedPhotoUri, "history_events")

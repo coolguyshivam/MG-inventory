@@ -43,7 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
-import com.example.ui.components.BarcodeScannerMockDialog
+import com.example.ui.components.SmartImeiScannerDialog
 import com.example.ui.viewmodel.StockViewModel
 import com.example.util.AppUtils
 import java.io.File
@@ -371,7 +371,11 @@ fun TransactionsScreen(viewModel: StockViewModel) {
         Pair("Network Modem Unit", "ic_router")
     )
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .imePadding()
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -982,9 +986,9 @@ fun TransactionsScreen(viewModel: StockViewModel) {
 
 
 
-        // Photo picker Mock Selector trigger (Rule 9)
+        // Smart Barcode & Box IMEI Scanner
         scannerIndex?.let { index ->
-            BarcodeScannerMockDialog(
+            SmartImeiScannerDialog(
                 onDismissRequest = { scannerIndex = null },
                 onBarcodeScanned = { scannedImei -> 
                     val currentAmount = transactionSubItems.getOrNull(index)?.amount ?: ""

@@ -31,7 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.InventoryItem
-import com.example.ui.components.BarcodeScannerMockDialog
+import com.example.ui.components.SmartImeiScannerDialog
 import com.example.ui.viewmodel.StockViewModel
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -140,6 +140,7 @@ fun InventoryScreen(viewModel: StockViewModel) {
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .imePadding()
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
@@ -445,7 +446,7 @@ fun InventoryScreen(viewModel: StockViewModel) {
         }
 
         if (showScanner) {
-            BarcodeScannerMockDialog(
+            SmartImeiScannerDialog(
                 onDismissRequest = { showScanner = false },
                 onBarcodeScanned = { viewModel.setInventorySearchTerm(it) },
                 suggestedImeis = suggestedImeis

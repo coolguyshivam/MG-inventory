@@ -89,6 +89,8 @@ roborazzi-junit-rule = { group = "io.github.takahirom.roborazzi", name = "robora
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
 firebase-ai = { group = "com.google.firebase", name = "firebase-ai" }
 play-services-code-scanner = { group = "com.google.android.gms", name = "play-services-code-scanner", version = "16.1.0" }
+mlkit-barcode-scanning = { group = "com.google.mlkit", name = "barcode-scanning", version = "17.3.0" }
+mlkit-text-recognition = { group = "com.google.mlkit", name = "text-recognition", version = "16.0.1" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

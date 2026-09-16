@@ -119,6 +119,19 @@ object FirebaseSyncManager {
 
                 try {
                     firestoreInstance = FirebaseFirestore.getInstance()
+                    try {
+                        val settings = com.google.firebase.firestore.FirebaseFirestoreSettings.Builder()
+                            .setLocalCacheSettings(
+                                com.google.firebase.firestore.PersistentCacheSettings.newBuilder()
+                                    .setSizeBytes(200L * 1024L * 1024L) // 200 MB persistent disk cache for ~20 concurrent employees
+                                    .build()
+                            )
+                            .build()
+                        firestoreInstance?.firestoreSettings = settings
+                        Log.d("FirebaseSyncManager", "Configured Firestore Persistent Disk Cache with 200MB limit.")
+                    } catch (ex: Exception) {
+                        Log.w("FirebaseSyncManager", "Could not apply custom cache settings: ${ex.message}")
+                    }
                     isInitialized = true
                     Log.d("FirebaseSyncManager", "Firebase initialized successfully!")
                 } catch (e: Exception) {

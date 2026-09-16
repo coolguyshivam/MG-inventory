@@ -43,6 +43,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.model.BrandStockItem
 import com.example.data.model.BrandStockTransaction
+import com.example.ui.components.SmartImeiScannerDialog
 import com.example.ui.viewmodel.StockViewModel
 import com.example.util.AppUtils
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
@@ -267,6 +268,7 @@ fun BrandStockScreen(viewModel: StockViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .imePadding()
     ) {
         LazyColumn(
             modifier = Modifier
@@ -2982,251 +2984,23 @@ fun BrandStockScreen(viewModel: StockViewModel) {
     }
 
     if (showQrScannerDialog) {
-        LaunchedEffect(Unit) {
-            triggerLaserScan()
-        }
-        AlertDialog(
+        SmartImeiScannerDialog(
             onDismissRequest = {
                 showQrScannerDialog = false
                 detectedSerials = emptyList()
                 scanError = null
                 isAnalyzingImage = false
             },
-            title = {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.CameraAlt,
-                        contentDescription = "Intelligent Device Scanner",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(28.dp)
-                    )
-                    Text("Smart Box/Screen Scanner", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                }
+            onBarcodeScanned = { scannedImei ->
+                qrScannerCallback?.invoke(scannedImei)
+                showQrScannerDialog = false
+                Toast.makeText(context, "Scanned: $scannedImei", Toast.LENGTH_SHORT).show()
             },
-            text = {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = "Standard scans can easily capture irrelevant barcodes on the product box. Use our intelligent engine to correctly locate specific identifiers, even from screenshots!",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    // Option 1: Live laser scan
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                triggerLaserScan()
-                            },
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(14.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.QrCode,
-                                contentDescription = "Laser scan icon",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(28.dp)
-                            )
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Quick Laser Barcode Scanner", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-                                Text("Aim at a single standard barcode on the packaging box.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                    }
-
-                    // Option 2: Camera Capture (Box / Screen Area)
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                try {
-                                    val tempFile = File.createTempFile("scan_photo_", ".jpg", context.cacheDir).apply {
-                                        deleteOnExit()
-                                    }
-                                    val pkg = context.packageName
-                                    val uri = FileProvider.getUriForFile(context, "$pkg.fileprovider", tempFile)
-                                    tempPhotoUri = uri
-                                    cameraLauncher.launch(uri)
-                                } catch (e: Exception) {
-                                    Toast.makeText(context, "Unable to initiate camera: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
-                                }
-                            },
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(14.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.CameraAlt,
-                                contentDescription = "Snap camera icon",
-                                tint = MaterialTheme.colorScheme.secondary,
-                                modifier = Modifier.size(28.dp)
-                            )
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Snap Photo of Box Labels", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
-                                Text("Snapshot multiple labels. Gemini AI auto-identifies all valid IMEIs & codes.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                    }
-
-                    // Option 3: Choose Gallery Screenshot / Image
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                imagePickerLauncher.launch("image/*")
-                            },
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(14.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.PhotoLibrary,
-                                contentDescription = "Gallery selection icon",
-                                tint = MaterialTheme.colorScheme.secondary,
-                                modifier = Modifier.size(28.dp)
-                            )
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Choose Screenshot / Image", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
-                                Text("Select digital screenshot or invoice list from the phone gallery.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                    }
-
-                    // Progress Loader
-                    if (isAnalyzingImage) {
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                                Text(
-                                    text = "Analyzing image with Gemini AI... Finding all 15-character IMEIs / Serials.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-                        }
-                    }
-
-                    // Error text
-                    if (scanError != null) {
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.2f))
-                        ) {
-                            Text(
-                                text = scanError!!,
-                                color = MaterialTheme.colorScheme.error,
-                                style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.padding(12.dp)
-                            )
-                        }
-                    }
-
-                    // Detected serial cards list
-                    if (detectedSerials.isNotEmpty()) {
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = "Detected Numbers (Tap to Insert):",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(top = 4.dp)
-                            )
-                            
-                            detectedSerials.forEach { serial ->
-                                Card(
-                                    onClick = {
-                                        qrScannerCallback?.invoke(serial)
-                                        showQrScannerDialog = false
-                                        detectedSerials = emptyList()
-                                        scanError = null
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Check,
-                                                contentDescription = "Device found",
-                                                tint = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                            Text(
-                                                text = serial,
-                                                fontWeight = FontWeight.Bold,
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = MaterialTheme.colorScheme.onSurface
-                                            )
-                                        }
-                                        Text(
-                                            text = "Select & Autofill",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        showQrScannerDialog = false
-                        detectedSerials = emptyList()
-                        scanError = null
-                        isAnalyzingImage = false
-                    }
-                ) {
-                    Text("Close")
+            onMultipleBarcodesScanned = { list ->
+                list.firstOrNull()?.let { firstImei ->
+                    qrScannerCallback?.invoke(firstImei)
+                    showQrScannerDialog = false
+                    Toast.makeText(context, "Scanned: $firstImei", Toast.LENGTH_SHORT).show()
                 }
             }
         )

@@ -23,6 +23,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import android.util.Log
 import com.example.data.repository.InventoryRepository
 import com.example.data.repository.FirebaseSyncManager
@@ -54,8 +57,59 @@ object AppUtils {
         appContext = context.applicationContext
     }
 
+    fun getImageCompressFormat(): Bitmap.CompressFormat {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Bitmap.CompressFormat.WEBP_LOSSY
+        } else {
+            @Suppress("DEPRECATION")
+            Bitmap.CompressFormat.WEBP
+        }
+    }
+
     fun getJpegFormat(): Bitmap.CompressFormat {
-        return Bitmap.CompressFormat.JPEG
+        return getImageCompressFormat()
+    }
+
+    fun performHapticFeedback(context: Context) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? android.os.VibratorManager
+                vibratorManager?.defaultVibrator?.vibrate(
+                    android.os.VibrationEffect.createPredefined(android.os.VibrationEffect.EFFECT_CLICK)
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    vibrator?.vibrate(android.os.VibrationEffect.createOneShot(40, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+                } else {
+                    @Suppress("DEPRECATION")
+                    vibrator?.vibrate(40)
+                }
+            }
+        } catch (e: Exception) {
+            // Ignore if device lacks vibration motor
+        }
+    }
+
+    fun generateMicroThumbnail(bitmap: Bitmap): String {
+        return try {
+            val maxDimension = 120
+            val ratio = bitmap.width.toFloat() / maxOf(1, bitmap.height).toFloat()
+            val (w, h) = if (ratio > 1) {
+                Pair(maxDimension, maxOf(1, (maxDimension / ratio).toInt()))
+            } else {
+                Pair(maxOf(1, (maxDimension * ratio).toInt()), maxDimension)
+            }
+            val thumb = Bitmap.createScaledBitmap(bitmap, w, h, true)
+            val out = ByteArrayOutputStream()
+            thumb.compress(getImageCompressFormat(), 60, out)
+            if (thumb != bitmap) thumb.recycle()
+            val b64 = android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
+            "data:image/webp;base64,$b64"
+        } catch (e: Exception) {
+            ""
+        }
     }
 
     private const val ENCRYPTION_KEY = "MG_GALLERY_SECURE_SALT_KEY"
@@ -515,7 +569,7 @@ object AppUtils {
             val dir = File(context.filesDir, "photos")
             if (!dir.exists()) dir.mkdirs()
             
-            val filename = "pic_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}.jpg"
+            val filename = "pic_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}.webp"
             val file = File(dir, filename)
             
             // Acquire dimensions to scale slightly if larger than crisp Full HD bounds (2048px)
@@ -561,7 +615,7 @@ object AppUtils {
             }
             
             FileOutputStream(file).use { out ->
-                scaledBitmap.compress(getJpegFormat(), 75, out) // 75% JPEG is extremely crisp and has small file size
+                scaledBitmap.compress(getImageCompressFormat(), 80, out) // Modern 80% WebP: 35-45% smaller than JPEG with crisp sharpness
             }
             scaledBitmap.recycle()
             "file://${file.absolutePath}"
@@ -629,28 +683,39 @@ object AppUtils {
 
     fun uploadPhotoInBackground(itemId: String, photoUriString: String, collectionName: String = "inventory_items") {
         if (photoUriString.isBlank()) return
+        val context = appContext
+        if (context != null) {
+            // 1. Enqueue WorkManager job for persistent network-aware background upload guarantee
+            PhotoUploadWorker.enqueue(context, itemId, photoUriString, collectionName)
+        }
+
+        // 2. Concurrently execute immediate parallel batch upload in active IO scope
         backgroundScope.launch {
             try {
-                val context = appContext ?: return@launch
+                val ctx = appContext ?: return@launch
                 val parts = photoUriString.split(",")
-                val uploadResults = parts.map { part ->
-                    val trimmed = part.trim()
-                    if (trimmed.startsWith("file://") || trimmed.length > 100) {
-                        try {
-                            val storageService = com.example.data.cloud.CloudStorageFactory.getStorageService(context)
-                            val cloudUrl = storageService.uploadPhoto(trimmed)
-                            if (cloudUrl.startsWith("http")) {
-                                cloudUrl
+                val uploadResults = coroutineScope {
+                    parts.map { part ->
+                        async(Dispatchers.IO) {
+                            val trimmed = part.trim()
+                            if (trimmed.startsWith("file://") || trimmed.length > 100) {
+                                try {
+                                    val storageService = com.example.data.cloud.CloudStorageFactory.getStorageService(ctx)
+                                    val cloudUrl = storageService.uploadPhoto(trimmed)
+                                    if (cloudUrl.startsWith("http")) {
+                                        cloudUrl
+                                    } else {
+                                        trimmed
+                                    }
+                                } catch (ex: Exception) {
+                                    android.util.Log.e("AppUtils", "Failed uploading individual background photo: $trimmed", ex)
+                                    trimmed
+                                }
                             } else {
                                 trimmed
                             }
-                        } catch (ex: Exception) {
-                            android.util.Log.e("AppUtils", "Failed uploading individual background photo: $trimmed", ex)
-                            trimmed
                         }
-                    } else {
-                        trimmed
-                    }
+                    }.awaitAll()
                 }
                 
                 val finalPhotoUriString = uploadResults.joinToString(",")

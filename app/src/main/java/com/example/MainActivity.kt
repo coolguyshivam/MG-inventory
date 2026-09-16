@@ -271,6 +271,22 @@ fun MainAppContent(viewModel: StockViewModel) {
                     )
 
                     if (canManageUsers) {
+                        NavigationDrawerItem(
+                            icon = { Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(22.dp)) },
+                            label = { 
+                                Column {
+                                    Text("Database Backup & Export", fontWeight = FontWeight.Bold)
+                                    Text("Instant full JSON/CSV cloud snapshots", style = MaterialTheme.typography.bodySmall, fontSize = 10.sp)
+                                }
+                            },
+                            selected = activeTab == 8,
+                            onClick = {
+                                viewModel.setTab(8)
+                                coroutineScope.launch { drawerState.close() }
+                            },
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp).testTag("drawer_item_backup_export")
+                        )
+
                         HorizontalDivider(
                             modifier = Modifier.padding(vertical = 12.dp),
                             color = MaterialTheme.colorScheme.outlineVariant
@@ -577,6 +593,7 @@ fun MainAppContent(viewModel: StockViewModel) {
                     5 -> UserManagementScreen(viewModel = viewModel)
                     6 -> com.example.ui.screens.LedgerScreen(viewModel = viewModel)
                     7 -> BrandStockScreen(viewModel = viewModel)
+                    8 -> com.example.ui.screens.DatabaseBackupScreen(viewModel = viewModel)
                     else -> InventoryScreen(viewModel = viewModel)
                 }
             }

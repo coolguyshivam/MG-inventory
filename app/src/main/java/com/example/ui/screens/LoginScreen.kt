@@ -6,9 +6,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Lock
@@ -62,7 +64,8 @@ fun LoginScreen(viewModel: StockViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .background(bgGradient)
-            .padding(16.dp),
+            .safeDrawingPadding()
+            .imePadding(),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -71,6 +74,8 @@ fun LoginScreen(viewModel: StockViewModel) {
             modifier = Modifier
                 .fillMaxWidth()
                 .widthIn(max = 400.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp)
         ) {
             // App Branding Header
             Column(
