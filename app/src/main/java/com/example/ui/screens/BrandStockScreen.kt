@@ -268,7 +268,6 @@ fun BrandStockScreen(viewModel: StockViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .imePadding()
     ) {
         LazyColumn(
             modifier = Modifier

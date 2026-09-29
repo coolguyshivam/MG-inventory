@@ -34,7 +34,15 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.input.key.*
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -52,7 +60,10 @@ import java.util.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 
 val ColorsAmber = Color(0xFFF59E0B)
 
@@ -60,6 +71,7 @@ val ColorsAmber = Color(0xFFF59E0B)
 @Composable
 fun TransactionsScreen(viewModel: StockViewModel) {
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
     val scrollState = rememberScrollState()
     
     val speechLauncher = rememberLauncherForActivityResult(
@@ -97,43 +109,76 @@ fun TransactionsScreen(viewModel: StockViewModel) {
     val coroutineScope = rememberCoroutineScope()
     var isProcessingPhotos by remember { mutableStateOf(false) }
 
+    fun handleSelectedUris(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        val currentUris = viewModel.photoUriInput.value
+        val urisArray = if (currentUris.isNullOrBlank()) emptyList() else currentUris.split(",")
+        val remainingSlots = (10 - urisArray.size).coerceAtLeast(0)
+        if (remainingSlots <= 0) {
+            Toast.makeText(context, "Maximum 10 photos allowed", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val acceptedUris = if (uris.size > remainingSlots) {
+            Toast.makeText(
+                context,
+                "Maximum 10 photos allowed. Only first $remainingSlots attached.",
+                Toast.LENGTH_SHORT
+            ).show()
+            uris.take(remainingSlots)
+        } else {
+            uris
+        }
+
+        if (acceptedUris.isNotEmpty()) {
+            isProcessingPhotos = true
+            coroutineScope.launch {
+                try {
+                    val newUrisStr = withContext(Dispatchers.IO) {
+                        acceptedUris.mapNotNull { uri ->
+                            try {
+                                com.example.util.AppUtils.uriToHighResLocalFile(context, uri)
+                            } catch (t: Throwable) {
+                                t.printStackTrace()
+                                null
+                            }
+                        }
+                    }
+                    if (newUrisStr.isNotEmpty()) {
+                        viewModel.photoUriInput.value = (urisArray + newUrisStr).joinToString(",")
+                        Toast.makeText(context, "Photo(s) attached successfully!", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Failed to process photo files.", Toast.LENGTH_SHORT).show()
+                    }
+                } catch (t: Throwable) {
+                    t.printStackTrace()
+                    Toast.makeText(context, "Error processing photos: ${t.localizedMessage}", Toast.LENGTH_SHORT).show()
+                } finally {
+                    isProcessingPhotos = false
+                }
+            }
+        }
+    }
+
+    // Modern Zero-Permission Photo Picker (Android 13+ & Google Play services backport)
+    val visualMediaLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia(10)
+    ) { uris ->
+        try {
+            handleSelectedUris(uris)
+        } catch (t: Throwable) {
+            t.printStackTrace()
+            Toast.makeText(context, "Gallery selection error: ${t.localizedMessage}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetMultipleContents()
     ) { uris ->
-        if (uris.isNotEmpty()) {
-            val currentUris = viewModel.photoUriInput.value
-            val urisArray = if (currentUris.isNullOrBlank()) emptyList() else currentUris.split(",")
-            
-            val totalSelected = uris.size
-            val acceptedUris = if (urisArray.size + totalSelected > 10) {
-                Toast.makeText(
-                    context,
-                    "The photos selected are more than 10. Only first 10 will be uploaded.",
-                    Toast.LENGTH_LONG
-                ).show()
-                val remainingSlots = (10 - urisArray.size).coerceAtLeast(0)
-                uris.take(remainingSlots)
-            } else {
-                uris
-            }
-
-            if (acceptedUris.isNotEmpty()) {
-                isProcessingPhotos = true
-                coroutineScope.launch {
-                    val newUrisStr = withContext(Dispatchers.IO) {
-                        acceptedUris.mapNotNull { uri ->
-                            com.example.util.AppUtils.uriToHighResLocalFile(context, uri)
-                        }
-                    }
-                    isProcessingPhotos = false
-                    if (newUrisStr.isNotEmpty()) {
-                        viewModel.photoUriInput.value = (urisArray + newUrisStr).joinToString(",")
-                        Toast.makeText(context, "Gallery Images Attached & Sync-optimized!", Toast.LENGTH_SHORT).show()
-                    } else {
-                        Toast.makeText(context, "Failed to prepare high fidelity files.", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            }
+        try {
+            handleSelectedUris(uris)
+        } catch (t: Throwable) {
+            t.printStackTrace()
+            Toast.makeText(context, "Gallery selection error: ${t.localizedMessage}", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -145,8 +190,8 @@ fun TransactionsScreen(viewModel: StockViewModel) {
             }
             val tempFile = File.createTempFile("photo_${System.currentTimeMillis()}", ".jpg", directory)
             FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", tempFile)
-        } catch (e: Exception) {
-            e.printStackTrace()
+        } catch (t: Throwable) {
+            t.printStackTrace()
             null
         }
     }
@@ -154,45 +199,90 @@ fun TransactionsScreen(viewModel: StockViewModel) {
     val cameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
     ) { success ->
-        if (success) {
-            tempCameraUriStringState.value?.let { uriStr ->
-                val uri = Uri.parse(uriStr)
-                val currentUris = viewModel.photoUriInput.value
-                val urisArray = if (currentUris.isNullOrBlank()) emptyList() else currentUris.split(",")
-                if (urisArray.size < 10) {
-                    val localUri = com.example.util.AppUtils.uriToHighResLocalFile(context, uri)
-                    if (localUri != null) {
-                        viewModel.photoUriInput.value = (urisArray + localUri).joinToString(",")
-                        Toast.makeText(context, "Camera Snapshot Attached & Sync-optimized!", Toast.LENGTH_SHORT).show()
+        try {
+            if (success) {
+                tempCameraUriStringState.value?.let { uriStr ->
+                    val uri = Uri.parse(uriStr)
+                    val currentUris = viewModel.photoUriInput.value
+                    val urisArray = if (currentUris.isNullOrBlank()) emptyList() else currentUris.split(",")
+                    if (urisArray.size < 10) {
+                        isProcessingPhotos = true
+                        coroutineScope.launch {
+                            try {
+                                val localUri = withContext(Dispatchers.IO) {
+                                    com.example.util.AppUtils.uriToHighResLocalFile(context, uri)
+                                }
+                                if (localUri != null) {
+                                    viewModel.photoUriInput.value = (urisArray + localUri).joinToString(",")
+                                    Toast.makeText(context, "Camera Snapshot Attached!", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(context, "Failed to save snapshot file.", Toast.LENGTH_SHORT).show()
+                                }
+                            } catch (t: Throwable) {
+                                t.printStackTrace()
+                                Toast.makeText(context, "Failed to process snapshot: ${t.localizedMessage}", Toast.LENGTH_SHORT).show()
+                            } finally {
+                                isProcessingPhotos = false
+                            }
+                        }
                     } else {
-                        Toast.makeText(context, "Error: Failed to save high fidelity snapshot.", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Maximum 10 photos allowed", Toast.LENGTH_SHORT).show()
                     }
-                } else {
-                    Toast.makeText(context, "Maximum 10 photos allowed", Toast.LENGTH_SHORT).show()
                 }
+            } else {
+                Toast.makeText(context, "Camera capture cancelled or failed.", Toast.LENGTH_SHORT).show()
             }
-        } else {
-            Toast.makeText(context, "Camera capture cancelled or failed.", Toast.LENGTH_SHORT).show()
+        } catch (t: Throwable) {
+            t.printStackTrace()
+            Toast.makeText(context, "Camera error: ${t.localizedMessage}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun launchCameraSafely(uri: Uri) {
+        try {
+            tempCameraUriStringState.value = uri.toString()
+            val intent = Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE).apply {
+                putExtra(android.provider.MediaStore.EXTRA_OUTPUT, uri)
+                clipData = android.content.ClipData.newRawUri("", uri)
+                addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            try {
+                val resInfoList = context.packageManager.queryIntentActivities(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
+                for (resolveInfo in resInfoList) {
+                    val pkg = resolveInfo.activityInfo?.packageName ?: continue
+                    try {
+                        context.grantUriPermission(pkg, uri, Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    } catch (t: Throwable) {
+                        t.printStackTrace()
+                    }
+                }
+            } catch (t: Throwable) {
+                t.printStackTrace()
+            }
+            cameraLauncher.launch(uri)
+        } catch (t: Throwable) {
+            t.printStackTrace()
+            Toast.makeText(context, "No camera app found or camera launch failed: ${t.localizedMessage}", Toast.LENGTH_SHORT).show()
         }
     }
 
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) {
-            val uri = createTempImageUri()
-            if (uri != null) {
-                tempCameraUriStringState.value = uri.toString()
-                try {
-                    cameraLauncher.launch(uri)
-                } catch (e: Exception) {
-                    Toast.makeText(context, "No camera app found or camera launch failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+        try {
+            if (granted) {
+                val uri = createTempImageUri()
+                if (uri != null) {
+                    launchCameraSafely(uri)
+                } else {
+                    Toast.makeText(context, "Could not create temporary file for picture.", Toast.LENGTH_SHORT).show()
                 }
             } else {
-                Toast.makeText(context, "Error: Failed to create temporary file for picture.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Camera permission is required to take a transaction photo.", Toast.LENGTH_LONG).show()
             }
-        } else {
-            Toast.makeText(context, "Camera permission is required to take a transaction photo.", Toast.LENGTH_LONG).show()
+        } catch (t: Throwable) {
+            t.printStackTrace()
+            Toast.makeText(context, "Camera permission error: ${t.localizedMessage}", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -225,6 +315,7 @@ fun TransactionsScreen(viewModel: StockViewModel) {
     val repairReason by viewModel.repairReasonInput.collectAsStateWithLifecycle()
 
     var showPhotoChooserDialog by remember { mutableStateOf(false) }
+    var viewingPhotoUri by remember { mutableStateOf<String?>(null) }
     var showDatePicker by remember { mutableStateOf(false) }
     var scannerIndex by remember { mutableStateOf<Int?>(null) }
     val transactionSubItems by viewModel.transactionSubItems.collectAsStateWithLifecycle()
@@ -239,10 +330,37 @@ fun TransactionsScreen(viewModel: StockViewModel) {
         sdf.format(Date(dateInMillis))
     }
 
+    val canManageInventory by viewModel.canManageInventory.collectAsStateWithLifecycle()
     val canSell by viewModel.canSell.collectAsStateWithLifecycle()
     val canRepair by viewModel.canRepair.collectAsStateWithLifecycle()
     
-    val isActionAllowed = if (activeSelection == 3) canRepair else canSell
+    val isActionAllowed = when (activeSelection) {
+        0 -> canManageInventory
+        1 -> canSell
+        2 -> canManageInventory || canSell
+        3 -> canRepair
+        else -> true
+    }
+
+    // Focus requesters to smoothly traverse form inputs on Enter / IME Next
+    val modelFocusRequester = remember { FocusRequester() }
+    val nameFocusRequester = remember { FocusRequester() }
+    val phoneFocusRequester = remember { FocusRequester() }
+    val aadhaarFocusRequester = remember { FocusRequester() }
+    val techFocusRequester = remember { FocusRequester() }
+    val repairReasonFocusRequester = remember { FocusRequester() }
+    val addressFocusRequester = remember { FocusRequester() }
+    val descriptionFocusRequester = remember { FocusRequester() }
+    val imeiFocusRequesters = remember { mutableMapOf<Int, FocusRequester>() }
+    val priceFocusRequesters = remember { mutableMapOf<Int, FocusRequester>() }
+
+    fun safeRequestFocus(requester: FocusRequester) {
+        try {
+            requester.requestFocus()
+        } catch (_: Exception) {
+            focusManager.moveFocus(FocusDirection.Next)
+        }
+    }
 
     // Real-time validation touched trackers
     val imeiTouched = remember { mutableStateMapOf<Int, Boolean>() }
@@ -374,7 +492,6 @@ fun TransactionsScreen(viewModel: StockViewModel) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .imePadding()
     ) {
         Column(
             modifier = Modifier
@@ -495,7 +612,7 @@ fun TransactionsScreen(viewModel: StockViewModel) {
 
                         IconButton(
                             onClick = { viewModel.addSubItem() },
-                            modifier = Modifier.size(32.dp)
+                            modifier = Modifier.size(32.dp).focusProperties { canFocus = false }
                         ) { Icon(Icons.Default.Add, "Add Quantity", modifier = Modifier.size(16.dp)) }
                     }
                 }
@@ -518,23 +635,41 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                             OutlinedTextField(
                                 value = subItem.serialNumber,
                                 onValueChange = { 
-                                    viewModel.updateSubItem(index, it, subItem.amount)
+                                    val clean = it.replace("\n", "").replace("\r", "")
+                                    viewModel.updateSubItem(index, clean, subItem.amount)
                                     viewModel.clearFormErrorAndSuccess()
                                     imeiTouched[index] = true
+                                    if (it.contains("\n") || it.contains("\r")) {
+                                        safeRequestFocus(priceFocusRequesters.getOrPut(index) { FocusRequester() })
+                                    }
                                 },
                                 label = { Text("IMEI/Serial Number *") },
                                 placeholder = { Text("Enter 15-digit IMEI") },
                                 singleLine = true,
                                 shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .focusRequester(imeiFocusRequesters.getOrPut(index) { FocusRequester() })
+                                    .onKeyEvent { event ->
+                                        if (event.type == KeyEventType.KeyDown && (event.key == Key.Enter || event.key == Key.NumPadEnter)) {
+                                            safeRequestFocus(priceFocusRequesters.getOrPut(index) { FocusRequester() })
+                                            true
+                                        } else false
+                                    },
                                 isError = imeiErr != null,
                                 supportingText = if (imeiErr != null) { { Text(imeiErr, color = MaterialTheme.colorScheme.error) } } else null,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Number,
+                                    imeAction = ImeAction.Next
+                                ),
+                                keyboardActions = KeyboardActions(
+                                    onNext = { safeRequestFocus(priceFocusRequesters.getOrPut(index) { FocusRequester() }) }
+                                ),
                                 trailingIcon = {
                                     val iconAlpha = if (subItem.serialNumber.isNotEmpty()) 0.4f else 1f
                                     IconButton(
                                         onClick = { scannerIndex = index },
-                                        modifier = Modifier.alpha(iconAlpha)
+                                        modifier = Modifier.alpha(iconAlpha).focusProperties { canFocus = false }
                                     ) {
                                         Icon(Icons.Default.QrCodeScanner, "Scanner", tint = themeColorAndLabel.first)
                                     }
@@ -544,18 +679,50 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                             OutlinedTextField(
                                 value = subItem.amount,
                                 onValueChange = { 
-                                    viewModel.updateSubItem(index, subItem.serialNumber, it) 
+                                    val clean = it.replace("\n", "").replace("\r", "")
+                                    viewModel.updateSubItem(index, subItem.serialNumber, clean) 
                                     viewModel.clearFormErrorAndSuccess()
                                     priceTouched[index] = true
+                                    if (it.contains("\n") || it.contains("\r")) {
+                                        if (index + 1 < transactionSubItems.size) {
+                                            safeRequestFocus(imeiFocusRequesters.getOrPut(index + 1) { FocusRequester() })
+                                        } else {
+                                            safeRequestFocus(modelFocusRequester)
+                                        }
+                                    }
                                 },
                                 label = { Text("Price (₹) *") },
                                 placeholder = { Text("Enter item cost") },
                                 singleLine = true,
                                 shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .focusRequester(priceFocusRequesters.getOrPut(index) { FocusRequester() })
+                                    .onKeyEvent { event ->
+                                        if (event.type == KeyEventType.KeyDown && (event.key == Key.Enter || event.key == Key.NumPadEnter)) {
+                                            if (index + 1 < transactionSubItems.size) {
+                                                safeRequestFocus(imeiFocusRequesters.getOrPut(index + 1) { FocusRequester() })
+                                            } else {
+                                                safeRequestFocus(modelFocusRequester)
+                                            }
+                                            true
+                                        } else false
+                                    },
                                 isError = priceErr != null,
                                 supportingText = if (priceErr != null) { { Text(priceErr, color = MaterialTheme.colorScheme.error) } } else null,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Number,
+                                    imeAction = ImeAction.Next
+                                ),
+                                keyboardActions = KeyboardActions(
+                                    onNext = { 
+                                        if (index + 1 < transactionSubItems.size) {
+                                            safeRequestFocus(imeiFocusRequesters.getOrPut(index + 1) { FocusRequester() })
+                                        } else {
+                                            safeRequestFocus(modelFocusRequester)
+                                        }
+                                    }
+                                )
                             )
                         }
                     }
@@ -586,14 +753,33 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                 OutlinedTextField(
                     value = model,
                     onValueChange = {
-                        viewModel.modelInput.value = it
+                        val clean = it.replace("\n", "").replace("\r", "")
+                        viewModel.modelInput.value = clean
                         viewModel.clearFormErrorAndSuccess()
                         modelTouched.value = true
+                        if (it.contains("\n") || it.contains("\r")) {
+                            safeRequestFocus(nameFocusRequester)
+                        }
                     },
                     label = { Text("Model *") },
                     singleLine = true,
                     shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .focusRequester(modelFocusRequester)
+                        .onKeyEvent { event ->
+                            if (event.type == KeyEventType.KeyDown && (event.key == Key.Enter || event.key == Key.NumPadEnter)) {
+                                safeRequestFocus(nameFocusRequester)
+                                true
+                            } else false
+                        },
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Text,
+                        imeAction = ImeAction.Next
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onNext = { safeRequestFocus(nameFocusRequester) }
+                    ),
                     isError = modelError != null,
                     supportingText = if (modelError != null) { { Text(modelError, color = MaterialTheme.colorScheme.error) } } else null
                 )
@@ -602,15 +788,22 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                     OutlinedTextField(
                         value = name,
                         onValueChange = {
-                            viewModel.nameInput.value = it
+                            val clean = it.replace("\n", "").replace("\r", "")
+                            viewModel.nameInput.value = clean
                             viewModel.clearFormErrorAndSuccess()
                             nameTouched.value = true
+                            if (it.contains("\n") || it.contains("\r")) {
+                                safeRequestFocus(phoneFocusRequester)
+                            }
                         },
                         label = { Text("Name *") },
                         singleLine = true,
                         shape = RoundedCornerShape(10.dp),
                         trailingIcon = {
-                            IconButton(onClick = { showPartySelectionDialog = true }) {
+                            IconButton(
+                                onClick = { showPartySelectionDialog = true },
+                                modifier = Modifier.focusProperties { canFocus = false }
+                            ) {
                                 Icon(
                                     imageVector = Icons.Default.Group,
                                     contentDescription = "Select Registered Party",
@@ -620,7 +813,21 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .onFocusChanged { nameFocused = it.isFocused },
+                            .focusRequester(nameFocusRequester)
+                            .onFocusChanged { nameFocused = it.isFocused }
+                            .onKeyEvent { event ->
+                                if (event.type == KeyEventType.KeyDown && (event.key == Key.Enter || event.key == Key.NumPadEnter)) {
+                                    safeRequestFocus(phoneFocusRequester)
+                                    true
+                                } else false
+                            },
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Text,
+                            imeAction = ImeAction.Next
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onNext = { safeRequestFocus(phoneFocusRequester) }
+                        ),
                         isError = nameError != null,
                         supportingText = if (nameError != null) { { Text(nameError, color = MaterialTheme.colorScheme.error) } } else null
                     )
@@ -687,33 +894,83 @@ fun TransactionsScreen(viewModel: StockViewModel) {
             OutlinedTextField(
                 value = phone,
                 onValueChange = { 
-                    viewModel.phoneInput.value = it 
+                    val clean = it.replace("\n", "").replace("\r", "")
+                    viewModel.phoneInput.value = clean 
                     phoneTouched.value = true
+                    if (it.contains("\n") || it.contains("\r")) {
+                        safeRequestFocus(aadhaarFocusRequester)
+                    }
                 },
                 label = { Text("Phone Number *") },
                 placeholder = { Text("Enter 10-digit phone number") },
                 singleLine = true,
                 shape = RoundedCornerShape(10.dp),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(phoneFocusRequester)
+                    .onKeyEvent { event ->
+                        if (event.type == KeyEventType.KeyDown && (event.key == Key.Enter || event.key == Key.NumPadEnter)) {
+                            safeRequestFocus(aadhaarFocusRequester)
+                            true
+                        } else false
+                    },
                 isError = phoneError != null,
                 supportingText = if (phoneError != null) { { Text(phoneError, color = MaterialTheme.colorScheme.error) } } else null,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Phone,
+                    imeAction = ImeAction.Next
+                ),
+                keyboardActions = KeyboardActions(
+                    onNext = { safeRequestFocus(aadhaarFocusRequester) }
+                )
             )
 
             OutlinedTextField(
                 value = aadhaar,
                 onValueChange = { 
-                    viewModel.aadhaarInput.value = it 
+                    val clean = it.replace("\n", "").replace("\r", "")
+                    viewModel.aadhaarInput.value = clean 
                     aadhaarTouched.value = true
+                    if (it.contains("\n") || it.contains("\r")) {
+                        if (activeSelection == 3) {
+                            safeRequestFocus(techFocusRequester)
+                        } else {
+                            safeRequestFocus(addressFocusRequester)
+                        }
+                    }
                 },
                 label = { Text("Aadhaar Number (Optional)") },
                 placeholder = { Text("Enter 12-digit Aadhaar") },
                 singleLine = true,
                 shape = RoundedCornerShape(10.dp),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(aadhaarFocusRequester)
+                    .onKeyEvent { event ->
+                        if (event.type == KeyEventType.KeyDown && (event.key == Key.Enter || event.key == Key.NumPadEnter)) {
+                            if (activeSelection == 3) {
+                                safeRequestFocus(techFocusRequester)
+                            } else {
+                                safeRequestFocus(addressFocusRequester)
+                            }
+                            true
+                        } else false
+                    },
                 isError = aadhaarError != null,
                 supportingText = if (aadhaarError != null) { { Text(aadhaarError, color = MaterialTheme.colorScheme.error) } } else null,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Number,
+                    imeAction = ImeAction.Next
+                ),
+                keyboardActions = KeyboardActions(
+                    onNext = { 
+                        if (activeSelection == 3) {
+                            safeRequestFocus(techFocusRequester)
+                        } else {
+                            safeRequestFocus(addressFocusRequester)
+                        }
+                    }
+                )
             )
 
             // Total Summary & Photo Attacher Box
@@ -786,6 +1043,57 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                 }
             }
 
+            val photoList = remember(photoUri) {
+                if (photoUri.isNullOrBlank()) emptyList()
+                else photoUri!!.split(",").filter { it.isNotBlank() }
+            }
+            if (photoList.isNotEmpty()) {
+                androidx.compose.foundation.lazy.LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(photoList.size) { idx ->
+                        val singleUri = photoList[idx]
+                        Box(
+                            modifier = Modifier
+                                .size(72.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp))
+                                .clickable { viewingPhotoUri = singleUri }
+                        ) {
+                            coil.compose.AsyncImage(
+                                model = com.example.util.AppUtils.resolveImageModel(singleUri, thumbnail = true),
+                                contentDescription = "Attached transaction photo $idx",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                            )
+                            // Remove photo button
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(2.dp)
+                                    .size(20.dp)
+                                    .clip(androidx.compose.foundation.shape.CircleShape)
+                                    .background(Color.Black.copy(alpha = 0.65f))
+                                    .clickable {
+                                        val updated = photoList.toMutableList()
+                                        updated.removeAt(idx)
+                                        viewModel.photoUriInput.value = if (updated.isEmpty()) null else updated.joinToString(",")
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "Remove photo",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // Interactive extra fields specifically for transaction mode is REPAIR!
             AnimatedVisibility(
                 visible = activeSelection == 3,
@@ -819,27 +1127,66 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                         OutlinedTextField(
                             value = technician,
                             onValueChange = { 
-                                viewModel.technicianNameInput.value = it 
+                                val clean = it.replace("\n", "").replace("\r", "")
+                                viewModel.technicianNameInput.value = clean 
                                 techTouched.value = true
+                                if (it.contains("\n") || it.contains("\r")) {
+                                    safeRequestFocus(repairReasonFocusRequester)
+                                }
                             },
                             label = { Text("Technician Assigned *") },
                             placeholder = { Text("E.g., John Miller") },
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(techFocusRequester)
+                                .onKeyEvent { event ->
+                                    if (event.type == KeyEventType.KeyDown && (event.key == Key.Enter || event.key == Key.NumPadEnter)) {
+                                        safeRequestFocus(repairReasonFocusRequester)
+                                        true
+                                    } else false
+                                },
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Text,
+                                imeAction = ImeAction.Next
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onNext = { safeRequestFocus(repairReasonFocusRequester) }
+                            ),
                             isError = techError != null,
                             supportingText = if (techError != null) { { Text(techError, color = MaterialTheme.colorScheme.error) } } else null
                         )
                         OutlinedTextField(
                             value = repairReason,
                             onValueChange = { 
-                                viewModel.repairReasonInput.value = it 
+                                val clean = it.replace("\n", "").replace("\r", "")
+                                viewModel.repairReasonInput.value = clean 
                                 repairReasonTouched.value = true
+                                if (it.contains("\n") || it.contains("\r")) {
+                                    safeRequestFocus(addressFocusRequester)
+                                }
                             },
                             label = { Text("Reason for Issue *") },
                             placeholder = { Text("E.g., Port faulty, key issue") },
+                            singleLine = true,
                             shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(repairReasonFocusRequester)
+                                .onKeyEvent { event ->
+                                    if (event.type == KeyEventType.KeyDown && (event.key == Key.Enter || event.key == Key.NumPadEnter)) {
+                                        safeRequestFocus(addressFocusRequester)
+                                        true
+                                    } else false
+                                },
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Text,
+                                imeAction = ImeAction.Next
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onNext = { safeRequestFocus(addressFocusRequester) }
+                            ),
                             isError = repairReasonError != null,
                             supportingText = if (repairReasonError != null) { { Text(repairReasonError, color = MaterialTheme.colorScheme.error) } } else null
                         )
@@ -851,32 +1198,55 @@ fun TransactionsScreen(viewModel: StockViewModel) {
             OutlinedTextField(
                 value = address,
                 onValueChange = {
-                    viewModel.addressInput.value = it
+                    val clean = it.replace("\n", "").replace("\r", "")
+                    viewModel.addressInput.value = clean
                     viewModel.clearFormErrorAndSuccess()
                     addressTouched.value = true
+                    if (it.contains("\n") || it.contains("\r")) {
+                        safeRequestFocus(descriptionFocusRequester)
+                    }
                 },
                 label = { Text("Address *") },
                 placeholder = { Text("Enter party or storage address...") },
+                singleLine = true,
                 shape = RoundedCornerShape(14.dp),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Text,
+                    imeAction = ImeAction.Next
+                ),
+                keyboardActions = KeyboardActions(
+                    onNext = { safeRequestFocus(descriptionFocusRequester) }
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(addressFocusRequester)
+                    .onKeyEvent { event ->
+                        if (event.type == KeyEventType.KeyDown && (event.key == Key.Enter || event.key == Key.NumPadEnter)) {
+                            safeRequestFocus(descriptionFocusRequester)
+                            true
+                        } else false
+                    },
                 isError = addressError != null,
                 supportingText = if (addressError != null) { { Text(addressError, color = MaterialTheme.colorScheme.error) } } else null,
                 trailingIcon = {
-                    IconButton(onClick = {
-                        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "hi-IN")
-                            putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak now in Hindi or English")
-                        }
-                        try {
-                            speechLauncherAddress.launch(intent)
-                        } catch (e: Exception) {
-                            Toast.makeText(context, "Speech recognizer not available", Toast.LENGTH_SHORT).show()
-                        }
-                    }) {
+                    IconButton(
+                        onClick = {
+                            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "hi-IN")
+                                putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak now in Hindi or English")
+                            }
+                            try {
+                                speechLauncherAddress.launch(intent)
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Speech recognizer not available", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier.focusProperties { canFocus = false }
+                    ) {
                         Icon(Icons.Default.Mic, contentDescription = "Dictate Address")
                     }
-                },
-                modifier = Modifier.fillMaxWidth()
+                }
             )
 
             // 8. Description box (Optional)
@@ -889,29 +1259,101 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                 label = { Text("Description (Optional)") },
                 placeholder = { Text("Provide notes on condition, buyer/vender logs, serial updates...") },
                 shape = RoundedCornerShape(14.dp),
+                singleLine = false,
+                maxLines = 4,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Text,
+                    imeAction = ImeAction.Done
+                ),
+                keyboardActions = KeyboardActions(
+                    onDone = { focusManager.clearFocus() }
+                ),
                 trailingIcon = {
-                    IconButton(onClick = {
-                        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "hi-IN")
-                            putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak now in Hindi or English")
-                        }
-                        try {
-                            speechLauncher.launch(intent)
-                        } catch (e: Exception) {
-                            Toast.makeText(context, "Speech recognizer not available", Toast.LENGTH_SHORT).show()
-                        }
-                    }) {
+                    IconButton(
+                        onClick = {
+                            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "hi-IN")
+                                putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak now in Hindi or English")
+                            }
+                            try {
+                                speechLauncher.launch(intent)
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Speech recognizer not available", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier.focusProperties { canFocus = false }
+                    ) {
                         Icon(Icons.Default.Mic, contentDescription = "Dictate Description")
                     }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 100.dp)
+                    .focusRequester(descriptionFocusRequester)
                     .testTag("form_description_input")
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            // Inline Validation Error Banner right above submit
+            val activeError = getRealtimeError()
+            AnimatedVisibility(
+                visible = activeError != null,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = "Validation Alert",
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                            Column {
+                                Text(
+                                    text = "Validation Issue Spotted",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                                Text(
+                                    text = activeError ?: "",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                            }
+                        }
+                        IconButton(
+                            onClick = { viewModel.clearFormErrorAndSuccess() },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Close",
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
             
             if (!isActionAllowed) {
                 Text(
@@ -1053,35 +1495,31 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    val currentUris = viewModel.photoUriInput.value
-                                    val urisArray = if (currentUris.isNullOrBlank()) emptyList() else currentUris.split(",")
-                                    
-                                    if (urisArray.size >= 10) {
-                                        Toast.makeText(context, "Maximum 10 photos allowed", Toast.LENGTH_SHORT).show()
-                                    } else {
-                                        val hasCameraPermission = androidx.core.content.ContextCompat.checkSelfPermission(
-                                            context, android.Manifest.permission.CAMERA
-                                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                                    try {
+                                        val currentUris = viewModel.photoUriInput.value
+                                        val urisArray = if (currentUris.isNullOrBlank()) emptyList() else currentUris.split(",")
+                                        
+                                        if (urisArray.size >= 10) {
+                                            Toast.makeText(context, "Maximum 10 photos allowed", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            val hasCameraPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+                                                context, android.Manifest.permission.CAMERA
+                                            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
-                                        if (hasCameraPermission) {
-                                            val uri = createTempImageUri()
-                                            if (uri != null) {
-                                                tempCameraUriStringState.value = uri.toString()
-                                                try {
-                                                    cameraLauncher.launch(uri)
-                                                } catch (e: Exception) {
-                                                    Toast.makeText(
-                                                        context, 
-                                                        "No camera app found or initialization failed: ${e.localizedMessage}", 
-                                                        Toast.LENGTH_LONG
-                                                    ).show()
+                                            if (hasCameraPermission) {
+                                                val uri = createTempImageUri()
+                                                if (uri != null) {
+                                                    launchCameraSafely(uri)
+                                                } else {
+                                                    Toast.makeText(context, "Error: Failed to create temporary file for picture.", Toast.LENGTH_SHORT).show()
                                                 }
                                             } else {
-                                                Toast.makeText(context, "Error: Failed to create temporary file for picture.", Toast.LENGTH_SHORT).show()
+                                                cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
                                             }
-                                        } else {
-                                            cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
                                         }
+                                    } catch (t: Throwable) {
+                                        t.printStackTrace()
+                                        Toast.makeText(context, "Camera action error: ${t.localizedMessage}", Toast.LENGTH_SHORT).show()
                                     }
                                     showPhotoChooserDialog = false
                                 }
@@ -1146,9 +1584,82 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                                 )
                             }
                         }
+
+                        // Option 3: Choose Sample Product Asset (Safe instant fallback)
+                        Text(
+                            text = "Or choose sample device asset:",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        androidx.compose.foundation.lazy.LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(mockPhotoPresets.size) { pIdx ->
+                                val preset = mockPhotoPresets[pIdx]
+                                Surface(
+                                    onClick = {
+                                        val currentUris = viewModel.photoUriInput.value
+                                        val urisArray = if (currentUris.isNullOrBlank()) emptyList() else currentUris.split(",")
+                                        if (urisArray.size < 10) {
+                                            viewModel.photoUriInput.value = (urisArray + preset.second).joinToString(",")
+                                            Toast.makeText(context, "${preset.first} photo attached!", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            Toast.makeText(context, "Maximum 10 photos allowed", Toast.LENGTH_SHORT).show()
+                                        }
+                                        showPhotoChooserDialog = false
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(Icons.Default.Smartphone, contentDescription = null, modifier = Modifier.size(16.dp), tint = themeColorAndLabel.first)
+                                        Text(preset.first, style = MaterialTheme.typography.labelMedium)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             )
+        }
+
+        // Full Screen Photo Viewer when tapping an attached thumbnail
+        if (viewingPhotoUri != null) {
+            androidx.compose.ui.window.Dialog(
+                onDismissRequest = { viewingPhotoUri = null },
+                properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black)
+                ) {
+                    coil.compose.AsyncImage(
+                        model = com.example.util.AppUtils.resolveImageModel(viewingPhotoUri),
+                        contentDescription = "Full Screen Transaction Photo",
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                    )
+                    IconButton(
+                        onClick = { viewingPhotoUri = null },
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(24.dp)
+                            .background(Color.Black.copy(alpha = 0.6f), androidx.compose.foundation.shape.CircleShape)
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "Close Viewer", tint = Color.White)
+                    }
+                }
+            }
         }
 
         if (showDatePicker) {
@@ -1179,69 +1690,7 @@ fun TransactionsScreen(viewModel: StockViewModel) {
             }
         }
         
-        Spacer(modifier = Modifier.height(96.dp)) // ensure we can scroll past the bottom floating error banner!
-    }
-
-    // Floating Validation Error Banner near the submit button
-    val activeError = getRealtimeError()
-    AnimatedVisibility(
-        visible = activeError != null,
-        enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-        exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
-        modifier = Modifier
-            .align(Alignment.BottomCenter)
-            .padding(16.dp)
-    ) {
-        Card(
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.errorContainer
-            ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-            shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier.padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Warning,
-                        contentDescription = "Validation Alert",
-                        tint = MaterialTheme.colorScheme.error
-                    )
-                    Column {
-                        Text(
-                            text = "Validation Issue Spotted",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                        Text(
-                            text = activeError ?: "",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onErrorContainer
-                        )
-                    }
-                }
-                IconButton(
-                    onClick = { viewModel.clearFormErrorAndSuccess() },
-                    modifier = Modifier.size(24.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Close",
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-            }
-        }
+        Spacer(modifier = Modifier.height(16.dp))
     }
 
     if (showPartySelectionDialog) {

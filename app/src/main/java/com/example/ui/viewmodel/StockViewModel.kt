@@ -61,6 +61,30 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
         prefs.edit().putBoolean("print_price_in_pdf", enabled).apply()
     }
 
+    // --- Admin Configured Voucher Terms & Conditions ---
+    private val _voucherPurchaseTerms = MutableStateFlow(com.example.util.AppUtils.DEFAULT_PURCHASE_TERMS)
+    val voucherPurchaseTerms: StateFlow<String> = _voucherPurchaseTerms.asStateFlow()
+
+    private val _voucherSaleTerms = MutableStateFlow(com.example.util.AppUtils.DEFAULT_SALE_TERMS)
+    val voucherSaleTerms: StateFlow<String> = _voucherSaleTerms.asStateFlow()
+
+    fun loadTermsAndConditions(context: Context) {
+        _voucherPurchaseTerms.value = com.example.util.AppUtils.getFixedTermsForEvent(context, "PURCHASE")
+        _voucherSaleTerms.value = com.example.util.AppUtils.getFixedTermsForEvent(context, "SALE")
+    }
+
+    fun saveAllTerms(context: Context, purchaseTerms: String, saleTerms: String) {
+        com.example.util.AppUtils.saveAllFixedTerms(context, purchaseTerms, saleTerms)
+        _voucherPurchaseTerms.value = purchaseTerms
+        _voucherSaleTerms.value = saleTerms
+    }
+
+    fun resetTermsToDefault(context: Context) {
+        com.example.util.AppUtils.resetFixedTermsToDefault(context)
+        _voucherPurchaseTerms.value = com.example.util.AppUtils.DEFAULT_PURCHASE_TERMS
+        _voucherSaleTerms.value = com.example.util.AppUtils.DEFAULT_SALE_TERMS
+    }
+
     // --- WhatsApp Notification Settings ---
     private val _whatsAppWebhookUrl = MutableStateFlow("")
     val whatsAppWebhookUrl: StateFlow<String> = _whatsAppWebhookUrl.asStateFlow()

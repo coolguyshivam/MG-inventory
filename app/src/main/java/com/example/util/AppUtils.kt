@@ -890,5 +890,55 @@ object AppUtils {
         }
         return cleanSource
     }
+
+    const val DEFAULT_PURCHASE_TERMS = """Declaration: Facts are true. Handed over device voluntarily with no outstanding loans or EMIs. 
+उपरोक्त सभी तथ्य बिल्कुल सही है।
+मैने आज ये मोबाइल जिसका मै खुद स्वामी हू, स्वेच्छा से मोबाइल गैलरी को दिया है।
+उपरोक्त फोन पर किसी भी प्रकार का ऋण, ब्याज या क्लेम बाकी नहीं है। इसका किसी भी लोन/फाइनेंस कंपनी से कोई संबंध नहीं है। यदि इसपे कोई लोन रिकवरी होती है तो उसकी
+सारी जिम्मेदारी मेरी होगी और किसी की नहीं होगी ।
+आज से इस फोन का मालिक मै नहीं हू।
+
+
+Sign                             Date:
+
+
+- Customer holds full liability for previous ownership, past repairs, and any future financial claims. Buyer can format freely. - REFUND POLICY: All sales are final. No refunds and no guarantee unless specified otherwise."""
+
+    const val DEFAULT_SALE_TERMS = """Declaration: Checked device fully and accepted voluntary purchase and I am satisfied with it. 
+मैने यह फोन पूरा चेक करके संतुष्ट होकर स्वेच्छा से लिया है। इसकी जिम्मेदारी अबसे मेरी होगी ।
+
+WARRANTY: Used devices carry no warranty/guarantee. Valid only if documented in writing on this receipt.
+REFUND POLICY: All sales are final. Unopened items may be considered for exchange/credit within 24 hours only at the discretion of the store."""
+
+    fun getFixedTermsForEvent(context: Context, actionType: String): String {
+        val prefs = context.getSharedPreferences("mobile_gallery_prefs", Context.MODE_PRIVATE)
+        return if (actionType == "PURCHASE") {
+            prefs.getString("voucher_purchase_terms", DEFAULT_PURCHASE_TERMS) ?: DEFAULT_PURCHASE_TERMS
+        } else {
+            prefs.getString("voucher_sale_terms", DEFAULT_SALE_TERMS) ?: DEFAULT_SALE_TERMS
+        }
+    }
+
+    fun saveFixedTermsForEvent(context: Context, actionType: String, terms: String) {
+        val prefs = context.getSharedPreferences("mobile_gallery_prefs", Context.MODE_PRIVATE)
+        val key = if (actionType == "PURCHASE") "voucher_purchase_terms" else "voucher_sale_terms"
+        prefs.edit().putString(key, terms).apply()
+    }
+
+    fun saveAllFixedTerms(context: Context, purchaseTerms: String, saleTerms: String) {
+        val prefs = context.getSharedPreferences("mobile_gallery_prefs", Context.MODE_PRIVATE)
+        prefs.edit()
+            .putString("voucher_purchase_terms", purchaseTerms)
+            .putString("voucher_sale_terms", saleTerms)
+            .apply()
+    }
+
+    fun resetFixedTermsToDefault(context: Context) {
+        val prefs = context.getSharedPreferences("mobile_gallery_prefs", Context.MODE_PRIVATE)
+        prefs.edit()
+            .putString("voucher_purchase_terms", DEFAULT_PURCHASE_TERMS)
+            .putString("voucher_sale_terms", DEFAULT_SALE_TERMS)
+            .apply()
+    }
 }
 

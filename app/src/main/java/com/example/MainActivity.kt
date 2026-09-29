@@ -124,7 +124,7 @@ class MainActivity : FragmentActivity() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalAnimationApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalAnimationApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun MainAppContent(viewModel: StockViewModel) {
     val activeTab by viewModel.activeTab.collectAsState()
@@ -394,6 +394,7 @@ fun MainAppContent(viewModel: StockViewModel) {
         }
     ) {
         Scaffold(
+            contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
             topBar = {
                 TopAppBar(
                     title = {
@@ -535,46 +536,88 @@ fun MainAppContent(viewModel: StockViewModel) {
             val canSell by viewModel.canSell.collectAsState()
             val canViewLedger by viewModel.canViewLedger.collectAsState()
             
-            NavigationBar(
-                containerColor = MaterialTheme.colorScheme.surface,
-                tonalElevation = 6.dp,
-                modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars)
-            ) {
-                // Bottom Page Indices
-                val tabsItems = mutableListOf<Triple<Int, String, androidx.compose.ui.graphics.vector.ImageVector>>()
-                
-                // Everybody gets Inventory (read-only for MIS)
-                tabsItems.add(Triple(0, "Inventory", Icons.Default.Inventory))
-                
-                if (canManageInventory || canSell) {
-                    tabsItems.add(Triple(1, "Transactions", Icons.AutoMirrored.Filled.Send))
+            val view = androidx.compose.ui.platform.LocalView.current
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            var isKeyboardOpenByLayout by remember { mutableStateOf(false) }
+            DisposableEffect(view) {
+                val listener = android.view.ViewTreeObserver.OnGlobalLayoutListener {
+                    val rect = android.graphics.Rect()
+                    view.getWindowVisibleDisplayFrame(rect)
+                    val screenHeight = view.rootView.height
+                    val keypadHeight = screenHeight - rect.bottom
+                    isKeyboardOpenByLayout = keypadHeight > screenHeight * 0.15
                 }
-                if (canViewAnalytics) {
-                    tabsItems.add(Triple(2, "Analytics", Icons.Default.Assessment))
+                view.viewTreeObserver.addOnGlobalLayoutListener(listener)
+                onDispose {
+                    view.viewTreeObserver.removeOnGlobalLayoutListener(listener)
                 }
-                
-                // Everyone can see history
-                tabsItems.add(Triple(3, "History", Icons.Default.History))
+            }
+            val imeBottom = WindowInsets.ime.getBottom(density)
+            val isKeyboardOpen = isKeyboardOpenByLayout || WindowInsets.isImeVisible || imeBottom > 0
+            if (!isKeyboardOpen) {
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 6.dp
+                ) {
+                    // Bottom Page Indices
+                    val tabsItems = mutableListOf<Triple<Int, String, androidx.compose.ui.graphics.vector.ImageVector>>()
+                    
+                    // Everybody gets Inventory (read-only for MIS)
+                    tabsItems.add(Triple(0, "Inventory", Icons.Default.Inventory))
+                    
+                    if (canManageInventory || canSell) {
+                        tabsItems.add(Triple(1, "Transactions", Icons.AutoMirrored.Filled.Send))
+                    }
+                    if (canViewAnalytics) {
+                        tabsItems.add(Triple(2, "Analytics", Icons.Default.Assessment))
+                    }
+                    
+                    // Everyone can see history
+                    tabsItems.add(Triple(3, "History", Icons.Default.History))
 
-                tabsItems.forEach { (index, title, icon) ->
-                    NavigationBarItem(
-                        selected = activeTab == index,
-                        onClick = { viewModel.setTab(index) },
-                        icon = { Icon(imageVector = icon, contentDescription = "$title Page Selection") },
-                        label = { Text(text = title, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                        modifier = Modifier.testTag("nav_item_$title")
-                    )
+                    tabsItems.forEach { (index, title, icon) ->
+                        NavigationBarItem(
+                            selected = activeTab == index,
+                            onClick = { viewModel.setTab(index) },
+                            icon = { Icon(imageVector = icon, contentDescription = "$title Page Selection") },
+                            label = { Text(text = title, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            modifier = Modifier.testTag("nav_item_$title")
+                        )
+                    }
                 }
             }
         }
     ) { innerPadding ->
+        val view = androidx.compose.ui.platform.LocalView.current
+        val density = androidx.compose.ui.platform.LocalDensity.current
+        var isKeyboardOpenByLayout by remember { mutableStateOf(false) }
+        DisposableEffect(view) {
+            val listener = android.view.ViewTreeObserver.OnGlobalLayoutListener {
+                val rect = android.graphics.Rect()
+                view.getWindowVisibleDisplayFrame(rect)
+                val screenHeight = view.rootView.height
+                val keypadHeight = screenHeight - rect.bottom
+                isKeyboardOpenByLayout = keypadHeight > screenHeight * 0.15
+            }
+            view.viewTreeObserver.addOnGlobalLayoutListener(listener)
+            onDispose {
+                view.viewTreeObserver.removeOnGlobalLayoutListener(listener)
+            }
+        }
+        val imeBottom = WindowInsets.ime.getBottom(density)
+        val isKeyboardOpen = isKeyboardOpenByLayout || WindowInsets.isImeVisible || imeBottom > 0
+
         // Pull down gesture container wrapper around ALL screens
         PullToRefreshContainer(
             isRefreshing = isRefreshing,
             onRefresh = { viewModel.refreshAllPages() },
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(
+                    top = innerPadding.calculateTopPadding(),
+                    bottom = if (isKeyboardOpen) 0.dp else innerPadding.calculateBottomPadding()
+                )
+                .consumeWindowInsets(innerPadding)
         ) {
             AnimatedContent(
                 targetState = activeTab,

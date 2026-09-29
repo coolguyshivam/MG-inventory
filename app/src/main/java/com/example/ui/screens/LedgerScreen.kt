@@ -196,7 +196,9 @@ fun LedgerScreen(viewModel: StockViewModel) {
                         if (showCustomPrintDialogForEntry && linkedEvent != null) {
                             CustomPrintDialog(
                                 event = linkedEvent,
-                                onDismiss = { showCustomPrintDialogForEntry = false }
+                                onDismiss = { showCustomPrintDialogForEntry = false },
+                                isAdmin = isAdmin,
+                                viewModel = viewModel
                             )
                         }
                     }
@@ -299,7 +301,9 @@ fun LedgerScreen(viewModel: StockViewModel) {
     if (eventToPrintCustomly != null) {
         CustomPrintDialog(
             event = eventToPrintCustomly!!,
-            onDismiss = { eventToPrintCustomly = null }
+            onDismiss = { eventToPrintCustomly = null },
+            isAdmin = isAdmin,
+            viewModel = viewModel
         )
     }
 
@@ -547,7 +551,14 @@ private fun printLedgerEntry(context: android.content.Context, entry: LedgerEntr
                             color: #888;
                             font-style: italic;
                         }
+                        @page {
+                            size: auto;
+                            margin: 15mm;
+                        }
                         @media print {
+                            @page {
+                                margin: 15mm;
+                            }
                             body { padding: 0; margin: 0; }
                             .invoice-card { border: none; padding: 0; }
                         }
@@ -631,7 +642,11 @@ private fun printLedgerEntry(context: android.content.Context, entry: LedgerEntr
                             view?.let {
                                 val printAdapter = it.createPrintDocumentAdapter("Ledger Voucher")
                                 val jobName = "Ledger_Voucher_${entry.id}"
-                                printManager.print(jobName, printAdapter, android.print.PrintAttributes.Builder().build())
+                                val printAttributes = android.print.PrintAttributes.Builder()
+                                    .setMediaSize(android.print.PrintAttributes.MediaSize.ISO_A4)
+                                    .setMinMargins(android.print.PrintAttributes.Margins(500, 500, 500, 500))
+                                    .build()
+                                printManager.print(jobName, printAdapter, printAttributes)
                             }
                         } catch (e: Exception) {
                             e.printStackTrace()

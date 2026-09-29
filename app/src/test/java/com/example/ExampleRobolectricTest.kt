@@ -26,4 +26,17 @@ class ExampleRobolectricTest {
     val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
     assertNotNull(controller.get())
   }
+
+  @Test
+  fun `test non-admin user in transactions screen`() {
+    val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+    val activity = controller.get()
+    val vm = androidx.lifecycle.ViewModelProvider(activity)[com.example.ui.viewmodel.StockViewModel::class.java]
+    val nonAdminUser = com.example.data.model.User("operator1", "hash", "Operator")
+    vm.completeLogin(nonAdminUser, activity)
+    vm.setTab(1)
+    controller.resume()
+    assertNotNull(vm.loggedInUser.value)
+    assertEquals("Operator", vm.loggedInUser.value?.role)
+  }
 }
