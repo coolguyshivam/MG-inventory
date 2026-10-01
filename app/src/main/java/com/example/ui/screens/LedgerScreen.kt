@@ -460,9 +460,9 @@ private fun printLedgerEntry(context: android.content.Context, entry: LedgerEntr
                             box-sizing: border-box;
                         }
                         .invoice-card {
-                            border: 2px solid #222;
+                            border: 1px solid #444;
                             border-radius: 4px;
-                            padding: 16px;
+                            padding: 14px;
                             background: #fff;
                             box-sizing: border-box;
                             min-height: 95vh;
@@ -553,14 +553,18 @@ private fun printLedgerEntry(context: android.content.Context, entry: LedgerEntr
                         }
                         @page {
                             size: auto;
-                            margin: 15mm;
+                            margin: 6mm 8mm;
                         }
                         @media print {
                             @page {
-                                margin: 15mm;
+                                margin: 6mm 8mm;
                             }
                             body { padding: 0; margin: 0; }
-                            .invoice-card { border: none; padding: 0; }
+                            .invoice-card {
+                                border: 0.75pt solid #555 !important;
+                                border-radius: 4px;
+                                padding: 8px 10px !important;
+                            }
                         }
                     </style>
                 </head>
@@ -630,10 +634,7 @@ private fun printLedgerEntry(context: android.content.Context, entry: LedgerEntr
             """.trimIndent()
 
             withContext(Dispatchers.Main) {
-                val webView = android.webkit.WebView(context).apply {
-                    settings.allowContentAccess = true
-                    settings.allowFileAccess = true
-                }
+                val webView = com.example.util.AppUtils.createPrintWebView(context)
                 activePrintWebView = webView
 
                 webView.webViewClient = object : android.webkit.WebViewClient() {
@@ -644,7 +645,7 @@ private fun printLedgerEntry(context: android.content.Context, entry: LedgerEntr
                                 val jobName = "Ledger_Voucher_${entry.id}"
                                 val printAttributes = android.print.PrintAttributes.Builder()
                                     .setMediaSize(android.print.PrintAttributes.MediaSize.ISO_A4)
-                                    .setMinMargins(android.print.PrintAttributes.Margins(500, 500, 500, 500))
+                                    .setMinMargins(android.print.PrintAttributes.Margins(200, 200, 200, 200))
                                     .build()
                                 printManager.print(jobName, printAdapter, printAttributes)
                             }

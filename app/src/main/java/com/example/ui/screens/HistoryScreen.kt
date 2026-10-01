@@ -791,49 +791,80 @@ fun printHistoryEvent(context: android.content.Context, event: HistoryEvent) {
             
             val rawPhotosList = event.photoUri?.split(",")?.filter { it.isNotBlank() && (!it.startsWith("ic_") || it in listOf("ic_phone_blue", "ic_phone_amber", "ic_watch", "ic_tablet")) } ?: emptyList()
             
-            // Map each photo to an async deferred task for parallel download & decompression (Option 3)
-            val base64Deferreds = rawPhotosList.map { photo ->
+            // Map each photo to an async deferred task for parallel download & decompression with dimensions
+            val photoDeferreds = rawPhotosList.map { photo ->
                 async {
-                    com.example.util.AppUtils.convertImageToWebviewBase64(context, photo)
+                    com.example.util.AppUtils.loadPhotoWithDimensions(context, photo)
                 }
             }
-            val loadedBase64List = base64Deferreds.map { it.await() }
+            val loadedPhotosList = photoDeferreds.map { it.await() }.filter { it.base64.isNotBlank() }
             
             val (addressVal, descVal) = extractAddressAndDescription(event.description)
             
-            val samePagePhotos = loadedBase64List.take(2)
-            val nextPagePhotos = loadedBase64List.drop(2)
+            val samePagePhotos = loadedPhotosList.take(2)
+            val nextPagePhotos = loadedPhotosList.drop(2)
 
             val samePageHtml = when (samePagePhotos.size) {
                 0 -> ""
-                1 -> """
-                    <div style="text-align: center; margin: 14px 0; page-break-inside: avoid;">
-                        <img src="${samePagePhotos[0]}" style="max-width: 90%; max-height: 240px; width: auto; height: auto; object-fit: contain; border: 1.5px solid #bbb; border-radius: 6px; padding: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); display: inline-block;" />
+                1 -> {
+                    val p = samePagePhotos[0]
+                    val imgStyle = if (p.isLandscape) {
+                        "width: 100%; max-height: 520px; height: auto; object-fit: contain; border: 0.75pt solid #666; border-radius: 3px; box-sizing: border-box; display: block; margin: 0 auto;"
+                    } else {
+                        "max-width: 100%; max-height: 540px; width: auto; height: auto; object-fit: contain; border: 0.75pt solid #666; border-radius: 3px; box-sizing: border-box; display: block; margin: 0 auto;"
+                    }
+                    """
+                    <div style="text-align: center; margin: 6px 0; page-break-inside: avoid; width: 100%; box-sizing: border-box;">
+                        <img src="${p.base64}" style="$imgStyle" />
                     </div>
-                """.trimIndent()
-                else -> """
-                    <div style="text-align: center; margin: 12px 0; page-break-inside: avoid; display: flex; justify-content: center; gap: 12px;">
-                        <img src="${samePagePhotos[0]}" style="max-width: 48%; max-height: 200px; width: auto; height: auto; object-fit: contain; border: 1.5px solid #bbb; border-radius: 6px; padding: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); display: inline-block;" />
-                        <img src="${samePagePhotos[1]}" style="max-width: 48%; max-height: 200px; width: auto; height: auto; object-fit: contain; border: 1.5px solid #bbb; border-radius: 6px; padding: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); display: inline-block;" />
+                    """.trimIndent()
+                }
+                else -> {
+                    val p1 = samePagePhotos[0]
+                    val p2 = samePagePhotos[1]
+                    val style1 = if (p1.isLandscape) {
+                        "width: 100%; max-height: 340px; height: auto; object-fit: contain; border: 0.75pt solid #666; border-radius: 3px; box-sizing: border-box; display: block; margin: 0 auto;"
+                    } else {
+                        "width: 100%; max-height: 480px; height: auto; object-fit: contain; border: 0.75pt solid #666; border-radius: 3px; box-sizing: border-box; display: block; margin: 0 auto;"
+                    }
+                    val style2 = if (p2.isLandscape) {
+                        "width: 100%; max-height: 340px; height: auto; object-fit: contain; border: 0.75pt solid #666; border-radius: 3px; box-sizing: border-box; display: block; margin: 0 auto;"
+                    } else {
+                        "width: 100%; max-height: 480px; height: auto; object-fit: contain; border: 0.75pt solid #666; border-radius: 3px; box-sizing: border-box; display: block; margin: 0 auto;"
+                    }
+                    """
+                    <div style="margin: 6px 0; page-break-inside: avoid; display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%; box-sizing: border-box;">
+                        <div style="flex: 1; min-width: 0; text-align: center; box-sizing: border-box;">
+                            <img src="${p1.base64}" style="$style1" />
+                        </div>
+                        <div style="flex: 1; min-width: 0; text-align: center; box-sizing: border-box;">
+                            <img src="${p2.base64}" style="$style2" />
+                        </div>
                     </div>
-                """.trimIndent()
+                    """.trimIndent()
+                }
             }
 
             val nextPageHtml = if (nextPagePhotos.isNotEmpty()) {
-                val items = nextPagePhotos.joinToString("") { base64 ->
+                val items = nextPagePhotos.joinToString("") { photo ->
+                    val itemStyle = if (photo.isLandscape) {
+                        "max-width: 48%; min-width: 280px; max-height: 360px; width: 100%; height: auto; object-fit: contain; border: 0.75pt solid #666; border-radius: 3px; box-sizing: border-box;"
+                    } else {
+                        "max-width: 48%; min-width: 240px; max-height: 420px; width: auto; height: auto; object-fit: contain; border: 0.75pt solid #666; border-radius: 3px; box-sizing: border-box;"
+                    }
                     """
-                    <div style="display: inline-block; margin: 8px; text-align: center;">
-                        <img src="$base64" style="max-width: 46%; min-width: 240px; max-height: 320px; width: auto; height: auto; object-fit: contain; border: 1.5px solid #bbb; border-radius: 6px; padding: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.12);" />
+                    <div style="display: inline-block; margin: 6px; text-align: center; vertical-align: middle;">
+                        <img src="${photo.base64}" style="$itemStyle" />
                     </div>
                     """.trimIndent()
                 }
                 """
-                <div class="page-break" style="page-break-before: always; break-before: page; margin-top: 24px; padding-top: 16px;">
-                    <div class="header" style="border-bottom: 2px solid #222; padding-bottom: 8px; margin-bottom: 16px;">
+                <div class="page-break" style="page-break-before: always; break-before: page; margin-top: 16px; padding-top: 8px;">
+                    <div class="header" style="border-bottom: 2px solid #222; padding-bottom: 6px; margin-bottom: 10px;">
                         <div style="font-size: 16px; font-weight: 800; text-transform: uppercase;">Photo Annexure (Page 2 - Back Page)</div>
                         <div style="font-size: 11px; color: #555;">Tx ID: ${event.id.take(8).uppercase()} | IMEI: ${event.serialNumber}</div>
                     </div>
-                    <div style="text-align: center; display: flex; flex-wrap: wrap; justify-content: center; gap: 12px;">
+                    <div style="text-align: center; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px;">
                         $items
                     </div>
                 </div>
@@ -856,37 +887,39 @@ fun printHistoryEvent(context: android.content.Context, event: HistoryEvent) {
                     <style>
                         @page {
                             size: auto;
-                            margin: 15mm;
+                            margin: 6mm 8mm;
                         }
                         body {
                             font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
                             padding: 0;
                             margin: 0 auto;
                             color: #111;
-                            line-height: 1.4;
-                            max-width: 750px;
+                            line-height: 1.32;
+                            max-width: 100%;
+                            width: 100%;
                             box-sizing: border-box;
                         }
                         .invoice-card {
-                            border: 3px double #333;
-                            border-radius: 8px;
-                            padding: 24px;
+                            border: 0.75pt solid #555;
+                            border-radius: 4px;
+                            padding: 8px 10px;
                             background: #fff;
                             box-sizing: border-box;
+                            width: 100%;
                         }
                         .header {
                             display: flex;
                             justify-content: space-between;
                             align-items: center;
-                            border-bottom: 3px solid #111;
-                            padding-bottom: 8px;
-                            margin-bottom: 16px;
+                            border-bottom: 2pt solid #111;
+                            padding-bottom: 6px;
+                            margin-bottom: 10px;
                         }
                         .header-title {
-                            font-size: 20px;
+                            font-size: 19px;
                             font-weight: 800;
                             text-transform: uppercase;
-                            letter-spacing: 0.8px;
+                            letter-spacing: 0.6px;
                             color: #111;
                         }
                         .header-meta {
@@ -898,12 +931,12 @@ fun printHistoryEvent(context: android.content.Context, event: HistoryEvent) {
                             width: 100%;
                             border-collapse: collapse;
                             table-layout: fixed;
-                            margin-bottom: 16px;
+                            margin-bottom: 6px;
                         }
                         table.details-table td {
-                            padding: 8px 10px;
-                            font-size: 11px;
-                            border-bottom: 1px dotted #ccc;
+                            padding: 3px 5px;
+                            font-size: 10px;
+                            border-bottom: 0.75pt dotted #ccc;
                             word-wrap: break-word;
                             vertical-align: middle;
                         }
@@ -917,29 +950,35 @@ fun printHistoryEvent(context: android.content.Context, event: HistoryEvent) {
                             width: 30%;
                         }
                         .terms-block {
-                            font-size: 9px;
-                            background: #f9f9f9;
-                            border: 1px solid #e0e0e0;
-                            padding: 10px;
-                            border-radius: 4px;
-                            margin-top: 16px;
+                            font-size: 8.5px;
+                            background: #fafafa;
+                            border: 0.75pt solid #ddd;
+                            padding: 5px 7px;
+                            border-radius: 3px;
+                            margin-top: 5px;
                             color: #333;
                             white-space: pre-wrap;
                             page-break-inside: avoid;
+                            line-height: 1.32;
                         }
                         .footer-note {
                             font-size: 8px;
                             text-align: center;
-                            margin-top: 16px;
+                            margin-top: 6px;
                             color: #888;
                             font-style: italic;
                         }
                         @media print {
                             @page {
-                                margin: 15mm;
+                                margin: 6mm 8mm;
                             }
-                            body { padding: 0; margin: 0; max-width: 100%; }
-                            .invoice-card { border: none; padding: 0; }
+                            body { padding: 0; margin: 0; max-width: 100%; width: 100%; }
+                            .invoice-card {
+                                border: 0.75pt solid #555 !important;
+                                border-radius: 4px;
+                                padding: 8px 10px !important;
+                                width: 100%;
+                            }
                             .page-break {
                                 page-break-before: always !important;
                                 break-before: page !important;
@@ -1018,10 +1057,7 @@ fun printHistoryEvent(context: android.content.Context, event: HistoryEvent) {
             """.trimIndent()
 
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                val webView = android.webkit.WebView(context).apply {
-                    settings.allowContentAccess = true
-                    settings.allowFileAccess = true
-                }
+                val webView = com.example.util.AppUtils.createPrintWebView(context)
                 activePrintWebView = webView
 
                 webView.webViewClient = object : android.webkit.WebViewClient() {
@@ -1032,7 +1068,7 @@ fun printHistoryEvent(context: android.content.Context, event: HistoryEvent) {
                                 val jobName = "Receipt_${event.serialNumber}"
                                 val printAttributes = android.print.PrintAttributes.Builder()
                                     .setMediaSize(android.print.PrintAttributes.MediaSize.ISO_A4)
-                                    .setMinMargins(android.print.PrintAttributes.Margins(500, 500, 500, 500))
+                                    .setMinMargins(android.print.PrintAttributes.Margins(200, 200, 200, 200))
                                     .build()
                                 printManager.print(jobName, printAdapter, printAttributes)
                             }
@@ -1103,7 +1139,8 @@ fun printHistoryEventCustom(
     nextPagePhotos: List<String> = emptyList(),
     includeBlanks: Boolean = false,
     selectedPhotos: List<String> = emptyList(),
-    placeholderCount: Int = 0
+    placeholderCount: Int = 0,
+    samePageLayout: String = "AUTO"
 ) {
     val printManager = context.getSystemService(android.content.Context.PRINT_SERVICE) as? android.print.PrintManager
     if (printManager == null) {
@@ -1127,19 +1164,19 @@ fun printHistoryEventCustom(
                 selectedPhotos.drop(2)
             }
 
-            // Map selected photos to async deferred tasks for parallel download & decompression
+            // Map selected photos to async deferred tasks for parallel download & decompression with dimensions
             val samePageDeferreds = effectiveSamePage.map { photo ->
                 async {
-                    com.example.util.AppUtils.convertImageToWebviewBase64(context, photo)
+                    com.example.util.AppUtils.loadPhotoWithDimensions(context, photo)
                 }
             }
             val nextPageDeferreds = effectiveNextPage.map { photo ->
                 async {
-                    com.example.util.AppUtils.convertImageToWebviewBase64(context, photo)
+                    com.example.util.AppUtils.loadPhotoWithDimensions(context, photo)
                 }
             }
-            val loadedSamePage = samePageDeferreds.map { it.await() }.filter { it.isNotBlank() }
-            val loadedNextPage = nextPageDeferreds.map { it.await() }.filter { it.isNotBlank() }
+            val loadedSamePage = samePageDeferreds.map { it.await() }.filter { it.base64.isNotBlank() }
+            val loadedNextPage = nextPageDeferreds.map { it.await() }.filter { it.base64.isNotBlank() }
 
             val declarationTitle = when (event.actionType) {
                 "PURCHASE" -> "Purchase Declaration"
@@ -1154,38 +1191,89 @@ fun printHistoryEventCustom(
             val samePageHtml = when (loadedSamePage.size) {
                 0 -> ""
                 1 -> {
-                    val base64 = loadedSamePage[0]
+                    val p = loadedSamePage[0]
+                    val imgStyle = if (p.isLandscape) {
+                        "width: 100%; max-height: 520px; height: auto; object-fit: contain; border: 0.75pt solid #666; border-radius: 3px; box-sizing: border-box; display: block; margin: 0 auto;"
+                    } else {
+                        "max-width: 100%; max-height: 540px; width: auto; height: auto; object-fit: contain; border: 0.75pt solid #666; border-radius: 3px; box-sizing: border-box; display: block; margin: 0 auto;"
+                    }
                     """
-                    <div style="text-align: center; margin: 14px 0; page-break-inside: avoid;">
-                        <img src="$base64" style="max-width: 90%; max-height: 240px; width: auto; height: auto; object-fit: contain; border: 1.5px solid #bbb; border-radius: 6px; padding: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); display: inline-block;" />
+                    <div style="text-align: center; margin: 6px 0; page-break-inside: avoid; width: 100%; box-sizing: border-box;">
+                        <img src="${p.base64}" style="$imgStyle" />
                     </div>
                     """.trimIndent()
                 }
                 else -> {
-                    """
-                    <div style="text-align: center; margin: 12px 0; page-break-inside: avoid; display: flex; justify-content: center; gap: 12px;">
-                        <img src="${loadedSamePage[0]}" style="max-width: 48%; max-height: 200px; width: auto; height: auto; object-fit: contain; border: 1.5px solid #bbb; border-radius: 6px; padding: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); display: inline-block;" />
-                        <img src="${loadedSamePage[1]}" style="max-width: 48%; max-height: 200px; width: auto; height: auto; object-fit: contain; border: 1.5px solid #bbb; border-radius: 6px; padding: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); display: inline-block;" />
-                    </div>
-                    """.trimIndent()
+                    val p1 = loadedSamePage[0]
+                    val p2 = loadedSamePage[1]
+                    val isStacked = samePageLayout == "STACKED"
+                    if (isStacked) {
+                        val rowStyle1 = if (p1.isLandscape) {
+                            "width: 100%; max-height: 250px; height: auto; object-fit: contain; border: 0.75pt solid #666; border-radius: 3px; box-sizing: border-box; display: block; margin: 0 auto;"
+                        } else {
+                            "max-width: 100%; max-height: 250px; width: auto; height: auto; object-fit: contain; border: 0.75pt solid #666; border-radius: 3px; box-sizing: border-box; display: block; margin: 0 auto;"
+                        }
+                        val rowStyle2 = if (p2.isLandscape) {
+                            "width: 100%; max-height: 250px; height: auto; object-fit: contain; border: 0.75pt solid #666; border-radius: 3px; box-sizing: border-box; display: block; margin: 0 auto;"
+                        } else {
+                            "max-width: 100%; max-height: 250px; width: auto; height: auto; object-fit: contain; border: 0.75pt solid #666; border-radius: 3px; box-sizing: border-box; display: block; margin: 0 auto;"
+                        }
+                        """
+                        <div style="margin: 6px 0; page-break-inside: avoid; display: flex; flex-direction: column; gap: 6px; width: 100%; box-sizing: border-box;">
+                            <div style="width: 100%; text-align: center; box-sizing: border-box;">
+                                <img src="${p1.base64}" style="$rowStyle1" />
+                            </div>
+                            <div style="width: 100%; text-align: center; box-sizing: border-box;">
+                                <img src="${p2.base64}" style="$rowStyle2" />
+                            </div>
+                        </div>
+                        """.trimIndent()
+                    } else {
+                        // SIDE_BY_SIDE or AUTO
+                        val style1 = if (p1.isLandscape) {
+                            "width: 100%; max-height: 340px; height: auto; object-fit: contain; border: 0.75pt solid #666; border-radius: 3px; box-sizing: border-box; display: block; margin: 0 auto;"
+                        } else {
+                            "width: 100%; max-height: 480px; height: auto; object-fit: contain; border: 0.75pt solid #666; border-radius: 3px; box-sizing: border-box; display: block; margin: 0 auto;"
+                        }
+                        val style2 = if (p2.isLandscape) {
+                            "width: 100%; max-height: 340px; height: auto; object-fit: contain; border: 0.75pt solid #666; border-radius: 3px; box-sizing: border-box; display: block; margin: 0 auto;"
+                        } else {
+                            "width: 100%; max-height: 480px; height: auto; object-fit: contain; border: 0.75pt solid #666; border-radius: 3px; box-sizing: border-box; display: block; margin: 0 auto;"
+                        }
+                        """
+                        <div style="margin: 6px 0; page-break-inside: avoid; display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%; box-sizing: border-box;">
+                            <div style="flex: 1; min-width: 0; text-align: center; box-sizing: border-box;">
+                                <img src="${p1.base64}" style="$style1" />
+                            </div>
+                            <div style="flex: 1; min-width: 0; text-align: center; box-sizing: border-box;">
+                                <img src="${p2.base64}" style="$style2" />
+                            </div>
+                        </div>
+                        """.trimIndent()
+                    }
                 }
             }
 
             val nextPageHtml = if (loadedNextPage.isNotEmpty()) {
-                val items = loadedNextPage.joinToString("") { base64 ->
+                val items = loadedNextPage.joinToString("") { photo ->
+                    val itemStyle = if (photo.isLandscape) {
+                        "max-width: 48%; min-width: 280px; max-height: 360px; width: 100%; height: auto; object-fit: contain; border: 0.75pt solid #666; border-radius: 3px; box-sizing: border-box;"
+                    } else {
+                        "max-width: 48%; min-width: 240px; max-height: 420px; width: auto; height: auto; object-fit: contain; border: 0.75pt solid #666; border-radius: 3px; box-sizing: border-box;"
+                    }
                     """
-                    <div style="display: inline-block; margin: 8px; text-align: center;">
-                        <img src="$base64" style="max-width: 46%; min-width: 240px; max-height: 320px; width: auto; height: auto; object-fit: contain; border: 1.5px solid #bbb; border-radius: 6px; padding: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.12);" />
+                    <div style="display: inline-block; margin: 6px; text-align: center; vertical-align: middle;">
+                        <img src="${photo.base64}" style="$itemStyle" />
                     </div>
                     """.trimIndent()
                 }
                 """
-                <div class="page-break" style="page-break-before: always; break-before: page; margin-top: 24px; padding-top: 16px;">
-                    <div class="header" style="border-bottom: 2px solid #222; padding-bottom: 8px; margin-bottom: 16px;">
+                <div class="page-break" style="page-break-before: always; break-before: page; margin-top: 16px; padding-top: 8px;">
+                    <div class="header" style="border-bottom: 2px solid #222; padding-bottom: 6px; margin-bottom: 10px;">
                         <div style="font-size: 16px; font-weight: 800; text-transform: uppercase;">Photo Annexure (Page 2 - Back Page)</div>
                         <div style="font-size: 11px; color: #555;">Tx ID: ${event.id.take(8).uppercase()} | IMEI: ${event.serialNumber}</div>
                     </div>
-                    <div style="text-align: center; display: flex; flex-wrap: wrap; justify-content: center; gap: 12px;">
+                    <div style="text-align: center; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px;">
                         $items
                     </div>
                 </div>
@@ -1208,34 +1296,36 @@ fun printHistoryEventCustom(
                     <style>
                         @page {
                             size: auto;
-                            margin: 15mm;
+                            margin: 6mm 8mm;
                         }
                         body {
                             font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
                             padding: 0;
                             color: #111;
-                            line-height: 1.4;
-                            max-width: 750px;
+                            line-height: 1.32;
+                            max-width: 100%;
+                            width: 100%;
                             margin: 0 auto;
                             box-sizing: border-box;
                         }
                         .invoice-card {
-                            border: 2px solid #222;
-                            border-radius: 6px;
-                            padding: 24px;
+                            border: 0.75pt solid #555;
+                            border-radius: 4px;
+                            padding: 8px 10px;
                             background: #fff;
                             box-sizing: border-box;
+                            width: 100%;
                         }
                         .header {
                             display: flex;
                             justify-content: space-between;
                             align-items: center;
-                            border-bottom: 2px solid #222;
-                            padding-bottom: 8px;
-                            margin-bottom: 16px;
+                            border-bottom: 2pt solid #222;
+                            padding-bottom: 6px;
+                            margin-bottom: 10px;
                         }
                         .header-title {
-                            font-size: 18px;
+                            font-size: 19px;
                             font-weight: 800;
                             text-transform: uppercase;
                             letter-spacing: 0.5px;
@@ -1250,12 +1340,12 @@ fun printHistoryEventCustom(
                             width: 100%;
                             border-collapse: collapse;
                             table-layout: fixed;
-                            margin-bottom: 16px;
+                            margin-bottom: 6px;
                         }
                         table.details-table td {
-                            padding: 8px 10px;
-                            font-size: 11px;
-                            border-bottom: 1px dotted #ccc;
+                            padding: 3px 5px;
+                            font-size: 10px;
+                            border-bottom: 0.75pt dotted #ccc;
                             word-wrap: break-word;
                             vertical-align: middle;
                         }
@@ -1269,29 +1359,35 @@ fun printHistoryEventCustom(
                             width: 30%;
                         }
                         .terms-block {
-                            font-size: 10px;
-                            margin-top: 15px;
+                            font-size: 8.5px;
+                            margin-top: 5px;
                             color: #111;
                             white-space: pre-wrap;
-                            border: 1px solid #ddd;
-                            border-radius: 4px;
-                            padding: 12px;
+                            border: 0.75pt solid #ddd;
+                            border-radius: 3px;
+                            padding: 5px 7px;
                             background: #fafafa;
                             page-break-inside: avoid;
+                            line-height: 1.32;
                         }
                         .footer-note {
                             font-size: 8px;
                             text-align: center;
-                            margin-top: 16px;
+                            margin-top: 6px;
                             color: #888;
                             font-style: italic;
                         }
                         @media print {
                             @page {
-                                margin: 15mm;
+                                margin: 6mm 8mm;
                             }
-                            body { padding: 0; margin: 0; max-width: 100%; }
-                            .invoice-card { border: none; padding: 0; }
+                            body { padding: 0; margin: 0; max-width: 100%; width: 100%; }
+                            .invoice-card {
+                                border: 0.75pt solid #555 !important;
+                                border-radius: 4px;
+                                padding: 8px 10px !important;
+                                width: 100%;
+                            }
                             .page-break {
                                 page-break-before: always !important;
                                 break-before: page !important;
@@ -1370,10 +1466,7 @@ fun printHistoryEventCustom(
             """.trimIndent()
 
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                val webView = android.webkit.WebView(context).apply {
-                    settings.allowContentAccess = true
-                    settings.allowFileAccess = true
-                }
+                val webView = com.example.util.AppUtils.createPrintWebView(context)
                 activePrintWebView = webView
 
                 webView.webViewClient = object : android.webkit.WebViewClient() {
@@ -1384,7 +1477,7 @@ fun printHistoryEventCustom(
                                 val jobName = "Custom_Receipt_${event.serialNumber}"
                                 val printAttributes = android.print.PrintAttributes.Builder()
                                     .setMediaSize(android.print.PrintAttributes.MediaSize.ISO_A4)
-                                    .setMinMargins(android.print.PrintAttributes.Margins(500, 500, 500, 500))
+                                    .setMinMargins(android.print.PrintAttributes.Margins(200, 200, 200, 200))
                                     .build()
                                 printManager.print(jobName, printAdapter, printAttributes)
                             }
@@ -1418,6 +1511,7 @@ fun CustomPrintDialog(
     }
 
     var customTerms by remember(fixedTerms) { mutableStateOf(fixedTerms) }
+    var samePageLayoutMode by remember { mutableStateOf("AUTO") }
     
     val photos = remember(event.photoUri) {
         event.photoUri?.split(",")?.filter { it.isNotBlank() && (!it.startsWith("ic_") || it in listOf("ic_phone_blue", "ic_phone_amber", "ic_watch", "ic_tablet")) } ?: emptyList()
@@ -1596,6 +1690,52 @@ fun CustomPrintDialog(
                                 )
                             )
                         }
+
+                        if (samePagePhotos.size == 2) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text(
+                                        text = "2 Photos Layout on Same Page:",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(
+                                        text = "Auto optimizes portrait & landscape photos to fully utilize voucher space. Choose Side-by-Side or Stacked Rows.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        FilterChip(
+                                            selected = samePageLayoutMode == "AUTO",
+                                            onClick = { samePageLayoutMode = "AUTO" },
+                                            label = { Text("Auto", fontSize = 11.sp) },
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        FilterChip(
+                                            selected = samePageLayoutMode == "SIDE_BY_SIDE",
+                                            onClick = { samePageLayoutMode = "SIDE_BY_SIDE" },
+                                            label = { Text("Side-by-Side", fontSize = 11.sp) },
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        FilterChip(
+                                            selected = samePageLayoutMode == "STACKED",
+                                            onClick = { samePageLayoutMode = "STACKED" },
+                                            label = { Text("Stacked Rows", fontSize = 11.sp) },
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1735,7 +1875,8 @@ fun CustomPrintDialog(
                         nextPagePhotos = nextPagePhotos.toList(),
                         includeBlanks = false,
                         selectedPhotos = samePagePhotos.toList() + nextPagePhotos.toList(),
-                        placeholderCount = 0
+                        placeholderCount = 0,
+                        samePageLayout = samePageLayoutMode
                     )
                     onDismiss()
                 }

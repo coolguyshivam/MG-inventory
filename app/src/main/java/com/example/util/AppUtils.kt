@@ -891,6 +891,69 @@ object AppUtils {
         return cleanSource
     }
 
+    data class LoadedPhoto(
+        val base64: String,
+        val isLandscape: Boolean = false,
+        val width: Int = 0,
+        val height: Int = 0
+    )
+
+    fun loadPhotoWithDimensions(context: Context, source: String): LoadedPhoto {
+        val cleanSource = source.trim()
+        if (cleanSource.isBlank()) return LoadedPhoto("")
+
+        if (cleanSource.startsWith("ic_")) {
+            val resId = context.resources.getIdentifier(cleanSource, "drawable", context.packageName)
+            if (resId != 0) {
+                try {
+                    val bitmap = BitmapFactory.decodeResource(context.resources, resId)
+                    if (bitmap != null) {
+                        val out = ByteArrayOutputStream()
+                        bitmap.compress(getJpegFormat(), 80, out)
+                        val base64 = android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
+                        return LoadedPhoto("data:image/jpeg;base64,$base64", bitmap.width > bitmap.height, bitmap.width, bitmap.height)
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+
+        if (cleanSource.length > 200 && (cleanSource.startsWith("data:image") || (!cleanSource.startsWith("/") && !cleanSource.startsWith("content:")))) {
+            try {
+                val cleanBase64 = if (cleanSource.contains(",")) cleanSource.substringAfter(",") else cleanSource
+                val bytes = android.util.Base64.decode(cleanBase64, android.util.Base64.DEFAULT)
+                val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+                val isLandscape = options.outWidth > options.outHeight
+                val formatted = if (cleanSource.startsWith("data:image")) cleanSource else "data:image/jpeg;base64,$cleanBase64"
+                return LoadedPhoto(formatted, isLandscape, options.outWidth, options.outHeight)
+            } catch (e: Exception) {
+                return LoadedPhoto(cleanSource)
+            }
+        }
+
+        try {
+            val bitmap = if (cleanSource.startsWith("content://") || cleanSource.startsWith("file://")) {
+                val uri = android.net.Uri.parse(cleanSource)
+                context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+            } else {
+                val file = File(cleanSource)
+                if (file.exists()) BitmapFactory.decodeFile(file.absolutePath) else null
+            }
+            if (bitmap != null) {
+                val out = ByteArrayOutputStream()
+                bitmap.compress(getJpegFormat(), 75, out)
+                val base64 = android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
+                    .replace("\n", "").replace("\r", "").replace(" ", "")
+                return LoadedPhoto("data:image/jpeg;base64,$base64", bitmap.width > bitmap.height, bitmap.width, bitmap.height)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return LoadedPhoto(convertImageToWebviewBase64(context, cleanSource))
+    }
+
     const val DEFAULT_PURCHASE_TERMS = """Declaration: Facts are true. Handed over device voluntarily with no outstanding loans or EMIs. 
 उपरोक्त सभी तथ्य बिल्कुल सही है।
 मैने आज ये मोबाइल जिसका मै खुद स्वामी हू, स्वेच्छा से मोबाइल गैलरी को दिया है।
@@ -939,6 +1002,26 @@ REFUND POLICY: All sales are final. Unopened items may be considered for exchang
             .putString("voucher_purchase_terms", DEFAULT_PURCHASE_TERMS)
             .putString("voucher_sale_terms", DEFAULT_SALE_TERMS)
             .apply()
+    }
+
+    fun createPrintWebView(context: Context): android.webkit.WebView {
+        try {
+            val cacheDir = java.io.File(context.cacheDir, "WebView/Default/HTTP Cache/Code Cache/js")
+            if (!cacheDir.exists()) {
+                cacheDir.mkdirs()
+            }
+        } catch (_: Exception) {}
+
+        return android.webkit.WebView(context).apply {
+            setLayerType(android.view.View.LAYER_TYPE_SOFTWARE, null)
+            settings.apply {
+                allowContentAccess = true
+                allowFileAccess = true
+                cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
+                domStorageEnabled = false
+                databaseEnabled = false
+            }
+        }
     }
 }
 
