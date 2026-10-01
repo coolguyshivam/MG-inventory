@@ -105,6 +105,7 @@ class MainActivity : FragmentActivity() {
             LaunchedEffect(Unit) {
                 stockViewModel.loadAppIconStyle(applicationContext)
                 stockViewModel.loadPrintPriceInPdf(applicationContext)
+                stockViewModel.loadTermsAndConditions(applicationContext)
                 stockViewModel.checkAutoLogin(applicationContext)
             }
 
@@ -134,6 +135,7 @@ fun MainAppContent(viewModel: StockViewModel) {
 
     var showLogoutDialog by remember { mutableStateOf(false) }
     var showChangePasswordDialog by remember { mutableStateOf(false) }
+    var showTermsDialog by remember { mutableStateOf(false) }
 
     val context = androidx.compose.ui.platform.LocalContext.current
     var lastBackPress by remember { mutableStateOf(0L) }
@@ -326,6 +328,52 @@ fun MainAppContent(viewModel: StockViewModel) {
                                 checked = printPriceInPdf,
                                 onCheckedChange = { viewModel.setPrintPriceInPdf(context, it) }
                             )
+                        }
+
+                        if (loggedInUser?.role.equals("Admin", ignoreCase = true)) {
+                            Surface(
+                                onClick = {
+                                    coroutineScope.launch { drawerState.close() }
+                                    showTermsDialog = true
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 6.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Gavel,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Voucher Terms & Conditions",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = "Set & lock fixed terms for all users' vouchers",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            fontSize = 11.sp
+                                        )
+                                    }
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
                         }
                     }
 
@@ -643,7 +691,13 @@ fun MainAppContent(viewModel: StockViewModel) {
         }
     }
 
-    // Confirm dialog for logging out
+    if (showTermsDialog) {
+        com.example.ui.components.AdminTermsManagementDialog(
+            viewModel = viewModel,
+            onDismiss = { showTermsDialog = false }
+        )
+    }
+
     if (showLogoutDialog) {
         AlertDialog(
             onDismissRequest = { showLogoutDialog = false },
