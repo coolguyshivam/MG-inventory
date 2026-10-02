@@ -365,6 +365,7 @@ fun TransactionsScreen(viewModel: StockViewModel) {
     // Real-time validation touched trackers
     val imeiTouched = remember { mutableStateMapOf<Int, Boolean>() }
     val priceTouched = remember { mutableStateMapOf<Int, Boolean>() }
+    val salePriceTouched = remember { mutableStateMapOf<Int, Boolean>() }
     val modelTouched = remember { mutableStateOf(false) }
     val nameTouched = remember { mutableStateOf(false) }
     val phoneTouched = remember { mutableStateOf(false) }
@@ -392,6 +393,15 @@ fun TransactionsScreen(viewModel: StockViewModel) {
         if (valStr.trim().isEmpty()) return "Price is mandatory"
         val amt = valStr.trim().toDoubleOrNull()
         if (amt == null || amt < 0) return "Must be a non-negative number"
+        return null
+    }
+
+    fun getSalePriceError(index: Int, valStr: String): String? {
+        if (activeSelection != 0) return null
+        if (salePriceTouched[index] != true) return null
+        if (valStr.trim().isEmpty()) return "Sale price is mandatory"
+        val amt = valStr.trim().toDoubleOrNull()
+        if (amt == null || amt <= 0) return "Must be a positive number"
         return null
     }
 
@@ -423,6 +433,8 @@ fun TransactionsScreen(viewModel: StockViewModel) {
             if (sErr != null) return sErr
             val pErr = getPriceError(idx, transactionSubItems[idx].amount)
             if (pErr != null) return pErr
+            val spErr = getSalePriceError(idx, transactionSubItems[idx].salePrice)
+            if (spErr != null) return spErr
         }
         if (serialsHaveDuplicates) return "Duplicate IMEI numbers are not allowed"
         if (phoneError != null) return phoneError
@@ -445,6 +457,7 @@ fun TransactionsScreen(viewModel: StockViewModel) {
         transactionSubItems.forEachIndexed { index, _ ->
             imeiTouched[index] = true
             priceTouched[index] = true
+            salePriceTouched[index] = true
         }
         phoneTouched.value = true
         aadhaarTouched.value = true
@@ -676,6 +689,21 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                                 }
                             )
 
+                            val priceLabel = when (activeSelection) {
+                                0 -> "Purchase Cost (₹) *"
+                                1 -> "Sale Price (₹) *"
+                                2 -> "Refund Amount (₹) *"
+                                3 -> "Repair Cost (₹) *"
+                                else -> "Price (₹) *"
+                            }
+                            val pricePlaceholder = when (activeSelection) {
+                                0 -> "Enter purchase cost"
+                                1 -> "Enter sold price"
+                                2 -> "Enter refund amount"
+                                3 -> "Enter repair cost"
+                                else -> "Enter item cost"
+                            }
+
                             OutlinedTextField(
                                 value = subItem.amount,
                                 onValueChange = { 
@@ -691,8 +719,8 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                                         }
                                     }
                                 },
-                                label = { Text("Price (₹) *") },
-                                placeholder = { Text("Enter item cost") },
+                                label = { Text(priceLabel) },
+                                placeholder = { Text(pricePlaceholder) },
                                 singleLine = true,
                                 shape = RoundedCornerShape(10.dp),
                                 modifier = Modifier
@@ -724,6 +752,86 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                                     }
                                 )
                             )
+
+                            // Dedicated Selling Price Limits Section (Purchase Mode)
+                            if (activeSelection == 0) {
+                                val salePriceErr = getSalePriceError(index, subItem.salePrice)
+                                Card(
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
+                                    ),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f))
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Sell,
+                                                contentDescription = "Selling price configuration",
+                                                tint = Color(0xFF15803D),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Text(
+                                                text = "Selling Price Limits (For Inventory Cards & Salesman)",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF15803D)
+                                            )
+                                        }
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            OutlinedTextField(
+                                                value = subItem.salePrice,
+                                                onValueChange = { clean ->
+                                                    val cleanVal = clean.replace("\n", "").replace("\r", "")
+                                                    viewModel.updateSubItem(index, subItem.serialNumber, subItem.amount, sp = cleanVal, msp = subItem.minSalePrice)
+                                                    viewModel.clearFormErrorAndSuccess()
+                                                    salePriceTouched[index] = true
+                                                },
+                                                label = { Text("Sale Price (₹) *") },
+                                                placeholder = { Text("Selling price") },
+                                                singleLine = true,
+                                                shape = RoundedCornerShape(10.dp),
+                                                modifier = Modifier.weight(1f),
+                                                isError = salePriceErr != null,
+                                                supportingText = if (salePriceErr != null) { { Text(salePriceErr, color = MaterialTheme.colorScheme.error) } } else null,
+                                                keyboardOptions = KeyboardOptions(
+                                                    keyboardType = KeyboardType.Number,
+                                                    imeAction = ImeAction.Next
+                                                )
+                                            )
+
+                                            OutlinedTextField(
+                                                value = subItem.minSalePrice,
+                                                onValueChange = { clean ->
+                                                    val cleanVal = clean.replace("\n", "").replace("\r", "")
+                                                    viewModel.updateSubItem(index, subItem.serialNumber, subItem.amount, sp = subItem.salePrice, msp = cleanVal)
+                                                    viewModel.clearFormErrorAndSuccess()
+                                                },
+                                                label = { Text("Min Price (₹)") },
+                                                placeholder = { Text("Min limit") },
+                                                singleLine = true,
+                                                shape = RoundedCornerShape(10.dp),
+                                                modifier = Modifier.weight(1f),
+                                                supportingText = { Text("Optional", style = MaterialTheme.typography.labelSmall) },
+                                                keyboardOptions = KeyboardOptions(
+                                                    keyboardType = KeyboardType.Number,
+                                                    imeAction = ImeAction.Next
+                                                )
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

@@ -267,7 +267,9 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
     val canManageInventory = _loggedInUser.map { it?.role in listOf("Admin", "Manager", "Operator", "MIS") }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val canRepair = _loggedInUser.map { it?.role in listOf("Admin", "Manager", "Operator", "MIS") }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val canViewAnalytics = _loggedInUser.map { it?.role == "Admin" }.stateIn(viewModelScope, SharingStarted.Eagerly, false) // Restricted to Admin Only
-    val canSeePrice = _loggedInUser.map { it?.role in listOf("Admin", "Manager", "MIS") }.stateIn(viewModelScope, SharingStarted.Eagerly, false) // Restricted to Admin & Manager
+    val canSeePurchasePrice = _loggedInUser.map { it?.role in listOf("Admin", "Manager") }.stateIn(viewModelScope, SharingStarted.Eagerly, false) // Restricted to Admin & Manager Only
+    val canSeePrice = canSeePurchasePrice
+    val canEditPricing = _loggedInUser.map { it?.role in listOf("Admin", "Manager") }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val canSell = _loggedInUser.map { it?.role in listOf("Admin", "Manager", "Sales", "MIS") }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val canDelete = _loggedInUser.map { it?.role in listOf("Admin", "Manager", "MIS") }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val canViewLedger = _loggedInUser.map { it?.role in listOf("Admin", "Manager", "MIS") }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
@@ -331,14 +333,23 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
     var aadhaarInput = MutableStateFlow("")
     var amountInput = MutableStateFlow("")
     var addressInput = MutableStateFlow("")
-    var descriptionInput = MutableStateFlow("BH - \nSale price - \nCondition - ")
+    var descriptionInput = MutableStateFlow("BH - \nCondition - ")
     var dateInMillisInput = MutableStateFlow(System.currentTimeMillis())
     
     data class TransactionSubItem(
         val serialNumber: String = "",
-        val amount: String = ""
+        val amount: String = "",
+        val salePrice: String = "",
+        val minSalePrice: String = ""
     )
     val transactionSubItems = MutableStateFlow(listOf(TransactionSubItem()))
+    
+    // Inventory Price Filter
+    private val _inventoryPriceFilter = MutableStateFlow("All")
+    val inventoryPriceFilter: StateFlow<String> = _inventoryPriceFilter.asStateFlow()
+    fun setInventoryPriceFilter(filter: String) {
+        _inventoryPriceFilter.value = filter
+    }
     
     var quantityInput = MutableStateFlow(1)
     var photoUriInput = MutableStateFlow<String?>(null)
@@ -374,7 +385,7 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
         phoneInput.value = ""
         aadhaarInput.value = ""
         amountInput.value = ""
-        descriptionInput.value = item.description.ifBlank { "BH - \nSale price - \nCondition - " }
+        descriptionInput.value = item.description.ifBlank { "BH - \nCondition - " }
         quantityInput.value = 1
         photoUriInput.value = null
         transactionSubItems.value = listOf(TransactionSubItem(serialNumber = item.serialNumber, amount = item.amount.toInt().toString()))
@@ -424,7 +435,7 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                                     phoneInput.value = lastSale.phoneNumber ?: ""
                                     aadhaarInput.value = lastSale.aadhaarNumber ?: ""
                                     amountInput.value = lastSale.amount.toString()
-                                    descriptionInput.value = lastSale.description.ifBlank { "BH - \nSale price - \nCondition - " }
+                                    descriptionInput.value = lastSale.description.ifBlank { "BH - \nCondition - " }
                                 } else {
                                     // Fallback to active inventory matching
                                     val matchingItem = repository.getItemBySerialNumber(trimmedSn)
@@ -434,7 +445,7 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                                         phoneInput.value = matchingItem.phoneNumber ?: ""
                                         aadhaarInput.value = matchingItem.aadhaarNumber ?: ""
                                         amountInput.value = matchingItem.amount.toString()
-                                        descriptionInput.value = matchingItem.description.ifBlank { "BH - \nSale price - \nCondition - " }
+                                        descriptionInput.value = matchingItem.description.ifBlank { "BH - \nCondition - " }
                                     }
                                 }
                             } else {
@@ -448,7 +459,7 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                                         phoneInput.value = ""
                                         aadhaarInput.value = ""
                                         amountInput.value = ""
-                                        descriptionInput.value = "BH - \nSale price - \nCondition - "
+                                        descriptionInput.value = "BH - \nCondition - "
                                     }
                                 }
                             }
@@ -985,7 +996,7 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                     modelInput.value = matchingItem.model
                     nameInput.value = matchingItem.name
                     amountInput.value = matchingItem.amount.toString()
-                    descriptionInput.value = matchingItem.description.ifBlank { "BH - \nSale price - \nCondition - " }
+                    descriptionInput.value = matchingItem.description.ifBlank { "BH - \nCondition - " }
                 }
             }
         }
@@ -1005,7 +1016,7 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
         aadhaarInput.value = ""
         amountInput.value = ""
         addressInput.value = ""
-        descriptionInput.value = "BH - \nSale price - \nCondition - "
+        descriptionInput.value = "BH - \nCondition - "
         dateInMillisInput.value = System.currentTimeMillis()
         quantityInput.value = 1
         photoUriInput.value = null
@@ -1028,11 +1039,28 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
         }
     }
 
-    fun updateSubItem(index: Int, sn: String, amt: String) {
+    fun updateSubItem(index: Int, sn: String, amt: String, sp: String = "", msp: String = "") {
         val items = transactionSubItems.value.toMutableList()
-        items[index] = items[index].copy(serialNumber = sn, amount = amt)
-        transactionSubItems.value = items
-        syncAggregatedFormState()
+        if (index in items.indices) {
+            val curr = items[index]
+            items[index] = curr.copy(
+                serialNumber = sn,
+                amount = amt,
+                salePrice = if (sp.isNotBlank()) sp else curr.salePrice,
+                minSalePrice = if (msp.isNotBlank()) msp else curr.minSalePrice
+            )
+            transactionSubItems.value = items
+            syncAggregatedFormState()
+        }
+    }
+
+    fun updateSubItemSalePricing(index: Int, sp: String, msp: String) {
+        val items = transactionSubItems.value.toMutableList()
+        if (index in items.indices) {
+            val curr = items[index]
+            items[index] = curr.copy(salePrice = sp, minSalePrice = msp)
+            transactionSubItems.value = items
+        }
     }
     
     private fun syncAggregatedFormState() {
@@ -1089,6 +1117,20 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
             if (amount == null || amount < 0) {
                 _transactionError.value = "Amount must be a non-negative number for item $serialNumber."
                 return
+            }
+
+            // Expected Sale Price is mandatory for Purchase transactions
+            if (typeId == 0) {
+                val sp = item.salePrice.trim().toDoubleOrNull()
+                if (sp == null || sp <= 0.0) {
+                    _transactionError.value = "Expected Sale Price is mandatory for item $serialNumber."
+                    return
+                }
+                val msp = item.minSalePrice.trim().toDoubleOrNull()
+                if (msp != null && msp > sp) {
+                    _transactionError.value = "Min Sale Price (₹$msp) cannot exceed Expected Sale Price (₹$sp) for item $serialNumber."
+                    return
+                }
             }
         }
 
@@ -1182,6 +1224,8 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                         var success = false
                         when (typeId) {
                             0 -> { // Purchase
+                                val sp = item.salePrice.trim().toDoubleOrNull() ?: 0.0
+                                val msp = item.minSalePrice.trim().toDoubleOrNull() ?: 0.0
                                 success = repository.purchaseProduct(
                                     serialNumber = serialNumber,
                                     model = model,
@@ -1193,7 +1237,9 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                                     dateInMillis = dateInMillis,
                                     quantity = 1,
                                     photoUri = uploadedPhoto,
-                                    userId = activeUser
+                                    userId = activeUser,
+                                    salePrice = sp,
+                                    minSalePrice = msp
                                 )
                             }
                             1 -> { // Sale

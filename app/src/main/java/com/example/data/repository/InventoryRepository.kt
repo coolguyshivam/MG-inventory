@@ -393,7 +393,9 @@ class InventoryRepository {
         dateInMillis: Long,
         quantity: Int,
         photoUri: String?,
-        userId: String
+        userId: String,
+        salePrice: Double = 0.0,
+        minSalePrice: Double = 0.0
     ): Boolean {
         val uploadedPhotoUri = com.example.util.AppUtils.processAndUploadPhotos(photoUri)
         val item = InventoryItem(
@@ -408,7 +410,9 @@ class InventoryRepository {
             dateInMillis = dateInMillis,
             quantity = quantity,
             photoUri = uploadedPhotoUri,
-            underRepair = false
+            underRepair = false,
+            salePrice = salePrice,
+            minSalePrice = minSalePrice
         )
         val history = HistoryEvent(
             id = UUID.randomUUID().toString(),
@@ -595,22 +599,39 @@ class InventoryRepository {
         repairReason: String
     ): Boolean {
         val uploadedPhotoUri = com.example.util.AppUtils.processAndUploadPhotos(photoUri)
-        val item = InventoryItem(
-            id = UUID.randomUUID().toString(),
-            serialNumber = serialNumber,
-            model = model,
-            name = name,
-            phoneNumber = phoneNumber,
-            aadhaarNumber = aadhaarNumber,
-            amount = amount,
-            description = description,
-            dateInMillis = dateInMillis,
-            quantity = quantity,
-            photoUri = uploadedPhotoUri,
-            underRepair = true,
-            technicianName = technicianName,
-            repairReason = repairReason
-        )
+        val existing = getItemBySerialNumber(serialNumber)
+        val repairCost = amount
+        val newAmount = (existing?.amount ?: 0.0) + repairCost
+        val item = if (existing != null) {
+            existing.copy(
+                amount = newAmount,
+                underRepair = true,
+                technicianName = technicianName,
+                repairReason = repairReason,
+                phoneNumber = phoneNumber ?: existing.phoneNumber,
+                aadhaarNumber = aadhaarNumber ?: existing.aadhaarNumber,
+                description = if (description.isNotBlank()) description else existing.description,
+                photoUri = uploadedPhotoUri ?: existing.photoUri,
+                lastUpdated = System.currentTimeMillis()
+            )
+        } else {
+            InventoryItem(
+                id = UUID.randomUUID().toString(),
+                serialNumber = serialNumber,
+                model = model,
+                name = name,
+                phoneNumber = phoneNumber,
+                aadhaarNumber = aadhaarNumber,
+                amount = newAmount,
+                description = description,
+                dateInMillis = dateInMillis,
+                quantity = quantity,
+                photoUri = uploadedPhotoUri,
+                underRepair = true,
+                technicianName = technicianName,
+                repairReason = repairReason
+            )
+        }
         db.collection("inventory_items").document(item.id).set(item).await()
 
         val history = HistoryEvent(
@@ -621,13 +642,13 @@ class InventoryRepository {
             name = name,
             phoneNumber = phoneNumber,
             aadhaarNumber = aadhaarNumber,
-            amount = amount,
+            amount = repairCost, // History card shows repair cost only on the outside
             description = description,
             dateInMillis = dateInMillis,
             quantity = quantity,
-            photoUri = uploadedPhotoUri,
+            photoUri = uploadedPhotoUri ?: item.photoUri,
             userId = userId,
-            extraDetails = "Technician: $technicianName, Reason: $repairReason"
+            extraDetails = "Total Phone Cost: ₹${String.format("%,.2f", newAmount)}, Technician: $technicianName, Reason: $repairReason, Repair Cost: ₹$repairCost"
         )
         db.collection("history_events").document(history.id).set(history).await()
         
@@ -636,7 +657,7 @@ class InventoryRepository {
             com.example.util.AppUtils.uploadPhotoInBackground(history.id, uploadedPhotoUri, "history_events")
         }
 
-        processPartyTransactionIfApplicable(name, "REPAIR_SENT", amount * quantity, history.id)
+        processPartyTransactionIfApplicable(name, "REPAIR_SENT", repairCost * quantity, history.id)
         return true
     }
 
@@ -657,13 +678,13 @@ class InventoryRepository {
             name = existing.name,
             phoneNumber = existing.phoneNumber,
             aadhaarNumber = existing.aadhaarNumber,
-            amount = existing.amount,
+            amount = 0.0,
             description = existing.description,
             dateInMillis = System.currentTimeMillis(),
             quantity = existing.quantity,
             photoUri = existing.photoUri,
             userId = userId,
-            extraDetails = "Technician: $technicianName, Reason: $reason"
+            extraDetails = "Total Phone Cost: ₹${String.format("%,.2f", existing.amount)}, Technician: $technicianName, Reason: $reason"
         )
         db.collection("history_events").document(history.id).set(history).await()
         return true
@@ -688,9 +709,9 @@ class InventoryRepository {
             name = existing.name,
             phoneNumber = existing.phoneNumber,
             aadhaarNumber = existing.aadhaarNumber,
-            amount = newAmount,
+            amount = repairCost,
             description = if (repairCost > 0.0) {
-                "Returned from repair: " + (existing.repairReason ?: "") + " (Repair Cost: ₹$repairCost added to purchase cost)"
+                "Returned from repair: " + (existing.repairReason ?: "") + " (Repair Cost: ₹$repairCost added to phone total cost)"
             } else {
                 "Returned from repair: " + (existing.repairReason ?: "")
             },
@@ -698,7 +719,7 @@ class InventoryRepository {
             quantity = existing.quantity,
             photoUri = existing.photoUri,
             userId = userId,
-            extraDetails = "Technician responsible: " + (existing.technicianName ?: "Unknown") + if (repairCost > 0.0) ", Repair Cost: ₹$repairCost" else ""
+            extraDetails = "Total Phone Cost: ₹${String.format("%,.2f", newAmount)}, Technician: " + (existing.technicianName ?: "Unknown") + if (repairCost > 0.0) ", Repair Cost: ₹$repairCost" else ""
         )
         db.collection("history_events").document(history.id).set(history).await()
         return true

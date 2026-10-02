@@ -11,6 +11,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Visibility
@@ -54,6 +56,8 @@ fun InventoryScreen(viewModel: StockViewModel) {
     val canRepair by viewModel.canRepair.collectAsStateWithLifecycle()
     val canDelete by viewModel.canDelete.collectAsStateWithLifecycle()
     val canSeePrice by viewModel.canSeePrice.collectAsStateWithLifecycle()
+    val canSeePurchasePrice by viewModel.canSeePurchasePrice.collectAsStateWithLifecycle()
+    val canEditPricing by viewModel.canEditPricing.collectAsStateWithLifecycle()
     val canSell by viewModel.canSell.collectAsStateWithLifecycle()
 
     val loggedInUser by viewModel.loggedInUser.collectAsStateWithLifecycle()
@@ -75,6 +79,8 @@ fun InventoryScreen(viewModel: StockViewModel) {
     var editModel by remember { mutableStateOf("") }
     var editName by remember { mutableStateOf("") }
     var editAmount by remember { mutableStateOf("") }
+    var editSalePrice by remember { mutableStateOf("") }
+    var editMinSalePrice by remember { mutableStateOf("") }
     var editDesc by remember { mutableStateOf("") }
 
     var selectedPhotosForViewer by remember { mutableStateOf<List<String>?>(null) }
@@ -85,8 +91,14 @@ fun InventoryScreen(viewModel: StockViewModel) {
     var customEndDate by remember { mutableStateOf<Long?>(null) }
     var showDatePickerDialog by remember { mutableStateOf(false) }
 
+    // Price Filter States
+    var activePriceFilter by remember { mutableStateOf("All Prices") }
+    var customMinPrice by remember { mutableStateOf<Double?>(null) }
+    var customMaxPrice by remember { mutableStateOf<Double?>(null) }
+    var showPriceRangeDialog by remember { mutableStateOf(false) }
+
     // Filtering & Sorting math
-    val filteredItems = remember(rawItems, searchWord, activeSubTab, sortOption, sortAscending, activeDateFilter, customStartDate, customEndDate) {
+    val filteredItems = remember(rawItems, searchWord, activeSubTab, sortOption, sortAscending, activeDateFilter, customStartDate, customEndDate, activePriceFilter, customMinPrice, customMaxPrice) {
         var resultList = rawItems.filter { item ->
             item.isUnderRepair == (activeSubTab == 1)
         }
@@ -114,6 +126,25 @@ fun InventoryScreen(viewModel: StockViewModel) {
             }
         }
 
+        // Price Filter (Filter inventory items by Sale Price according to demand)
+        if (activePriceFilter != "All Prices") {
+            resultList = resultList.filter { item ->
+                val p = if (item.salePrice > 0.0) item.salePrice else item.amount
+                when (activePriceFilter) {
+                    "< ₹10k" -> p in 0.01..10000.0
+                    "₹10k - ₹20k" -> p in 10000.0..20000.0
+                    "₹20k - ₹40k" -> p in 20000.0..40000.0
+                    "> ₹40k" -> p > 40000.0
+                    "Custom Price" -> {
+                        val min = customMinPrice ?: 0.0
+                        val max = customMaxPrice ?: Double.MAX_VALUE
+                        p in min..max
+                    }
+                    else -> true
+                }
+            }
+        }
+
         // Apply Search Term (IMEI check or Model check or description check)
         if (searchWord.isNotBlank()) {
             val key = searchWord.trim().lowercase()
@@ -128,9 +159,11 @@ fun InventoryScreen(viewModel: StockViewModel) {
 
         // Apply Sorting List
         resultList = when (sortOption) {
+            "Sale Price" -> if (sortAscending) resultList.sortedBy { if (it.salePrice > 0.0) it.salePrice else it.amount } else resultList.sortedByDescending { if (it.salePrice > 0.0) it.salePrice else it.amount }
+            "Purchase Price" -> if (sortAscending) resultList.sortedBy { it.amount } else resultList.sortedByDescending { it.amount }
             "Name" -> if (sortAscending) resultList.sortedBy { it.name } else resultList.sortedByDescending { it.name }
             "Quantity" -> if (sortAscending) resultList.sortedBy { it.quantity } else resultList.sortedByDescending { it.quantity }
-            "Price" -> if (sortAscending) resultList.sortedBy { it.amount } else resultList.sortedByDescending { it.amount }
+            "Price" -> if (sortAscending) resultList.sortedBy { if (it.salePrice > 0.0) it.salePrice else it.amount } else resultList.sortedByDescending { if (it.salePrice > 0.0) it.salePrice else it.amount }
             else -> if (sortAscending) resultList.sortedBy { it.dateInMillis } else resultList.sortedByDescending { it.dateInMillis } // default date
         }
 
@@ -233,6 +266,28 @@ fun InventoryScreen(viewModel: StockViewModel) {
                     onDismissRequest = { showSortMenu = false }
                 ) {
                     DropdownMenuItem(
+                        text = { Text("Sort by Sale Price") },
+                        onClick = {
+                            viewModel.setInventorySortOption("Sale Price")
+                            showSortMenu = false
+                        },
+                        leadingIcon = {
+                            if (sortOption == "Sale Price" || sortOption == "Price") Icon(Icons.Default.Check, "Active")
+                        }
+                    )
+                    if (canSeePurchasePrice) {
+                        DropdownMenuItem(
+                            text = { Text("Sort by Purchase Price") },
+                            onClick = {
+                                viewModel.setInventorySortOption("Purchase Price")
+                                showSortMenu = false
+                            },
+                            leadingIcon = {
+                                if (sortOption == "Purchase Price") Icon(Icons.Default.Check, "Active")
+                            }
+                        )
+                    }
+                    DropdownMenuItem(
                         text = { Text("Sort by Date Created") },
                         onClick = {
                             viewModel.setInventorySortOption("Date")
@@ -260,16 +315,6 @@ fun InventoryScreen(viewModel: StockViewModel) {
                         },
                         leadingIcon = {
                             if (sortOption == "Quantity") Icon(Icons.Default.Check, "Active")
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Sort by Purchase Price") },
-                        onClick = {
-                            viewModel.setInventorySortOption("Price")
-                            showSortMenu = false
-                        },
-                        leadingIcon = {
-                            if (sortOption == "Price") Icon(Icons.Default.Check, "Active")
                         }
                     )
                     HorizontalDivider()
@@ -321,6 +366,50 @@ fun InventoryScreen(viewModel: StockViewModel) {
                         onClick = { showDatePickerDialog = true },
                         label = { Text(formatted) },
                         leadingIcon = { Icon(Icons.Default.DateRange, contentDescription = "Custom Date Range", modifier = Modifier.size(16.dp)) }
+                    )
+                }
+            }
+        }
+
+        // Horizontal scrolling Price Filters list (Sale Price filtering for Salesman & Admin)
+        LazyRow(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
+            contentPadding = PaddingValues(end = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            val priceFilters = listOf("All Prices", "< ₹10k", "₹10k - ₹20k", "₹20k - ₹40k", "> ₹40k", "Custom Price")
+            items(priceFilters) { filter ->
+                FilterChip(
+                    selected = activePriceFilter == filter,
+                    onClick = {
+                        activePriceFilter = filter
+                        if (filter == "Custom Price") {
+                            showPriceRangeDialog = true
+                        }
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Sell,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    },
+                    label = { Text(filter) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = Color(0xFF15803D),
+                        selectedLabelColor = Color.White,
+                        selectedLeadingIconColor = Color.White
+                    )
+                )
+            }
+            if (activePriceFilter == "Custom Price" && (customMinPrice != null || customMaxPrice != null)) {
+                item {
+                    val minText = customMinPrice?.let { "₹${it.toInt()}" } ?: "₹0"
+                    val maxText = customMaxPrice?.let { "₹${it.toInt()}" } ?: "∞"
+                    AssistChip(
+                        onClick = { showPriceRangeDialog = true },
+                        label = { Text("$minText - $maxText") },
+                        leadingIcon = { Icon(Icons.Default.Tune, contentDescription = "Edit Custom Price Range", modifier = Modifier.size(14.dp)) }
                     )
                 }
             }
@@ -407,7 +496,9 @@ fun InventoryScreen(viewModel: StockViewModel) {
                         isAdmin = isAdmin,
                         canRepair = canRepair,
                         canDelete = canDelete,
-                        canSeePrice = canSeePrice,
+                        canSeePrice = canSeePurchasePrice,
+                        canSeePurchasePrice = canSeePurchasePrice,
+                        canEditPricing = canEditPricing,
                         canSell = canSell,
                         onCardTapped = { isCardExpanded = !isCardExpanded },
                         onEyeToggled = { viewModel.togglePriceReveal(item.id) },
@@ -415,8 +506,10 @@ fun InventoryScreen(viewModel: StockViewModel) {
                             editingItem = item
                             editModel = item.model
                             editName = item.name
-                            editAmount = item.amount.toString()
-                            editDesc = item.description.ifBlank { "BH - \nSale price - \nCondition - " }
+                            editAmount = if (item.amount > 0.0) item.amount.toInt().toString() else ""
+                            editSalePrice = if (item.salePrice > 0.0) item.salePrice.toInt().toString() else ""
+                            editMinSalePrice = if (item.minSalePrice > 0.0) item.minSalePrice.toInt().toString() else ""
+                            editDesc = item.description.ifBlank { "BH - \nCondition - " }
                         },
                         onRepairClicked = {
                             // If standard stock, triggers send-to-repair popup
@@ -577,7 +670,7 @@ fun InventoryScreen(viewModel: StockViewModel) {
             )
         }
 
-        // Dialogue Modal for Editing item properties
+        // Dialogue Modal for Editing item properties and pricing
         editingItem?.let { item ->
             AlertDialog(
                 onDismissRequest = { editingItem = null },
@@ -585,6 +678,8 @@ fun InventoryScreen(viewModel: StockViewModel) {
                     Button(
                         onClick = {
                             val amountVal = editAmount.toDoubleOrNull() ?: item.amount
+                            val salePriceVal = editSalePrice.toDoubleOrNull() ?: item.salePrice
+                            val minSalePriceVal = editMinSalePrice.toDoubleOrNull() ?: item.minSalePrice
                             val qtyVal = 1
                             viewModel.editInventoryItem(
                                 item.id,
@@ -592,6 +687,8 @@ fun InventoryScreen(viewModel: StockViewModel) {
                                     model = editModel,
                                     name = editName,
                                     amount = amountVal,
+                                    salePrice = salePriceVal,
+                                    minSalePrice = minSalePriceVal,
                                     description = editDesc,
                                     quantity = qtyVal
                                 )
@@ -607,7 +704,7 @@ fun InventoryScreen(viewModel: StockViewModel) {
                         Text("Cancel")
                     }
                 },
-                title = { Text("Edit Product Attributes") },
+                title = { Text("Edit Product & Pricing") },
                 text = {
                     Column(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -627,10 +724,28 @@ fun InventoryScreen(viewModel: StockViewModel) {
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.fillMaxWidth()
                         )
+                        if (canSeePurchasePrice) {
+                            OutlinedTextField(
+                                value = editAmount,
+                                onValueChange = { editAmount = it },
+                                label = { Text("Purchase Cost (₹)") },
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                         OutlinedTextField(
-                            value = editAmount,
-                            onValueChange = { editAmount = it },
-                            label = { Text("Purchase Price") },
+                            value = editSalePrice,
+                            onValueChange = { editSalePrice = it },
+                            label = { Text("Expected Sale Price (₹) *") },
+                            placeholder = { Text("E.g., 25000") },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = editMinSalePrice,
+                            onValueChange = { editMinSalePrice = it },
+                            label = { Text("Min Sale Price (₹)") },
+                            placeholder = { Text("E.g., 22000 (Min price salesman can offer)") },
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -639,6 +754,70 @@ fun InventoryScreen(viewModel: StockViewModel) {
                             onValueChange = { editDesc = it },
                             label = { Text("Description") },
                             shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            )
+        }
+
+        // Custom Price Range Dialog
+        if (showPriceRangeDialog) {
+            var minInput by remember { mutableStateOf(customMinPrice?.toInt()?.toString() ?: "") }
+            var maxInput by remember { mutableStateOf(customMaxPrice?.toInt()?.toString() ?: "") }
+            AlertDialog(
+                onDismissRequest = { showPriceRangeDialog = false },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            customMinPrice = minInput.toDoubleOrNull()
+                            customMaxPrice = maxInput.toDoubleOrNull()
+                            activePriceFilter = "Custom Price"
+                            showPriceRangeDialog = false
+                        }
+                    ) { Text("Apply Filter") }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            customMinPrice = null
+                            customMaxPrice = null
+                            activePriceFilter = "All Prices"
+                            showPriceRangeDialog = false
+                        }
+                    ) { Text("Reset") }
+                },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Default.Sell, contentDescription = null, tint = Color(0xFF15803D))
+                        Text("Filter by Price Range")
+                    }
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = "Filter products by selling price according to customer demand:",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        OutlinedTextField(
+                            value = minInput,
+                            onValueChange = { minInput = it },
+                            label = { Text("Minimum Sale Price (₹)") },
+                            placeholder = { Text("0") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = maxInput,
+                            onValueChange = { maxInput = it },
+                            label = { Text("Maximum Sale Price (₹)") },
+                            placeholder = { Text("E.g., 50000") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
@@ -766,7 +945,9 @@ fun InventoryCardItem(
     isAdmin: Boolean = false,
     canRepair: Boolean,
     canDelete: Boolean,
-    canSeePrice: Boolean,  // Rule 4
+    canSeePrice: Boolean,  // Rule 4 (Purchase price visibility for Admin & Manager)
+    canSeePurchasePrice: Boolean = false,
+    canEditPricing: Boolean = false,
     canSell: Boolean,      // Rule 6
     onCardTapped: () -> Unit,
     onEyeToggled: () -> Unit,
@@ -869,9 +1050,9 @@ fun InventoryCardItem(
                                     expanded = expandedActionsMenu,
                                     onDismissRequest = { expandedActionsMenu = false }
                                 ) {
-                                    if (isAdmin) {
+                                    if (isAdmin || canEditPricing) {
                                         DropdownMenuItem(
-                                            text = { Text("Edit details") },
+                                            text = { Text("Edit details & pricing") },
                                             onClick = {
                                                 expandedActionsMenu = false
                                                 onEditClicked()
@@ -936,28 +1117,67 @@ fun InventoryCardItem(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Display price only if role allows (Rule 4)
-                        if (canSeePrice) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
+                        // Pricing section: Sale Price is visible to all (salesman, admin, manager)
+                        // Purchase Price is ONLY visible to Admin and Manager (canSeePurchasePrice)
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                            modifier = Modifier.weight(1f, fill = false)
+                        ) {
+                            // Sale price formatted like (sale price - min price)
+                            if (item.salePrice > 0.0) {
+                                val salePriceDisplay = if (item.minSalePrice > 0.0) {
+                                    "₹${String.format("%,.0f", item.salePrice)} - ₹${String.format("%,.0f", item.minSalePrice)}"
+                                } else {
+                                    "₹${String.format("%,.0f", item.salePrice)}"
+                                }
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = salePriceDisplay,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Black,
+                                        color = Color(0xFF15803D) // Green for Sale Price
+                                    )
+                                    if (canEditPricing) {
+                                        Icon(
+                                            imageVector = Icons.Default.Edit,
+                                            contentDescription = "Edit sale price",
+                                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
+                                            modifier = Modifier.size(13.dp).clickable { onEditClicked() }
+                                        )
+                                    }
+                                }
+                            } else {
                                 Text(
-                                    text = if (isPriceRevealed) "₹${String.format("%,.0f", item.amount)}" else "₹ •••••",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onBackground
-                                )
-                                Icon(
-                                    imageVector = if (isPriceRevealed) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                    contentDescription = "Toggle pricing lock mask",
-                                    modifier = Modifier.size(16.dp).clickable { onEyeToggled() },
-                                    tint = MaterialTheme.colorScheme.primary
+                                    text = "Sale: Price not set",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                                 )
                             }
-                        } else {
-                            // Blank spacers if price is hidden for Operators/MIS/Sales
-                            Spacer(modifier = Modifier.width(4.dp))
+
+                            // Purchase Price: STRICTLY restricted to Admin and Manager only
+                            if (canSeePurchasePrice) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = if (isPriceRevealed) "Buy: ₹${String.format("%,.0f", item.amount)}" else "Buy: ₹ •••••",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Icon(
+                                        imageVector = if (isPriceRevealed) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                        contentDescription = "Toggle purchase pricing lock mask",
+                                        modifier = Modifier.size(13.dp).clickable { onEyeToggled() },
+                                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+                                    )
+                                }
+                            }
                         }
 
                         // Status Badge with build/tool symbol indicating repair quantities gracefully
@@ -1068,6 +1288,32 @@ fun InventoryCardItem(
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Product Name:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(item.name, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                    }
+
+                    // Sale Price range in expanded details
+                    if (item.salePrice > 0.0) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Expected Sale Price:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("₹${String.format("%,.2f", item.salePrice)}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = Color(0xFF15803D))
+                        }
+                        if (item.minSalePrice > 0.0) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Min Sale Price (Floor):", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("₹${String.format("%,.2f", item.minSalePrice)}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = Color(0xFFB45309))
+                            }
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Selling Range (Sale - Min):", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("₹${String.format("%,.0f", item.salePrice)} - ₹${String.format("%,.0f", item.minSalePrice)}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Black)
+                            }
+                        }
+                    }
+
+                    // Purchase Price (Only visible to Admin and Manager!)
+                    if (canSeePurchasePrice) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Purchase Cost (Buy):", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("₹${String.format("%,.2f", item.amount)}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                        }
                     }
 
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

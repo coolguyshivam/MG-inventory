@@ -609,6 +609,19 @@ fun HistoryRowItem(
 
             Spacer(modifier = Modifier.height(10.dp))
 
+            // Pricing label: Repair cards show repair cost only on the outside
+            val isRepairEvent = event.actionType == "REPAIR_SENT" || event.actionType == "REPAIR_RETURNED"
+            val repairCostFromText = remember(event) {
+                val regex = Regex("Repair Cost:\\s*₹?\\s*([0-9,.]+)", RegexOption.IGNORE_CASE)
+                val match = regex.find(event.extraDetails ?: "") ?: regex.find(event.description)
+                match?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
+            }
+            val outsideDisplayAmount = if (isRepairEvent && repairCostFromText != null) {
+                repairCostFromText
+            } else {
+                event.amount
+            }
+
             // Short detail description of log item - displays model name and IMEI; Qty removed as requested
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -654,13 +667,23 @@ fun HistoryRowItem(
                     }
                 }
 
-                // Pricing label
-                Text(
-                    text = "₹${String.format("%,.2f", event.amount)}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Black,
-                    color = themeColor
-                )
+                Column(horizontalAlignment = Alignment.End) {
+                    if (isRepairEvent) {
+                        Text(
+                            text = "Repair Cost",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = themeColor.copy(alpha = 0.85f)
+                        )
+                    }
+                    Text(
+                        text = "₹${String.format("%,.2f", outsideDisplayAmount)}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Black,
+                        color = themeColor
+                    )
+                }
             }
 
             // Expanded extra parameter block details
@@ -693,9 +716,27 @@ fun HistoryRowItem(
                         Text("${event.quantity} unit(s)", style = MaterialTheme.typography.bodySmall, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
 
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Amount / Price:", style = MaterialTheme.typography.bodySmall, fontSize = 11.sp)
-                        Text("₹${String.format("%,.2f", event.amount)}", style = MaterialTheme.typography.bodySmall, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    if (isRepairEvent) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Repair Cost (Charged):", style = MaterialTheme.typography.bodySmall, fontSize = 11.sp)
+                            Text("₹${String.format("%,.2f", outsideDisplayAmount)}", style = MaterialTheme.typography.bodySmall, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = themeColor)
+                        }
+                        val totalPhoneCostText = remember(event.extraDetails) {
+                            val regex = Regex("Total Phone Cost:\\s*₹?\\s*([0-9,.]+)", RegexOption.IGNORE_CASE)
+                            val match = regex.find(event.extraDetails ?: "")
+                            match?.groupValues?.get(1)
+                        }
+                        if (!totalPhoneCostText.isNullOrBlank()) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Total Phone Value (Increased):", style = MaterialTheme.typography.bodySmall, fontSize = 11.sp)
+                                Text("₹$totalPhoneCostText", style = MaterialTheme.typography.bodySmall, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    } else {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Amount / Price:", style = MaterialTheme.typography.bodySmall, fontSize = 11.sp)
+                            Text("₹${String.format("%,.2f", event.amount)}", style = MaterialTheme.typography.bodySmall, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
 
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -1117,18 +1158,32 @@ fun shareToWhatsApp(context: android.content.Context, message: String) {
 fun extractAddressAndDescription(desc: String?): Pair<String, String> {
     if (desc == null) return Pair("", "")
     val trimmed = desc.trim()
+    val rawAddress: String
+    val rawDesc: String
     if (trimmed.startsWith("Address: ")) {
         val newlineIdx = trimmed.indexOf("\n")
         if (newlineIdx != -1) {
-            val addressVal = trimmed.substring(0, newlineIdx).replace("Address: ", "").trim()
-            val descVal = trimmed.substring(newlineIdx + 1).trim()
-            return Pair(addressVal, descVal)
+            rawAddress = trimmed.substring(0, newlineIdx).replace("Address: ", "").trim()
+            rawDesc = trimmed.substring(newlineIdx + 1).trim()
         } else {
-            val addressVal = trimmed.replace("Address: ", "").trim()
-            return Pair(addressVal, "")
+            rawAddress = trimmed.replace("Address: ", "").trim()
+            rawDesc = ""
         }
+    } else {
+        rawAddress = ""
+        rawDesc = trimmed
     }
-    return Pair("", trimmed)
+    // Filter out any sale price lines so sale price is NEVER shown on any prints or vouchers!
+    val filteredDesc = rawDesc.lines()
+        .filterNot { 
+            it.contains("Sale price", ignoreCase = true) || 
+            it.contains("Sale Price", ignoreCase = true) || 
+            it.contains("Min price", ignoreCase = true) || 
+            it.contains("Min sale price", ignoreCase = true) 
+        }
+        .joinToString("\n")
+        .trim()
+    return Pair(rawAddress, filteredDesc)
 }
 
 fun printHistoryEventCustom(

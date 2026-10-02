@@ -52,7 +52,7 @@ interface InventoryItemDao {
     suspend fun clearAll()
 }
 
-@Database(entities = [HistoryEvent::class, InventoryItem::class], version = 2, exportSchema = false)
+@Database(entities = [HistoryEvent::class, InventoryItem::class], version = 3, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract val historyEventDao: HistoryEventDao
     abstract val inventoryItemDao: InventoryItemDao

@@ -20,7 +20,9 @@ data class InventoryItem(
     val underRepair: Boolean = false,
     val technicianName: String? = null,
     val repairReason: String? = null,
-    val lastUpdated: Long = System.currentTimeMillis()
+    val lastUpdated: Long = System.currentTimeMillis(),
+    val salePrice: Double = 0.0,
+    val minSalePrice: Double = 0.0
 ) {
     val isUnderRepair: Boolean
         @com.google.firebase.firestore.Exclude

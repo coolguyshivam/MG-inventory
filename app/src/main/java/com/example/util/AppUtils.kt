@@ -1023,5 +1023,43 @@ REFUND POLICY: All sales are final. Unopened items may be considered for exchang
             }
         }
     }
+
+    fun getEffectiveSalePrice(item: com.example.data.model.InventoryItem): Double {
+        if (item.salePrice > 0.0) return item.salePrice
+        return extractSalePriceFromDescription(item.description)
+    }
+
+    fun getEffectiveMinSalePrice(item: com.example.data.model.InventoryItem): Double {
+        if (item.minSalePrice > 0.0) return item.minSalePrice
+        return extractMinSalePriceFromDescription(item.description)
+    }
+
+    fun extractSalePriceFromDescription(desc: String): Double {
+        if (desc.isBlank()) return 0.0
+        val regex = Regex("""(?i)(?:sale\s*price|selling\s*price|target\s*price|sp)\s*[:=-]?\s*₹?\s*(\d+(?:\.\d+)?)""")
+        val match = regex.find(desc)
+        return match?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+    }
+
+    fun extractMinSalePriceFromDescription(desc: String): Double {
+        if (desc.isBlank()) return 0.0
+        val regex = Regex("""(?i)(?:min\s*(?:sale\s*)?price|msp|floor\s*price)\s*[:=-]?\s*₹?\s*(\d+(?:\.\d+)?)""")
+        val match = regex.find(desc)
+        return match?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+    }
+
+    fun cleanDescriptionForPrint(desc: String): String {
+        if (desc.isBlank()) return ""
+        val cleaned = desc
+            .replace(Regex("""(?i)(?:expected\s*sale\s*price|sale\s*price|selling\s*price|min\s*(?:sale\s*)?price|target\s*price|sp|msp)\s*[:=-]?\s*₹?\s*\d+(?:\.\d+)?\s*"""), "")
+            .lines()
+            .filter { line ->
+                val l = line.trim().lowercase()
+                !l.startsWith("sale price") && !l.startsWith("min price") && !l.startsWith("msp") && !l.startsWith("sp -") && !l.startsWith("sp:")
+            }
+            .joinToString("\n")
+            .trim()
+        return cleaned.ifBlank { "No additional remarks logged." }
+    }
 }
 
