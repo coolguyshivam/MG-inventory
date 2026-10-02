@@ -691,14 +691,14 @@ fun TransactionsScreen(viewModel: StockViewModel) {
 
                             val priceLabel = when (activeSelection) {
                                 0 -> "Purchase Cost (₹) *"
-                                1 -> "Sale Price (₹) *"
+                                1 -> "Closed Sale Price (₹) *"
                                 2 -> "Refund Amount (₹) *"
                                 3 -> "Repair Cost (₹) *"
                                 else -> "Price (₹) *"
                             }
                             val pricePlaceholder = when (activeSelection) {
                                 0 -> "Enter purchase cost"
-                                1 -> "Enter sold price"
+                                1 -> "Enter actual price deal closed at"
                                 2 -> "Enter refund amount"
                                 3 -> "Enter repair cost"
                                 else -> "Enter item cost"

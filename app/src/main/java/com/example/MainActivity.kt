@@ -312,12 +312,12 @@ fun MainAppContent(viewModel: StockViewModel) {
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "Print Price in Receipts",
+                                    text = "Print Actual Sale / Deal Price",
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "Print item prices in the generated receipt PDFs",
+                                    text = "Print the actual closed deal price on receipt vouchers",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     fontSize = 11.sp

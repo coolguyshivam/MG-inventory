@@ -36,7 +36,7 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
     private val _appIconStyle = MutableStateFlow("Classic Slate")
     val appIconStyle: StateFlow<String> = _appIconStyle.asStateFlow()
 
-    private val _printPriceInPdf = MutableStateFlow(false)
+    private val _printPriceInPdf = MutableStateFlow(true)
     val printPriceInPdf: StateFlow<Boolean> = _printPriceInPdf.asStateFlow()
 
     fun loadAppIconStyle(context: Context) {
@@ -52,7 +52,7 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
 
     fun loadPrintPriceInPdf(context: Context) {
         val prefs = context.getSharedPreferences("mobile_gallery_prefs", Context.MODE_PRIVATE)
-        _printPriceInPdf.value = prefs.getBoolean("print_price_in_pdf", false)
+        _printPriceInPdf.value = prefs.getBoolean("print_price_in_pdf", true)
     }
 
     fun setPrintPriceInPdf(context: Context, enabled: Boolean) {
@@ -384,11 +384,11 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
         nameInput.value = ""
         phoneInput.value = ""
         aadhaarInput.value = ""
-        amountInput.value = ""
+        amountInput.value = if (item.salePrice > 0.0) item.salePrice.toInt().toString() else ""
         descriptionInput.value = item.description.ifBlank { "BH - \nCondition - " }
         quantityInput.value = 1
         photoUriInput.value = null
-        transactionSubItems.value = listOf(TransactionSubItem(serialNumber = item.serialNumber, amount = item.amount.toInt().toString()))
+        transactionSubItems.value = listOf(TransactionSubItem(serialNumber = item.serialNumber, amount = if (item.salePrice > 0.0) item.salePrice.toInt().toString() else ""))
         syncAggregatedFormState()
         clearFormErrorAndSuccess()
     }

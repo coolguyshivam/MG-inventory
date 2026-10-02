@@ -913,7 +913,7 @@ fun printHistoryEvent(context: android.content.Context, event: HistoryEvent) {
             } else ""
 
             val prefs = context.getSharedPreferences("mobile_gallery_prefs", android.content.Context.MODE_PRIVATE)
-            val printPrice = prefs.getBoolean("print_price_in_pdf", false)
+            val printPrice = prefs.getBoolean("print_price_in_pdf", true)
             val pricePlaceholder = if (printPrice) {
                 "₹${String.format("%,.2f", event.amount)}"
             } else {
@@ -1062,7 +1062,7 @@ fun printHistoryEvent(context: android.content.Context, event: HistoryEvent) {
                             <tr>
                                 <td class="label">IMEI/Serial Key:</td>
                                 <td class="value" style="font-family: monospace;">${event.serialNumber.ifBlank { "________________" }}</td>
-                                <td class="label">Amount / Price:</td>
+                                <td class="label">${if (event.actionType == "SALE") "Sale / Deal Price:" else "Amount / Price:"}</td>
                                 <td class="value" style="font-weight: bold; color: #111;">$pricePlaceholder</td>
                             </tr>
                             <tr>
@@ -1195,7 +1195,8 @@ fun printHistoryEventCustom(
     includeBlanks: Boolean = false,
     selectedPhotos: List<String> = emptyList(),
     placeholderCount: Int = 0,
-    samePageLayout: String = "AUTO"
+    samePageLayout: String = "AUTO",
+    printPrice: Boolean? = null
 ) {
     val printManager = context.getSystemService(android.content.Context.PRINT_SERVICE) as? android.print.PrintManager
     if (printManager == null) {
@@ -1336,8 +1337,8 @@ fun printHistoryEventCustom(
             } else ""
 
             val prefs = context.getSharedPreferences("mobile_gallery_prefs", android.content.Context.MODE_PRIVATE)
-            val printPrice = prefs.getBoolean("print_price_in_pdf", false)
-            val pricePlaceholder = if (printPrice) {
+            val shouldPrintPrice = printPrice ?: prefs.getBoolean("print_price_in_pdf", true)
+            val pricePlaceholder = if (shouldPrintPrice) {
                 "₹${String.format("%,.2f", event.amount)}"
             } else {
                 "________________"
@@ -1485,7 +1486,7 @@ fun printHistoryEventCustom(
                             <tr>
                                 <td class="label">IMEI / Serial key:</td>
                                 <td class="value" style="font-family: monospace;">${event.serialNumber.ifBlank { "________________" }}</td>
-                                <td class="label">Amount / Price:</td>
+                                <td class="label">${if (event.actionType == "SALE") "Sale / Deal Price:" else "Amount / Price:"}</td>
                                 <td class="value" style="font-weight: bold; color: #111;">$pricePlaceholder</td>
                             </tr>
                             <tr>
@@ -1565,6 +1566,11 @@ fun CustomPrintDialog(
         com.example.util.AppUtils.getFixedTermsForEvent(context, event.actionType)
     }
 
+    val prefs = remember { context.getSharedPreferences("mobile_gallery_prefs", android.content.Context.MODE_PRIVATE) }
+    var printPriceOption by remember {
+        mutableStateOf(prefs.getBoolean("print_price_in_pdf", true))
+    }
+
     var customTerms by remember(fixedTerms) { mutableStateOf(fixedTerms) }
     var samePageLayoutMode by remember { mutableStateOf("AUTO") }
     
@@ -1631,6 +1637,66 @@ fun CustomPrintDialog(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
+                    }
+                }
+
+                // Actual Deal / Sale Price Printing Option
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (printPriceOption) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, if (printPriceOption) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            modifier = Modifier.weight(1f).padding(end = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Sell,
+                                contentDescription = null,
+                                tint = if (printPriceOption) Color(0xFF15803D) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Column {
+                                val priceLabelTitle = if (event.actionType == "SALE") {
+                                    "Print Actual Sale Price"
+                                } else {
+                                    "Print Deal / Closed Price"
+                                }
+                                Text(
+                                    text = priceLabelTitle,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = if (printPriceOption) {
+                                        "Actual deal closed at ₹${String.format("%,.2f", event.amount)} will be printed on receipt"
+                                    } else {
+                                        "Actual price hidden: Left blank (________________) on receipt"
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontSize = 11.sp,
+                                    color = if (printPriceOption) Color(0xFF15803D) else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        Switch(
+                            checked = printPriceOption,
+                            onCheckedChange = { checked ->
+                                printPriceOption = checked
+                                prefs.edit().putBoolean("print_price_in_pdf", checked).apply()
+                                viewModel?.setPrintPriceInPdf(context, checked)
+                            }
+                        )
                     }
                 }
 
@@ -1931,7 +1997,8 @@ fun CustomPrintDialog(
                         includeBlanks = false,
                         selectedPhotos = samePagePhotos.toList() + nextPagePhotos.toList(),
                         placeholderCount = 0,
-                        samePageLayout = samePageLayoutMode
+                        samePageLayout = samePageLayoutMode,
+                        printPrice = printPriceOption
                     )
                     onDismiss()
                 }
