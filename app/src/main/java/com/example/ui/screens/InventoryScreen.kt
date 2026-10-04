@@ -88,6 +88,12 @@ fun InventoryScreen(viewModel: StockViewModel) {
 
     var selectedPhotosForViewer by remember { mutableStateOf<List<String>?>(null) }
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { context.getSharedPreferences("mobile_gallery_prefs", android.content.Context.MODE_PRIVATE) }
+    var showPurchasePriceOnCards by remember {
+        mutableStateOf(prefs.getBoolean("show_purchase_price_on_cards", false))
+    }
+
     var activeDateFilter by remember { mutableStateOf("All Time") }
     // time in millis
     var customStartDate by remember { mutableStateOf<Long?>(null) }
@@ -95,13 +101,16 @@ fun InventoryScreen(viewModel: StockViewModel) {
     var showDatePickerDialog by remember { mutableStateOf(false) }
 
     // Price Filter States
+    var priceFilterMode by remember { mutableStateOf("Purchase") } // "Purchase" or "Sale"
     var activePriceFilter by remember { mutableStateOf("All Prices") }
     var customMinPrice by remember { mutableStateOf<Double?>(null) }
     var customMaxPrice by remember { mutableStateOf<Double?>(null) }
     var showPriceRangeDialog by remember { mutableStateOf(false) }
+    var showPurchaseFilterSubmenu by remember { mutableStateOf(false) }
+    var showSaleFilterSubmenu by remember { mutableStateOf(false) }
 
     // Filtering & Sorting math
-    val filteredItems = remember(rawItems, searchWord, activeSubTab, sortOption, sortAscending, activeDateFilter, customStartDate, customEndDate, activePriceFilter, customMinPrice, customMaxPrice) {
+    val filteredItems = remember(rawItems, searchWord, activeSubTab, sortOption, sortAscending, activeDateFilter, customStartDate, customEndDate, activePriceFilter, priceFilterMode, customMinPrice, customMaxPrice) {
         var resultList = rawItems.filter { item ->
             item.isUnderRepair == (activeSubTab == 1)
         }
@@ -129,10 +138,15 @@ fun InventoryScreen(viewModel: StockViewModel) {
             }
         }
 
-        // Price Filter (Filter inventory items by Sale Price according to demand)
+        // Price Filter (Purchase Price or Sale Price)
         if (activePriceFilter != "All Prices") {
             resultList = resultList.filter { item ->
-                val p = if (item.salePrice > 0.0) item.salePrice else item.amount
+                val p = if (priceFilterMode == "Purchase") {
+                    item.amount
+                } else {
+                    val effP = com.example.util.AppUtils.getEffectiveSalePrice(item)
+                    if (effP > 0.0) effP else item.amount
+                }
                 when (activePriceFilter) {
                     "< ₹10k" -> p in 0.01..10000.0
                     "₹10k - ₹20k" -> p in 10000.0..20000.0
@@ -162,11 +176,11 @@ fun InventoryScreen(viewModel: StockViewModel) {
 
         // Apply Sorting List
         resultList = when (sortOption) {
-            "Sale Price" -> if (sortAscending) resultList.sortedBy { if (it.salePrice > 0.0) it.salePrice else it.amount } else resultList.sortedByDescending { if (it.salePrice > 0.0) it.salePrice else it.amount }
+            "Sale Price" -> if (sortAscending) resultList.sortedBy { val eff = com.example.util.AppUtils.getEffectiveSalePrice(it); if (eff > 0.0) eff else it.amount } else resultList.sortedByDescending { val eff = com.example.util.AppUtils.getEffectiveSalePrice(it); if (eff > 0.0) eff else it.amount }
             "Purchase Price" -> if (sortAscending) resultList.sortedBy { it.amount } else resultList.sortedByDescending { it.amount }
             "Name" -> if (sortAscending) resultList.sortedBy { it.name } else resultList.sortedByDescending { it.name }
             "Quantity" -> if (sortAscending) resultList.sortedBy { it.quantity } else resultList.sortedByDescending { it.quantity }
-            "Price" -> if (sortAscending) resultList.sortedBy { if (it.salePrice > 0.0) it.salePrice else it.amount } else resultList.sortedByDescending { if (it.salePrice > 0.0) it.salePrice else it.amount }
+            "Price" -> if (sortAscending) resultList.sortedBy { val eff = com.example.util.AppUtils.getEffectiveSalePrice(it); if (eff > 0.0) eff else it.amount } else resultList.sortedByDescending { val eff = com.example.util.AppUtils.getEffectiveSalePrice(it); if (eff > 0.0) eff else it.amount }
             else -> if (sortAscending) resultList.sortedBy { it.dateInMillis } else resultList.sortedByDescending { it.dateInMillis } // default date
         }
 
@@ -247,27 +261,196 @@ fun InventoryScreen(viewModel: StockViewModel) {
 
             // Filters & Sort options dropdown
             Box {
+                val hasActivePriceFilter = activePriceFilter != "All Prices"
                 IconButton(
                     onClick = { showSortMenu = true },
                     modifier = Modifier
                         .size(44.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .border(1.dp, MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.surface)
+                        .border(
+                            1.dp,
+                            if (hasActivePriceFilter) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                            RoundedCornerShape(12.dp)
+                        )
+                        .background(if (hasActivePriceFilter) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surface)
                         .testTag("inventory_sort_button")
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.FilterList,
-                        contentDescription = "Filter and Sort categories",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp)
-                    )
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.FilterList,
+                            contentDescription = "Filter and Sort categories",
+                            tint = if (hasActivePriceFilter) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        if (hasActivePriceFilter) {
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .align(Alignment.TopEnd)
+                                    .background(MaterialTheme.colorScheme.primary, CircleShape)
+                            )
+                        }
+                    }
                 }
 
                 DropdownMenu(
                     expanded = showSortMenu,
-                    onDismissRequest = { showSortMenu = false }
+                    onDismissRequest = { showSortMenu = false },
+                    modifier = Modifier.widthIn(min = 250.dp)
                 ) {
+                    if (canSeePurchasePrice) {
+                        Text(
+                            text = "PURCHASE (MANAGER & ADMIN)",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                        )
+                        DropdownMenuItem(
+                            text = { 
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("Show Purchase Price on Cards", fontSize = 12.sp)
+                                    Switch(
+                                        checked = showPurchasePriceOnCards,
+                                        onCheckedChange = { checked ->
+                                            showPurchasePriceOnCards = checked
+                                            prefs.edit().putBoolean("show_purchase_price_on_cards", checked).apply()
+                                        }
+                                    )
+                                }
+                            },
+                            onClick = {
+                                val next = !showPurchasePriceOnCards
+                                showPurchasePriceOnCards = next
+                                prefs.edit().putBoolean("show_purchase_price_on_cards", next).apply()
+                            },
+                            leadingIcon = {
+                                Icon(if (showPurchasePriceOnCards) Icons.Default.Visibility else Icons.Default.VisibilityOff, contentDescription = null)
+                            }
+                        )
+
+                        DropdownMenuItem(
+                            text = { Text("Filter by Purchase Price", fontWeight = if (priceFilterMode == "Purchase" && activePriceFilter != "All Prices") FontWeight.Bold else FontWeight.Normal) },
+                            onClick = {
+                                priceFilterMode = "Purchase"
+                                showPurchaseFilterSubmenu = !showPurchaseFilterSubmenu
+                            },
+                            leadingIcon = {
+                                Icon(Icons.Default.ShoppingCart, contentDescription = null, tint = if (priceFilterMode == "Purchase" && activePriceFilter != "All Prices") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                            },
+                            trailingIcon = {
+                                Icon(if (showPurchaseFilterSubmenu) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = null)
+                            }
+                        )
+                        if (showPurchaseFilterSubmenu) {
+                            val purchaseRanges = listOf("All Prices", "< ₹10k", "₹10k - ₹20k", "₹20k - ₹40k", "> ₹40k", "Custom Price")
+                            purchaseRanges.forEach { range ->
+                                DropdownMenuItem(
+                                    text = { Text(if (range == "All Prices") "All Purchase Prices" else "Purchase: $range", fontSize = 12.sp) },
+                                    onClick = {
+                                        priceFilterMode = "Purchase"
+                                        activePriceFilter = range
+                                        if (range == "Custom Price") {
+                                            showPriceRangeDialog = true
+                                        }
+                                        showSortMenu = false
+                                    },
+                                    leadingIcon = {
+                                        if (priceFilterMode == "Purchase" && activePriceFilter == range) {
+                                            Icon(Icons.Default.Check, "Active", tint = MaterialTheme.colorScheme.primary)
+                                        } else {
+                                            Spacer(modifier = Modifier.size(24.dp))
+                                        }
+                                    },
+                                    modifier = Modifier.padding(start = 12.dp)
+                                )
+                            }
+                        }
+
+                        if (canManageInventory) {
+                            DropdownMenuItem(
+                                text = { Text("New Inbound Purchase") },
+                                onClick = {
+                                    showSortMenu = false
+                                    viewModel.setTab(1)
+                                    viewModel.setTransactionSelection(0)
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.AddShoppingCart, contentDescription = "Add Purchase", tint = Color(0xFF15803D))
+                                }
+                            )
+                        }
+
+                        HorizontalDivider()
+                    }
+
+                    Text(
+                        text = "SALE PRICING FILTER",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF15803D),
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Filter by Sale Price", fontWeight = if (priceFilterMode == "Sale" && activePriceFilter != "All Prices") FontWeight.Bold else FontWeight.Normal) },
+                        onClick = {
+                            priceFilterMode = "Sale"
+                            showSaleFilterSubmenu = !showSaleFilterSubmenu
+                        },
+                        leadingIcon = {
+                            Icon(Icons.Default.Sell, contentDescription = null, tint = if (priceFilterMode == "Sale" && activePriceFilter != "All Prices") Color(0xFF15803D) else MaterialTheme.colorScheme.onSurfaceVariant)
+                        },
+                        trailingIcon = {
+                            Icon(if (showSaleFilterSubmenu) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = null)
+                        }
+                    )
+                    if (showSaleFilterSubmenu) {
+                        val saleRanges = listOf("All Prices", "< ₹10k", "₹10k - ₹20k", "₹20k - ₹40k", "> ₹40k", "Custom Price")
+                        saleRanges.forEach { range ->
+                            DropdownMenuItem(
+                                text = { Text(if (range == "All Prices") "All Sale Prices" else "Sale: $range", fontSize = 12.sp) },
+                                onClick = {
+                                    priceFilterMode = "Sale"
+                                    activePriceFilter = range
+                                    if (range == "Custom Price") {
+                                        showPriceRangeDialog = true
+                                    }
+                                    showSortMenu = false
+                                },
+                                leadingIcon = {
+                                    if (priceFilterMode == "Sale" && activePriceFilter == range) {
+                                        Icon(Icons.Default.Check, "Active", tint = Color(0xFF15803D))
+                                    } else {
+                                        Spacer(modifier = Modifier.size(24.dp))
+                                    }
+                                },
+                                modifier = Modifier.padding(start = 12.dp)
+                            )
+                        }
+                    }
+
+                    HorizontalDivider()
+                    Text(
+                        text = "SORT BY",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Sort by Date Created") },
+                        onClick = {
+                            viewModel.setInventorySortOption("Date")
+                            showSortMenu = false
+                        },
+                        leadingIcon = {
+                            if (sortOption == "Date") Icon(Icons.Default.Check, "Active")
+                        }
+                    )
                     DropdownMenuItem(
                         text = { Text("Sort by Sale Price") },
                         onClick = {
@@ -290,16 +473,6 @@ fun InventoryScreen(viewModel: StockViewModel) {
                             }
                         )
                     }
-                    DropdownMenuItem(
-                        text = { Text("Sort by Date Created") },
-                        onClick = {
-                            viewModel.setInventorySortOption("Date")
-                            showSortMenu = false
-                        },
-                        leadingIcon = {
-                            if (sortOption == "Date") Icon(Icons.Default.Check, "Active")
-                        }
-                    )
                     DropdownMenuItem(
                         text = { Text("Sort by Name") },
                         onClick = {
@@ -334,15 +507,31 @@ fun InventoryScreen(viewModel: StockViewModel) {
                             )
                         }
                     )
+                    if (activePriceFilter != "All Prices") {
+                        HorizontalDivider()
+                        DropdownMenuItem(
+                            text = { Text("Clear Price Filter", color = MaterialTheme.colorScheme.error) },
+                            onClick = {
+                                activePriceFilter = "All Prices"
+                                customMinPrice = null
+                                customMaxPrice = null
+                                showSortMenu = false
+                            },
+                            leadingIcon = {
+                                Icon(Icons.Default.Clear, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                            }
+                        )
+                    }
                 }
             }
         }
 
-        // Horizontal scrolling Date Filters list
+        // Horizontal scrolling Date Filters & Active Price Filter chip
         LazyRow(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 0.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
             contentPadding = PaddingValues(end = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             val filters = listOf("All Time", "Today", "This Week", "This Month", "Custom")
             items(filters) { filter ->
@@ -372,47 +561,37 @@ fun InventoryScreen(viewModel: StockViewModel) {
                     )
                 }
             }
-        }
 
-        // Horizontal scrolling Price Filters list (Sale Price filtering for Salesman & Admin)
-        LazyRow(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
-            contentPadding = PaddingValues(end = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            val priceFilters = listOf("All Prices", "< ₹10k", "₹10k - ₹20k", "₹20k - ₹40k", "> ₹40k", "Custom Price")
-            items(priceFilters) { filter ->
-                FilterChip(
-                    selected = activePriceFilter == filter,
-                    onClick = {
-                        activePriceFilter = filter
-                        if (filter == "Custom Price") {
-                            showPriceRangeDialog = true
-                        }
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Sell,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp)
-                        )
-                    },
-                    label = { Text(filter) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = Color(0xFF15803D),
-                        selectedLabelColor = Color.White,
-                        selectedLeadingIconColor = Color.White
-                    )
-                )
-            }
-            if (activePriceFilter == "Custom Price" && (customMinPrice != null || customMaxPrice != null)) {
+            // Compact Active Price Filter Chip embedded from filter menu
+            if (activePriceFilter != "All Prices") {
                 item {
-                    val minText = customMinPrice?.let { "₹${it.toInt()}" } ?: "₹0"
-                    val maxText = customMaxPrice?.let { "₹${it.toInt()}" } ?: "∞"
-                    AssistChip(
-                        onClick = { showPriceRangeDialog = true },
-                        label = { Text("$minText - $maxText") },
-                        leadingIcon = { Icon(Icons.Default.Tune, contentDescription = "Edit Custom Price Range", modifier = Modifier.size(14.dp)) }
+                    val filterLabel = if (activePriceFilter == "Custom Price") {
+                        val minText = customMinPrice?.let { "₹${it.toInt()}" } ?: "₹0"
+                        val maxText = customMaxPrice?.let { "₹${it.toInt()}" } ?: "∞"
+                        "$priceFilterMode: $minText-$maxText"
+                    } else {
+                        "$priceFilterMode: $activePriceFilter"
+                    }
+                    FilterChip(
+                        selected = true,
+                        onClick = {
+                            activePriceFilter = "All Prices"
+                            customMinPrice = null
+                            customMaxPrice = null
+                        },
+                        label = { Text("$filterLabel ✕", fontWeight = FontWeight.Bold) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = if (priceFilterMode == "Purchase") Icons.Default.ShoppingCart else Icons.Default.Sell,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = if (priceFilterMode == "Purchase") MaterialTheme.colorScheme.primaryContainer else Color(0xFFDCFCE7),
+                            selectedLabelColor = if (priceFilterMode == "Purchase") MaterialTheme.colorScheme.onPrimaryContainer else Color(0xFF15803D),
+                            selectedLeadingIconColor = if (priceFilterMode == "Purchase") MaterialTheme.colorScheme.onPrimaryContainer else Color(0xFF15803D)
+                        )
                     )
                 }
             }
@@ -503,6 +682,7 @@ fun InventoryScreen(viewModel: StockViewModel) {
                         canDelete = canDelete,
                         canSeePrice = canSeePurchasePrice,
                         canSeePurchasePrice = canSeePurchasePrice,
+                        showPurchasePriceOnCards = showPurchasePriceOnCards,
                         canEditPricing = canEditPricing,
                         canSell = canSell,
                         onCardTapped = { isCardExpanded = !isCardExpanded },
@@ -513,8 +693,10 @@ fun InventoryScreen(viewModel: StockViewModel) {
                             editModel = item.model
                             editName = item.name
                             editAmount = if (item.amount > 0.0) item.amount.toInt().toString() else ""
-                            editSalePrice = if (item.salePrice > 0.0) item.salePrice.toInt().toString() else ""
-                            editMinSalePrice = if (item.minSalePrice > 0.0) item.minSalePrice.toInt().toString() else ""
+                            val effSale = com.example.util.AppUtils.getEffectiveSalePrice(item)
+                            val effMin = com.example.util.AppUtils.getEffectiveMinSalePrice(item)
+                            editSalePrice = if (effSale > 0.0) effSale.toInt().toString() else ""
+                            editMinSalePrice = if (effMin > 0.0) effMin.toInt().toString() else ""
                             editDesc = item.description.ifBlank { "BH - \nCondition - " }
                         },
                         onRepairClicked = {
@@ -750,8 +932,8 @@ fun InventoryScreen(viewModel: StockViewModel) {
                         OutlinedTextField(
                             value = editSalePrice,
                             onValueChange = { editSalePrice = it },
-                            label = { Text("Expected Sale Price (₹) *") },
-                            placeholder = { Text("E.g., 25000") },
+                            label = { Text("Expected Sale Price (₹)") },
+                            placeholder = { Text("E.g., 25000 (Optional)") },
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -963,6 +1145,7 @@ fun InventoryCardItem(
     canDelete: Boolean,
     canSeePrice: Boolean,  // Rule 4 (Purchase price visibility for Admin & Manager)
     canSeePurchasePrice: Boolean = false,
+    showPurchasePriceOnCards: Boolean = false,
     canEditPricing: Boolean = false,
     canSell: Boolean,      // Rule 6
     onCardTapped: () -> Unit,
@@ -1139,23 +1322,30 @@ fun InventoryCardItem(
                             verticalArrangement = Arrangement.spacedBy(2.dp),
                             modifier = Modifier.weight(1f, fill = false)
                         ) {
-                            // Sale price formatted like (sale price - min price)
-                            if (item.salePrice > 0.0) {
-                                val salePriceDisplay = if (item.minSalePrice > 0.0) {
-                                    "₹${String.format("%,.0f", item.salePrice)} - ₹${String.format("%,.0f", item.minSalePrice)}"
-                                } else {
-                                    "₹${String.format("%,.0f", item.salePrice)}"
-                                }
+                            val effSalePrice = com.example.util.AppUtils.getEffectiveSalePrice(item)
+                            val effMinSalePrice = com.example.util.AppUtils.getEffectiveMinSalePrice(item)
+
+                            if (effSalePrice > 0.0) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    Text(
-                                        text = salePriceDisplay,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.Black,
-                                        color = Color(0xFF15803D) // Green for Sale Price
-                                    )
+                                    Column {
+                                        Text(
+                                            text = "Expected: ₹${String.format("%,.0f", effSalePrice)}",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Black,
+                                            color = Color(0xFF15803D) // Green for Sale Price
+                                        )
+                                        if (effMinSalePrice > 0.0) {
+                                            Text(
+                                                text = "Min: ₹${String.format("%,.0f", effMinSalePrice)}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = Color(0xFFB45309) // Amber for Min Price
+                                            )
+                                        }
+                                    }
                                     if (isAdmin || isManager || canEditPricing || canEditItemDetails) {
                                         Icon(
                                             imageVector = Icons.Default.Edit,
@@ -1166,16 +1356,32 @@ fun InventoryCardItem(
                                     }
                                 }
                             } else {
-                                Text(
-                                    text = "Sale: Price not set",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = "Sale: Price not set",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                    )
+                                    if (isAdmin || isManager || canEditPricing || canEditItemDetails) {
+                                        Text(
+                                            text = "Set Price",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier
+                                                .clickable { onEditClicked() }
+                                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
                             }
 
-                            // Purchase Price: STRICTLY restricted to Admin and Manager only
-                            if (canSeePurchasePrice) {
+                            // Purchase Price: STRICTLY restricted to Admin and Manager only, and displayed when enabled
+                            if (canSeePurchasePrice && showPurchasePriceOnCards) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -1306,21 +1512,32 @@ fun InventoryCardItem(
                         Text(item.name, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
                     }
 
-                    // Sale Price range in expanded details
-                    if (item.salePrice > 0.0) {
+                    // Sale Price range in expanded details (always visible to all users)
+                    val effSalePrice = com.example.util.AppUtils.getEffectiveSalePrice(item)
+                    val effMinSalePrice = com.example.util.AppUtils.getEffectiveMinSalePrice(item)
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Expected Sale Price:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            text = if (effSalePrice > 0.0) "₹${String.format("%,.2f", effSalePrice)}" else "Not set",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (effSalePrice > 0.0) Color(0xFF15803D) else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Min Sale Price (Floor):", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            text = if (effMinSalePrice > 0.0) "₹${String.format("%,.2f", effMinSalePrice)}" else "Not set",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (effMinSalePrice > 0.0) Color(0xFFB45309) else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (effSalePrice > 0.0 && effMinSalePrice > 0.0) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Expected Sale Price:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("₹${String.format("%,.2f", item.salePrice)}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = Color(0xFF15803D))
-                        }
-                        if (item.minSalePrice > 0.0) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Min Sale Price (Floor):", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("₹${String.format("%,.2f", item.minSalePrice)}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = Color(0xFFB45309))
-                            }
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Selling Range (Sale - Min):", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("₹${String.format("%,.0f", item.salePrice)} - ₹${String.format("%,.0f", item.minSalePrice)}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Black)
-                            }
+                            Text("Selling Range (Sale - Min):", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("₹${String.format("%,.0f", effSalePrice)} - ₹${String.format("%,.0f", effMinSalePrice)}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Black)
                         }
                     }
 

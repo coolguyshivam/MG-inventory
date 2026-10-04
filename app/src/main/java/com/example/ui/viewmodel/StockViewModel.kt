@@ -377,6 +377,8 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
     )
 
     fun startDirectSale(item: InventoryItem) {
+        val effSale = com.example.util.AppUtils.getEffectiveSalePrice(item)
+        val effMin = com.example.util.AppUtils.getEffectiveMinSalePrice(item)
         _activeTab.value = 1 // Navigate to Transactions
         _transactionSelection.value = 1 // Choose "Sale" state category
         serialNumberInput.value = item.serialNumber
@@ -385,11 +387,18 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
         nameInput.value = ""
         phoneInput.value = ""
         aadhaarInput.value = ""
-        amountInput.value = if (item.salePrice > 0.0) item.salePrice.toInt().toString() else ""
+        amountInput.value = if (effSale > 0.0) effSale.toInt().toString() else ""
         descriptionInput.value = item.description.ifBlank { "BH - \nCondition - " }
         quantityInput.value = 1
         photoUriInput.value = null
-        transactionSubItems.value = listOf(TransactionSubItem(serialNumber = item.serialNumber, amount = if (item.salePrice > 0.0) item.salePrice.toInt().toString() else ""))
+        transactionSubItems.value = listOf(
+            TransactionSubItem(
+                serialNumber = item.serialNumber,
+                amount = if (effSale > 0.0) effSale.toInt().toString() else "",
+                salePrice = if (effSale > 0.0) effSale.toInt().toString() else "",
+                minSalePrice = if (effMin > 0.0) effMin.toInt().toString() else ""
+            )
+        )
         syncAggregatedFormState()
         clearFormErrorAndSuccess()
     }
@@ -1120,15 +1129,11 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
                 return
             }
 
-            // Expected Sale Price is mandatory for Purchase transactions
+            // Expected Sale Price & Min Sale Price are optional for Purchase transactions
             if (typeId == 0) {
                 val sp = item.salePrice.trim().toDoubleOrNull()
-                if (sp == null || sp <= 0.0) {
-                    _transactionError.value = "Expected Sale Price is mandatory for item $serialNumber."
-                    return
-                }
                 val msp = item.minSalePrice.trim().toDoubleOrNull()
-                if (msp != null && msp > sp) {
+                if (sp != null && msp != null && msp > sp) {
                     _transactionError.value = "Min Sale Price (₹$msp) cannot exceed Expected Sale Price (₹$sp) for item $serialNumber."
                     return
                 }

@@ -399,7 +399,7 @@ fun TransactionsScreen(viewModel: StockViewModel) {
     fun getSalePriceError(index: Int, valStr: String): String? {
         if (activeSelection != 0) return null
         if (salePriceTouched[index] != true) return null
-        if (valStr.trim().isEmpty()) return "Sale price is mandatory"
+        if (valStr.trim().isEmpty()) return null
         val amt = valStr.trim().toDoubleOrNull()
         if (amt == null || amt <= 0) return "Must be a positive number"
         return null
@@ -649,7 +649,22 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                                 value = subItem.serialNumber,
                                 onValueChange = { 
                                     val clean = it.replace("\n", "").replace("\r", "")
-                                    viewModel.updateSubItem(index, clean, subItem.amount)
+                                    if (activeSelection == 1) {
+                                        val matched = rawItems.find { item -> item.serialNumber.isNotBlank() && item.serialNumber.trim().equals(clean.trim(), ignoreCase = true) }
+                                        if (matched != null) {
+                                            val effSale = com.example.util.AppUtils.getEffectiveSalePrice(matched)
+                                            val effMin = com.example.util.AppUtils.getEffectiveMinSalePrice(matched)
+                                            if (viewModel.modelInput.value.isBlank()) {
+                                                viewModel.modelInput.value = matched.model
+                                            }
+                                            val defaultAmt = if (subItem.amount.isBlank() && effSale > 0.0) effSale.toInt().toString() else subItem.amount
+                                            viewModel.updateSubItem(index, clean, defaultAmt, sp = if (effSale > 0.0) effSale.toInt().toString() else "", msp = if (effMin > 0.0) effMin.toInt().toString() else "")
+                                        } else {
+                                            viewModel.updateSubItem(index, clean, subItem.amount)
+                                        }
+                                    } else {
+                                        viewModel.updateSubItem(index, clean, subItem.amount)
+                                    }
                                     viewModel.clearFormErrorAndSuccess()
                                     imeiTouched[index] = true
                                     if (it.contains("\n") || it.contains("\r")) {
@@ -797,13 +812,13 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                                                     viewModel.clearFormErrorAndSuccess()
                                                     salePriceTouched[index] = true
                                                 },
-                                                label = { Text("Sale Price (₹) *") },
-                                                placeholder = { Text("Selling price") },
+                                                label = { Text("Expected Sale Price (₹)") },
+                                                placeholder = { Text("Target selling price (Optional)") },
                                                 singleLine = true,
                                                 shape = RoundedCornerShape(10.dp),
                                                 modifier = Modifier.weight(1f),
                                                 isError = salePriceErr != null,
-                                                supportingText = if (salePriceErr != null) { { Text(salePriceErr, color = MaterialTheme.colorScheme.error) } } else null,
+                                                supportingText = if (salePriceErr != null) { { Text(salePriceErr, color = MaterialTheme.colorScheme.error) } } else { { Text("Optional", style = MaterialTheme.typography.labelSmall) } },
                                                 keyboardOptions = KeyboardOptions(
                                                     keyboardType = KeyboardType.Number,
                                                     imeAction = ImeAction.Next
@@ -817,8 +832,8 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                                                     viewModel.updateSubItem(index, subItem.serialNumber, subItem.amount, sp = subItem.salePrice, msp = cleanVal)
                                                     viewModel.clearFormErrorAndSuccess()
                                                 },
-                                                label = { Text("Min Price (₹)") },
-                                                placeholder = { Text("Min limit") },
+                                                label = { Text("Min Sale Price (₹)") },
+                                                placeholder = { Text("Min floor limit") },
                                                 singleLine = true,
                                                 shape = RoundedCornerShape(10.dp),
                                                 modifier = Modifier.weight(1f),
@@ -827,6 +842,88 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                                                     keyboardType = KeyboardType.Number,
                                                     imeAction = ImeAction.Next
                                                 )
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Dedicated Sale Pricing Guidance (Sale Mode)
+                            if (activeSelection == 1) {
+                                val matchedItem = rawItems.find { it.serialNumber.isNotBlank() && it.serialNumber.trim().equals(subItem.serialNumber.trim(), ignoreCase = true) }
+                                val effSale = if (matchedItem != null) com.example.util.AppUtils.getEffectiveSalePrice(matchedItem) else subItem.salePrice.toDoubleOrNull() ?: 0.0
+                                val effMin = if (matchedItem != null) com.example.util.AppUtils.getEffectiveMinSalePrice(matchedItem) else subItem.minSalePrice.toDoubleOrNull() ?: 0.0
+                                val enteredAmt = subItem.amount.toDoubleOrNull() ?: 0.0
+                                val isBelowMin = effMin > 0.0 && enteredAmt > 0.0 && enteredAmt < effMin
+
+                                Card(
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (isBelowMin) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f) else Color(0xFFF0FDF4)
+                                    ),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, if (isBelowMin) MaterialTheme.colorScheme.error.copy(alpha = 0.5f) else Color(0xFF86EFAC))
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Sell,
+                                                    contentDescription = null,
+                                                    tint = if (isBelowMin) MaterialTheme.colorScheme.error else Color(0xFF15803D),
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Text(
+                                                    text = "Expected & Min Sale Price Options",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isBelowMin) MaterialTheme.colorScheme.error else Color(0xFF15803D)
+                                                )
+                                            }
+                                            if (effSale > 0.0 && subItem.amount.isBlank()) {
+                                                TextButton(
+                                                    onClick = {
+                                                        viewModel.updateSubItem(index, subItem.serialNumber, effSale.toInt().toString(), sp = effSale.toInt().toString(), msp = if (effMin > 0.0) effMin.toInt().toString() else "")
+                                                    },
+                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                                    modifier = Modifier.height(28.dp)
+                                                ) {
+                                                    Text("Apply Expected", fontSize = 11.sp)
+                                                }
+                                            }
+                                        }
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = "Expected: ${if (effSale > 0.0) "₹" + String.format("%,.0f", effSale) else "Not configured"}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF15803D)
+                                            )
+                                            Text(
+                                                text = "Minimum Allowed: ${if (effMin > 0.0) "₹" + String.format("%,.0f", effMin) else "No floor limit"}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFFB45309)
+                                            )
+                                        }
+
+                                        if (isBelowMin) {
+                                            Text(
+                                                text = "⚠️ Warning: Deal price ₹${String.format("%,.0f", enteredAmt)} is below minimum allowed sale price (₹${String.format("%,.0f", effMin)})!",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.error
                                             )
                                         }
                                     }
@@ -1542,7 +1639,22 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                 onDismissRequest = { scannerIndex = null },
                 onBarcodeScanned = { scannedImei -> 
                     val currentAmount = transactionSubItems.getOrNull(index)?.amount ?: ""
-                    viewModel.updateSubItem(index, scannedImei, currentAmount)
+                    if (activeSelection == 1) {
+                        val matched = rawItems.find { item -> item.serialNumber.isNotBlank() && item.serialNumber.trim().equals(scannedImei.trim(), ignoreCase = true) }
+                        if (matched != null) {
+                            val effSale = com.example.util.AppUtils.getEffectiveSalePrice(matched)
+                            val effMin = com.example.util.AppUtils.getEffectiveMinSalePrice(matched)
+                            if (viewModel.modelInput.value.isBlank()) {
+                                viewModel.modelInput.value = matched.model
+                            }
+                            val defaultAmt = if (currentAmount.isBlank() && effSale > 0.0) effSale.toInt().toString() else currentAmount
+                            viewModel.updateSubItem(index, scannedImei, defaultAmt, sp = if (effSale > 0.0) effSale.toInt().toString() else "", msp = if (effMin > 0.0) effMin.toInt().toString() else "")
+                        } else {
+                            viewModel.updateSubItem(index, scannedImei, currentAmount)
+                        }
+                    } else {
+                        viewModel.updateSubItem(index, scannedImei, currentAmount)
+                    }
                     scannerIndex = null
                 },
                 suggestedImeis = suggestedImeis
