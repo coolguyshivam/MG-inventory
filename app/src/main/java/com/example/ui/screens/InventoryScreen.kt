@@ -298,9 +298,24 @@ fun InventoryScreen(viewModel: StockViewModel) {
                     onDismissRequest = { showSortMenu = false },
                     modifier = Modifier.widthIn(min = 250.dp)
                 ) {
+                    if (canManageInventory) {
+                        DropdownMenuItem(
+                            text = { Text("New Inbound Purchase", fontWeight = FontWeight.SemiBold, color = Color(0xFF15803D)) },
+                            onClick = {
+                                showSortMenu = false
+                                viewModel.setTab(1)
+                                viewModel.setTransactionSelection(0)
+                            },
+                            leadingIcon = {
+                                Icon(Icons.Default.AddShoppingCart, contentDescription = "Add Purchase", tint = Color(0xFF15803D))
+                            }
+                        )
+                        HorizontalDivider()
+                    }
+
                     if (canSeePurchasePrice) {
                         Text(
-                            text = "PURCHASE (MANAGER & ADMIN)",
+                            text = "PURCHASE PRICING (MANAGER & ADMIN)",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary,
@@ -369,20 +384,6 @@ fun InventoryScreen(viewModel: StockViewModel) {
                                     modifier = Modifier.padding(start = 12.dp)
                                 )
                             }
-                        }
-
-                        if (canManageInventory) {
-                            DropdownMenuItem(
-                                text = { Text("New Inbound Purchase") },
-                                onClick = {
-                                    showSortMenu = false
-                                    viewModel.setTab(1)
-                                    viewModel.setTransactionSelection(0)
-                                },
-                                leadingIcon = {
-                                    Icon(Icons.Default.AddShoppingCart, contentDescription = "Add Purchase", tint = Color(0xFF15803D))
-                                }
-                            )
                         }
 
                         HorizontalDivider()
@@ -929,22 +930,29 @@ fun InventoryScreen(viewModel: StockViewModel) {
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
-                        OutlinedTextField(
-                            value = editSalePrice,
-                            onValueChange = { editSalePrice = it },
-                            label = { Text("Expected Sale Price (₹)") },
-                            placeholder = { Text("E.g., 25000 (Optional)") },
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        OutlinedTextField(
-                            value = editMinSalePrice,
-                            onValueChange = { editMinSalePrice = it },
-                            label = { Text("Min Sale Price (₹)") },
-                            placeholder = { Text("E.g., 22000 (Min price salesman can offer)") },
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = editSalePrice,
+                                onValueChange = { editSalePrice = it },
+                                label = { Text("Sale Price (₹)", fontSize = 12.sp) },
+                                singleLine = true,
+                                shape = RoundedCornerShape(8.dp),
+                                textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
+                                modifier = Modifier.weight(1f)
+                            )
+                            OutlinedTextField(
+                                value = editMinSalePrice,
+                                onValueChange = { editMinSalePrice = it },
+                                label = { Text("Min Sale (₹)", fontSize = 12.sp) },
+                                singleLine = true,
+                                shape = RoundedCornerShape(8.dp),
+                                textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
                         OutlinedTextField(
                             value = editDesc,
                             onValueChange = { editDesc = it },

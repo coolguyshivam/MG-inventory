@@ -768,83 +768,51 @@ fun TransactionsScreen(viewModel: StockViewModel) {
                                 )
                             )
 
-                            // Dedicated Selling Price Limits Section (Purchase Mode)
+                            // Selling Price Limits (Purchase Mode)
                             if (activeSelection == 0) {
                                 val salePriceErr = getSalePriceError(index, subItem.salePrice)
-                                Card(
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
-                                    ),
-                                    shape = RoundedCornerShape(10.dp),
+                                Row(
                                     modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f))
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Column(
-                                        modifier = Modifier.padding(10.dp),
-                                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Sell,
-                                                contentDescription = "Selling price configuration",
-                                                tint = Color(0xFF15803D),
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                            Text(
-                                                text = "Selling Price Limits (For Inventory Cards & Salesman)",
-                                                style = MaterialTheme.typography.labelMedium,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color(0xFF15803D)
-                                            )
-                                        }
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            OutlinedTextField(
-                                                value = subItem.salePrice,
-                                                onValueChange = { clean ->
-                                                    val cleanVal = clean.replace("\n", "").replace("\r", "")
-                                                    viewModel.updateSubItem(index, subItem.serialNumber, subItem.amount, sp = cleanVal, msp = subItem.minSalePrice)
-                                                    viewModel.clearFormErrorAndSuccess()
-                                                    salePriceTouched[index] = true
-                                                },
-                                                label = { Text("Expected Sale Price (₹)") },
-                                                placeholder = { Text("Target selling price (Optional)") },
-                                                singleLine = true,
-                                                shape = RoundedCornerShape(10.dp),
-                                                modifier = Modifier.weight(1f),
-                                                isError = salePriceErr != null,
-                                                supportingText = if (salePriceErr != null) { { Text(salePriceErr, color = MaterialTheme.colorScheme.error) } } else { { Text("Optional", style = MaterialTheme.typography.labelSmall) } },
-                                                keyboardOptions = KeyboardOptions(
-                                                    keyboardType = KeyboardType.Number,
-                                                    imeAction = ImeAction.Next
-                                                )
-                                            )
+                                    OutlinedTextField(
+                                        value = subItem.salePrice,
+                                        onValueChange = { clean ->
+                                            val cleanVal = clean.replace("\n", "").replace("\r", "")
+                                            viewModel.updateSubItem(index, subItem.serialNumber, subItem.amount, sp = cleanVal, msp = subItem.minSalePrice)
+                                            viewModel.clearFormErrorAndSuccess()
+                                            salePriceTouched[index] = true
+                                        },
+                                        label = { Text("Sale Price (₹)", fontSize = 12.sp) },
+                                        singleLine = true,
+                                        textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.weight(1f),
+                                        isError = salePriceErr != null,
+                                        supportingText = if (salePriceErr != null) { { Text(salePriceErr, color = MaterialTheme.colorScheme.error, fontSize = 10.sp) } } else null,
+                                        keyboardOptions = KeyboardOptions(
+                                            keyboardType = KeyboardType.Number,
+                                            imeAction = ImeAction.Next
+                                        )
+                                    )
 
-                                            OutlinedTextField(
-                                                value = subItem.minSalePrice,
-                                                onValueChange = { clean ->
-                                                    val cleanVal = clean.replace("\n", "").replace("\r", "")
-                                                    viewModel.updateSubItem(index, subItem.serialNumber, subItem.amount, sp = subItem.salePrice, msp = cleanVal)
-                                                    viewModel.clearFormErrorAndSuccess()
-                                                },
-                                                label = { Text("Min Sale Price (₹)") },
-                                                placeholder = { Text("Min floor limit") },
-                                                singleLine = true,
-                                                shape = RoundedCornerShape(10.dp),
-                                                modifier = Modifier.weight(1f),
-                                                supportingText = { Text("Optional", style = MaterialTheme.typography.labelSmall) },
-                                                keyboardOptions = KeyboardOptions(
-                                                    keyboardType = KeyboardType.Number,
-                                                    imeAction = ImeAction.Next
-                                                )
-                                            )
-                                        }
-                                    }
+                                    OutlinedTextField(
+                                        value = subItem.minSalePrice,
+                                        onValueChange = { clean ->
+                                            val cleanVal = clean.replace("\n", "").replace("\r", "")
+                                            viewModel.updateSubItem(index, subItem.serialNumber, subItem.amount, sp = subItem.salePrice, msp = cleanVal)
+                                            viewModel.clearFormErrorAndSuccess()
+                                        },
+                                        label = { Text("Min Sale (₹)", fontSize = 12.sp) },
+                                        singleLine = true,
+                                        textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.weight(1f),
+                                        keyboardOptions = KeyboardOptions(
+                                            keyboardType = KeyboardType.Number,
+                                            imeAction = ImeAction.Next
+                                        )
+                                    )
                                 }
                             }
 
