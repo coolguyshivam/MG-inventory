@@ -270,6 +270,7 @@ class StockViewModel(private val repository: InventoryRepository) : ViewModel() 
     val canSeePurchasePrice = _loggedInUser.map { it?.role in listOf("Admin", "Manager") }.stateIn(viewModelScope, SharingStarted.Eagerly, false) // Restricted to Admin & Manager Only
     val canSeePrice = canSeePurchasePrice
     val canEditPricing = _loggedInUser.map { it?.role in listOf("Admin", "Manager") }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    val canEditItemDetails = _loggedInUser.map { it?.role in listOf("Admin", "Manager") }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val canSell = _loggedInUser.map { it?.role in listOf("Admin", "Manager", "Sales", "MIS") }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val canDelete = _loggedInUser.map { it?.role in listOf("Admin", "Manager", "MIS") }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val canViewLedger = _loggedInUser.map { it?.role in listOf("Admin", "Manager", "MIS") }.stateIn(viewModelScope, SharingStarted.Eagerly, false)

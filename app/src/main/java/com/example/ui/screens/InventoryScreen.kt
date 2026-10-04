@@ -58,10 +58,12 @@ fun InventoryScreen(viewModel: StockViewModel) {
     val canSeePrice by viewModel.canSeePrice.collectAsStateWithLifecycle()
     val canSeePurchasePrice by viewModel.canSeePurchasePrice.collectAsStateWithLifecycle()
     val canEditPricing by viewModel.canEditPricing.collectAsStateWithLifecycle()
+    val canEditItemDetails by viewModel.canEditItemDetails.collectAsStateWithLifecycle()
     val canSell by viewModel.canSell.collectAsStateWithLifecycle()
 
     val loggedInUser by viewModel.loggedInUser.collectAsStateWithLifecycle()
     val isAdmin = remember(loggedInUser) { loggedInUser?.role == "Admin" }
+    val isManager = remember(loggedInUser) { loggedInUser?.role == "Manager" }
 
     var showSortMenu by remember { mutableStateOf(false) }
 
@@ -76,6 +78,7 @@ fun InventoryScreen(viewModel: StockViewModel) {
 
     // Dialog state for "Edit Item"
     var editingItem by remember { mutableStateOf<InventoryItem?>(null) }
+    var editSerialNumber by remember { mutableStateOf("") }
     var editModel by remember { mutableStateOf("") }
     var editName by remember { mutableStateOf("") }
     var editAmount by remember { mutableStateOf("") }
@@ -494,6 +497,8 @@ fun InventoryScreen(viewModel: StockViewModel) {
                         isCardExpanded = isCardExpanded,
                         canManageInventory = canManageInventory,
                         isAdmin = isAdmin,
+                        isManager = isManager,
+                        canEditItemDetails = canEditItemDetails,
                         canRepair = canRepair,
                         canDelete = canDelete,
                         canSeePrice = canSeePurchasePrice,
@@ -504,6 +509,7 @@ fun InventoryScreen(viewModel: StockViewModel) {
                         onEyeToggled = { viewModel.togglePriceReveal(item.id) },
                         onEditClicked = {
                             editingItem = item
+                            editSerialNumber = item.serialNumber
                             editModel = item.model
                             editName = item.name
                             editAmount = if (item.amount > 0.0) item.amount.toInt().toString() else ""
@@ -684,6 +690,7 @@ fun InventoryScreen(viewModel: StockViewModel) {
                             viewModel.editInventoryItem(
                                 item.id,
                                 item.copy(
+                                    serialNumber = editSerialNumber.ifBlank { item.serialNumber },
                                     model = editModel,
                                     name = editName,
                                     amount = amountVal,
@@ -710,6 +717,13 @@ fun InventoryScreen(viewModel: StockViewModel) {
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
+                        OutlinedTextField(
+                            value = editSerialNumber,
+                            onValueChange = { editSerialNumber = it },
+                            label = { Text("IMEI / Serial Number") },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
                         OutlinedTextField(
                             value = editName,
                             onValueChange = { editName = it },
@@ -943,6 +957,8 @@ fun InventoryCardItem(
     isCardExpanded: Boolean,
     canManageInventory: Boolean,
     isAdmin: Boolean = false,
+    isManager: Boolean = false,
+    canEditItemDetails: Boolean = false,
     canRepair: Boolean,
     canDelete: Boolean,
     canSeePrice: Boolean,  // Rule 4 (Purchase price visibility for Admin & Manager)
@@ -1050,7 +1066,7 @@ fun InventoryCardItem(
                                     expanded = expandedActionsMenu,
                                     onDismissRequest = { expandedActionsMenu = false }
                                 ) {
-                                    if (isAdmin || canEditPricing) {
+                                    if (isAdmin || isManager || canEditItemDetails || canEditPricing) {
                                         DropdownMenuItem(
                                             text = { Text("Edit details & pricing") },
                                             onClick = {
@@ -1140,7 +1156,7 @@ fun InventoryCardItem(
                                         fontWeight = FontWeight.Black,
                                         color = Color(0xFF15803D) // Green for Sale Price
                                     )
-                                    if (canEditPricing) {
+                                    if (isAdmin || isManager || canEditPricing || canEditItemDetails) {
                                         Icon(
                                             imageVector = Icons.Default.Edit,
                                             contentDescription = "Edit sale price",
