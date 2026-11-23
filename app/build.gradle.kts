@@ -1,4 +1,8 @@
 import java.util.Base64
+import java.util.Properties
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 plugins {
   alias(libs.plugins.android.application)
@@ -33,10 +37,42 @@ android {
     minSdk = 24
     targetSdk = 36
     
-    // Auto-increment versionCode using the build timestamp to enable smooth, seamless direct APK updates
+    val versionPropsFile = project.rootProject.file("version.properties")
+    val versionProps = Properties()
+    if (versionPropsFile.exists()) {
+      versionPropsFile.inputStream().use { versionProps.load(it) }
+    } else {
+      versionProps.setProperty("major", "1")
+      versionProps.setProperty("minor", "0")
+      versionProps.setProperty("patch", "1")
+      versionProps.setProperty("iteration", "25")
+      versionPropsFile.outputStream().use { versionProps.store(it, "Version properties") }
+    }
+
+    val major = versionProps.getProperty("major", "1")
+    val minor = versionProps.getProperty("minor", "0")
+    var iteration = versionProps.getProperty("iteration", "25").toIntOrNull() ?: 25
+
+    // Detect if we are building an APK/applet and auto-increment iteration
+    val isBuilding = gradle.startParameter.taskNames.any {
+      it.contains("assemble", ignoreCase = true) || it.contains("package", ignoreCase = true) || it.contains("build", ignoreCase = true)
+    }
+    if (isBuilding) {
+      iteration += 1
+      versionProps.setProperty("iteration", iteration.toString())
+      versionPropsFile.outputStream().use { versionProps.store(it, "Auto-incremented on build") }
+    }
+
+    // Auto-increment versionCode using the build timestamp (seconds since epoch).
+    // This produces a versionCode in the ~1.79B range, which is strictly increasing with every build
+    // and higher than previous builds (~55M), allowing Android OS to smoothly replace existing installs without uninstalling.
     val buildTimeSeconds = (System.currentTimeMillis() / 1000).toInt()
-    versionCode = buildTimeSeconds - 1735689600 // Epoch offset of January 1, 2025
-    versionName = "0.0.1"
+    versionCode = buildTimeSeconds
+    versionName = "$major.$minor.$iteration"
+
+    val buildDate = SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.US).format(Date())
+    buildConfigField("String", "BUILD_TIME", "\"$buildDate\"")
+    buildConfigField("int", "BUILD_ITERATION", "$iteration")
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

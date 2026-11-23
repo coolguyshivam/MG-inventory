@@ -377,15 +377,38 @@ fun MainAppContent(viewModel: StockViewModel) {
                     }
                     
                     Column(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .background(Color(0xFF15803D), CircleShape)
+                                )
+                                Text(
+                                    text = "v${com.example.BuildConfig.VERSION_NAME} (Build #${com.example.BuildConfig.BUILD_ITERATION})",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
+                        }
                         Text(
-                            text = "ver ${com.example.BuildConfig.VERSION_NAME}",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                            letterSpacing = 1.sp
+                            text = "Built: ${com.example.BuildConfig.BUILD_TIME}",
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
                     }
 
@@ -437,6 +460,13 @@ fun MainAppContent(viewModel: StockViewModel) {
                                         fontWeight = FontWeight.Bold,
                                         letterSpacing = 0.5.sp,
                                         color = if (isFirebaseConnected) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = "• v${com.example.BuildConfig.VERSION_NAME}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
                                     )
                                     if (isSyncing) {
                                         Icon(
